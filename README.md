@@ -30,13 +30,16 @@ La base de datos de desarrollo se guarda en `.local/rerchar-db`; los archivos ad
 
 ## Actualizar la instalación que ya funciona en su Mac
 
-Con el terminal abierto **dentro de la carpeta `rerchar`**, detenga primero el servidor con **Ctrl+C**. Descargue el ZIP de actualización en **Descargas**, sin borrar su carpeta actual ni `.local`, y pegue:
+Detenga primero el servidor local con **Ctrl+C**. En una copia Git del proyecto, actualice el código y aplique las migraciones desde la carpeta del proyecto:
 
 ```bash
-unzip -o ~/Downloads/RERCHAR_Actualizacion_Piloto_28-09-2026_v10.zip && npm install && npm run db:migrate && npm run dev
+git pull --ff-only origin main
+npm ci
+npm run db:migrate
+npm run dev
 ```
 
-Si su navegador cambia el nombre del archivo al descargarlo, sustituya únicamente el nombre del ZIP. `unzip -o` actualiza el código sobre la instalación actual; el ZIP no contiene `.local`, por lo que conserva solicitudes, evidencias y cuentas previas. Las migraciones pendientes se aplican una sola vez. Entre con su cuenta actual. Si necesita reponer la cuenta de revisión, utilice el comando `npm run review:admin` de la sección siguiente.
+Si recibió un archivo `.patch` para una entrega aún no publicada, use `git am /ruta/al/archivo.patch` en esa misma carpeta antes de `git push origin main`. El parche sólo modifica archivos del repositorio; la base local y los adjuntos de `.local` permanecen en el Mac. Las migraciones pendientes se aplican una sola vez. Si necesita reponer la cuenta de revisión, utilice `npm run review:admin` de la sección siguiente.
 
 El menú lateral del panel tiene desplazamiento propio: coloque el cursor sobre las opciones y use la rueda o el panel táctil para llegar a Certificados, Reportes, Auditoría, Usuarios y accesos y Maestros. El nombre de usuario y **Cerrar sesión** permanecen visibles al pie. En teléfonos, abra el menú superior y desplácese dentro de la lista.
 
@@ -80,7 +83,7 @@ Este comando cambia el correo provisional, sustituye su contraseña y cierra las
 
 Entre como **administrador** y abra **Certificados**. Un servicio completado todavía no aparece en «Servicio habilitado» si su ficha ambiental no está revisada. En «Servicios cerrados pendientes de certificado» busque el folio y pulse **Preparar ficha**. Compruebe que corresponda al servicio correcto, complete clasificación, generador, transportista, receptor, destino y guía, y guarde el borrador. Abra la ficha y pulse **Marcar revisado** después de comprobar peso y evidencia. Después pulse **Continuar a certificados**: el folio quedará seleccionado para emitir. Descargue el PDF con QR después de la emisión. Si la ficha ya estaba en borrador, la página indicará **Revisar ficha** en lugar de preparar una nueva.
 
-Las órdenes de compra admiten proveedor y referencia; las guías, facturas y estado de pago se registran como datos de la recepción. La carga de cotizaciones, aprobaciones multinivel, devolución a proveedor, conciliación bancaria y documentos tributarios electrónicos quedan pendientes. La acreditación registra referencias y vigencia, sin carga del documento físico. El registro ambiental es de preparación y control interno, no una declaración regulatoria ni una integración con portales estatales. El PDF acredita los datos **registrados y revisados internamente**, no la recepción de terceros ni un cumplimiento ambiental oficial. Aún faltan funcionamiento sin conexión y migración de planillas reales.
+Las cotizaciones, solicitudes de compra, guías de transporte, ingresos de material y facturas de proveedores se registran manualmente. Las aprobaciones multinivel, devolución a proveedor, conciliación bancaria y documentos tributarios electrónicos quedan pendientes. La acreditación registra referencias y vigencia, sin carga del documento físico. El registro ambiental es de preparación y control interno, no una declaración regulatoria ni una integración con portales estatales. El PDF acredita los datos **registrados y revisados internamente**, no la recepción de terceros ni un cumplimiento ambiental oficial. El archivo de planillas originales se puede importar por separado y consultar en el panel de administración; no convierte automáticamente filas antiguas en operaciones activas.
 
 **No introduzca datos reales de RERCHAR en el entorno de demostración antes de acordar infraestructura, accesos y respaldo.**
 
@@ -90,6 +93,8 @@ Las órdenes de compra admiten proveedor y referencia; las guías, facturas y es
 | --- | --- |
 | `npm run dev` | Inicia el piloto local |
 | `npm run db:migrate` | Aplica migraciones pendientes |
+| `python scripts/extract-workbooks.py /ruta/a/excel > /ruta/privada/planillas.jsonl` | Extrae los libros originales `.xlsx` y `.xlsm` con columnas y fórmulas; requiere `openpyxl` |
+| `node --import tsx scripts/import-workbooks.ts /ruta/privada/planillas.jsonl` | Importa versiones sin duplicarlas a PostgreSQL para el módulo Planillas originales |
 | `npm run review:admin -- 'correo' 'contraseña' ['correo anterior']` | Crea o ajusta la cuenta de revisión en la base local |
 | `npm run db:seed -- --demo` | Completa maestros ficticios, incluido un conductor, cuando ya existe un administrador |
 | `npm test` | Prueba servicios, bodegas, flota, acreditación, finanzas, ficha ambiental, certificados, cuentas y corrección de maestros |
@@ -98,12 +103,18 @@ Las órdenes de compra admiten proveedor y referencia; las guías, facturas y es
 
 ## Publicar el piloto de revisión
 
-Para alojarlo en Vercel hace falta una cuenta/proyecto de Vercel y una base PostgreSQL persistente compatible. El código está preparado para desplegarse directamente desde la carpeta `rerchar`, sin exigir un repositorio GitHub. La publicación no crea por sí sola la base, el usuario inicial ni la URL final.
+Para alojarlo en Vercel hace falta una cuenta/proyecto de Vercel y una base PostgreSQL persistente compatible. Se puede publicar desde el repositorio conectado o desde la carpeta del proyecto. La publicación no crea por sí sola la base, el usuario inicial ni la URL final.
 
 1. Cree y conecte PostgreSQL al proyecto. Configure `DATABASE_URL` en el entorno de ejecución y en la terminal que usará para la preparación inicial. No publique esta cadena en un archivo del repositorio ni en una captura. En producción es obligatoria.
 2. Con esa misma `DATABASE_URL`, desde la carpeta del proyecto ejecute `npm ci` y `npm run db:migrate`. Debe ejecutar la migración **antes** de abrir el sitio; no está integrada al arranque de cada instancia.
 3. Cree el primer administrador con `SEED_ADMIN_EMAIL` y `SEED_ADMIN_PASSWORD` como variables temporales de su terminal y ejecute `npm run db:seed -- --demo` si quiere los maestros ficticios. El comando no modifica una contraseña existente; es preferible crear la cuenta con una clave de revisión nueva y única. No configure la clave como variable permanente de Vercel.
 4. En Vercel configure `EVIDENCE_STORAGE=database` y `APP_BASE_URL=https://<dominio-estable-del-piloto>`, además de `DATABASE_URL`. Publique la carpeta `rerchar` como proyecto Next.js. Después del despliegue visite la URL HTTPS real y recorra el flujo de [ENTREGA_PILOTO_28-09-2026.md](docs/ENTREGA_PILOTO_28-09-2026.md). Defina el dominio **antes** de emitir certificados, pues el QR graba ese enlace.
+
+### Importar las planillas entregadas
+
+Tras aplicar las migraciones `001`–`013`, instale `openpyxl` en el equipo de importación (`python -m pip install openpyxl`). Reúna los once archivos `.xlsx` y `.xlsm` en una carpeta privada. Ejecute los dos comandos de la tabla anterior con `DATABASE_URL` apuntando a la misma PostgreSQL que usa el sitio. El archivo JSONL generado incluye datos sensibles de clientes: guárdelo fuera del repositorio y elimínelo después de comprobar la importación. Una segunda ejecución con los mismos archivos omite versiones ya cargadas; cambios en un libro crean una versión nueva con su huella SHA-256. Administración consulta las filas y fórmulas en **Planillas originales**.
+
+El importador preserva las fuentes para conciliación. Cree o vincule en las pantallas de clientes, servicios, ingresos, guías, compras e inventario los movimientos históricos aprobados por operaciones. Las planillas mezclan variantes de cálculo, celdas sin dato y registros duplicados; no se fabrican clientes ni facturas a partir de coincidencias de nombre. El peso neto de cada ingreso exige elegir su base explícita y las diferencias contra el neto anotado requieren observaciones. La conexión automática con SII, Shell y Tracklite sigue fuera de esta entrega.
 
 En Vercel los archivos adjuntos del piloto se guardan en PostgreSQL (migración `010`), con un límite de 4 MB por archivo; mantenga el entorno sin datos reales hasta configurar accesos y respaldo. Esta opción sirve para evidencias pequeñas durante la revisión. Para documentos grandes y operación productiva se necesita almacenamiento privado de objetos o un volumen persistente y una política de respaldos. La instalación local conserva sus archivos previos en `.local/archivos` y admite 5 MB por archivo.
 

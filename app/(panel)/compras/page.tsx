@@ -28,7 +28,7 @@ export default async function Purchases({ searchParams }: { searchParams: Promis
         <p className="helper-text">Registre el primer artículo. Podrá agregar más artículos antes de su aprobación.</p>
         <form action={createPurchaseAction} className="form-stack"><input type="hidden" name="submission_key" value={randomUUID()}/>
           <label>Qué se necesita<input name="title" required minLength={3} maxLength={180} placeholder="Ej. Repuestos para flota"/></label>
-          <div className="two-fields"><label>Categoría<select name="category" defaultValue="repuestos"><option value="repuestos">Repuestos</option><option value="insumos">Insumos</option><option value="seguridad">Seguridad</option><option value="servicios">Servicios</option><option value="otros">Otros</option></select></label>
+          <div className="two-fields"><label>Categoría<select name="category" defaultValue="repuestos"><option value="repuestos">Repuestos</option><option value="insumos">Insumos</option><option value="seguridad">Seguridad</option><option value="servicios">Servicios</option><option value="operacion">Operación</option><option value="otros">Otros</option></select></label>
             <label>Criticidad<select name="priority" defaultValue="normal"><option value="normal">Normal</option><option value="alta">Alta</option><option value="critica">Crítica</option></select></label></div>
           <label>Artículo<select name="item_id" defaultValue="" required><option value="">Seleccione un artículo</option>{items.map((item) => <option value={item.id} key={item.id}>{item.code} · {item.name} ({item.unit})</option>)}</select></label>
           <label>Cantidad<input name="quantity" type="number" min="0.001" step="0.001" required/></label>

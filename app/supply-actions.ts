@@ -31,7 +31,8 @@ export async function createWarehouseAction(form: FormData) {
 }
 export async function createItemAction(form: FormData) {
   const actor = await requireActor();
-  await run("/inventario", () => createStockItem(actor,{ code: value(form,"code"), name: value(form,"name"), unit: value(form,"unit"), minimum_qty: value(form,"minimum_qty") }));
+  await run("/inventario", () => createStockItem(actor,{ code: value(form,"code"), name: value(form,"name"), unit: value(form,"unit"),
+    category:value(form,"category"),minimum_qty: value(form,"minimum_qty"),maximum_qty:value(form,"maximum_qty"),unit_cost_clp:value(form,"unit_cost_clp") }));
 }
 export async function createPurchaseAction(form: FormData) {
   const actor = await requireActor();
@@ -74,7 +75,8 @@ export async function receivePurchaseAction(form: FormData) {
 export async function adjustStockAction(form: FormData) {
   const actor = await requireActor();
   await run("/inventario", () => adjustStock(actor,{ item_id: value(form,"item_id"), warehouse_id: value(form,"warehouse_id"),
-    direction: value(form,"direction"), quantity: value(form,"quantity"), reason: value(form,"reason") }));
+    direction: value(form,"direction"), quantity: value(form,"quantity"), reason: value(form,"reason"),
+    document_reference:value(form,"document_reference"),cost_center:value(form,"cost_center") }));
 }
 export async function transferStockAction(form: FormData) {
   const actor = await requireActor();

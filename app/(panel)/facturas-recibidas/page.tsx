@@ -1,0 +1,21 @@
+import Link from "next/link";
+import {redirect} from "next/navigation";
+import {FileText} from "lucide-react";
+import {requireActor} from "@/lib/auth";
+import {db} from "@/lib/db";
+import {listSupplierInvoices} from "@/lib/supplier-invoices";
+import {createSupplierInvoiceAction} from "@/app/operation-actions";
+import {Notice} from "@/components/UI";
+import {SubmitButton} from "@/components/Transition";
+
+const date=(v:Date|string|null)=>!v?"—":v instanceof Date?v.toISOString().slice(0,10):String(v).slice(0,10);
+export default async function SupplierInvoices({searchParams}:{searchParams:Promise<{error?:string;ok?:string}>}){
+  const actor=await requireActor();if(actor.role!=="admin")redirect("/");
+  const [rows,purchases,services,query]=await Promise.all([listSupplierInvoices(actor),
+    db.query<{id:string;folio:string;title:string}>("SELECT id,folio,title FROM purchase_requests ORDER BY created_at DESC LIMIT 250"),
+    db.query<{id:string;folio:string}>("SELECT id,folio FROM service_requests WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT 250"),searchParams]);
+  return <><div className="page-title-row"><div><div className="eyebrow">PLANILLA DE INSUMOS · RERCHAR / E Y J</div><h1>Facturas recibidas</h1><p className="page-intro">Registro manual por empresa, proveedor, costo, vencimiento, pagos y documento original.</p></div><span className="title-icon"><FileText size={24}/></span></div><Notice error={query.error} ok={query.ok}/>
+    <section className="section-card"><div className="section-heading"><div><div className="eyebrow">REGISTRAR</div><h2>Factura de proveedor</h2></div></div>
+      <form action={createSupplierInvoiceAction} className="form-grid"><label>Empresa receptora<select name="issuer"><option value="rerchar">RERCHAR CHILE SPA</option><option value="e_y_j">E y J Limitada</option></select></label><label>Fecha emisión<input name="issued_on" type="date" required/></label><label>RUT proveedor<input name="supplier_tax_id" required maxLength={25}/></label><label>Razón social proveedor<input name="supplier_name" required maxLength={180}/></label><label>Número factura<input name="invoice_number" required maxLength={80}/></label><label>Vencimiento<input name="due_on" type="date"/></label><label className="field-full">Descripción<input name="description" required maxLength={500}/></label><label>Neto ($)<input name="net_clp" type="number" min="0" step="0.01"/></label><label>IVA ($)<input name="vat_clp" type="number" min="0" step="0.01"/></label><label>Total ($)<input name="total_clp" type="number" min="0" step="0.01" required/></label><label>Centro de costo<input name="cost_area" maxLength={160}/></label><label>Solicitud / orden de compra<select name="purchase_id" defaultValue=""><option value="">No aplica</option>{purchases.map(p=><option key={p.id} value={p.id}>OC-{String(p.folio).padStart(5,"0")} · {p.title}</option>)}</select></label><label>Servicio<select name="service_id" defaultValue=""><option value="">No aplica</option>{services.map(s=><option key={s.id} value={s.id}>RER-{String(s.folio).padStart(5,"0")}</option>)}</select></label><label className="field-full">Observaciones<textarea name="notes" rows={2} maxLength={1000}/></label><div className="field-full form-footer"><SubmitButton className="button button-primary">Registrar factura</SubmitButton></div></form></section>
+    <section className="section-card"><div className="section-heading"><div><div className="eyebrow">VENCIMIENTOS</div><h2>Facturas y saldo</h2></div><span className="count-pill">{rows.length}</span></div><div className="table-wrap"><table className="data-table"><thead><tr><th>Factura / empresa</th><th>Proveedor</th><th>Vence</th><th>Total</th><th>Saldo</th><th>Estado</th></tr></thead><tbody>{rows.map(r=><tr key={r.id}><td><Link href={`/facturas-recibidas/${r.id}`}><strong>{r.invoice_number}</strong></Link><span className="table-sub">{r.issuer==="rerchar"?"RERCHAR":"E y J"} · {date(r.issued_on)}</span></td><td>{r.supplier_name}</td><td>{date(r.due_on)}</td><td>${Number(r.total_clp).toLocaleString("es-CL")}</td><td>${(Number(r.total_clp)-Number(r.paid_clp)).toLocaleString("es-CL")}</td><td>{r.status}</td></tr>)}</tbody></table>{rows.length===0&&<p className="muted">Todavía no se cargan las facturas de la planilla.</p>}</div></section></>;
+}

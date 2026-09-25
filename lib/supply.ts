@@ -55,10 +55,14 @@ export async function createWarehouse(actor: Actor, input: unknown) {
 
 export async function createStockItem(actor: Actor, input: unknown) {
   requireOperations(actor);
-  const data = z.object({ code: label(40), name: label(160), unit: z.enum(["un","kg","lt","m","m3"]), minimum_qty: minimum.default("0") }).parse(input);
+  const data = z.object({ code: label(40), name: label(160), unit: z.enum(["un","kg","lt","m","m3","caja_10","caja_50","pallet","bolsa_10","centena"]),
+    category:optional(100),minimum_qty: minimum.default("0"),maximum_qty:z.union([z.literal(""),minimum]).default(""),
+    unit_cost_clp:z.union([z.literal(""),z.coerce.number().finite().min(0).max(1_000_000_000)]).default("") }).parse(input);
+  if(data.maximum_qty!==""&&Number(data.maximum_qty)<Number(data.minimum_qty))reject("El máximo debe ser igual o mayor que el mínimo.");
   return transaction(async (tx) => {
-    const [row] = await tx.query<{ id: string }>("INSERT INTO stock_items (code,name,unit,minimum_qty) VALUES ($1,$2,$3,$4) RETURNING id",
-      [data.code.toUpperCase(), data.name, data.unit, data.minimum_qty]);
+    const [row] = await tx.query<{ id: string }>(`INSERT INTO stock_items (code,name,unit,minimum_qty,maximum_qty,category,unit_cost_clp)
+      VALUES ($1,$2,$3,$4,NULLIF($5,'')::numeric,NULLIF($6,''),NULLIF($7::text,'')::numeric) RETURNING id`,
+      [data.code.toUpperCase(), data.name, data.unit, data.minimum_qty,data.maximum_qty,data.category,data.unit_cost_clp]);
     await audit(tx, actor, "create", "stock_item", row.id, data);
     return row.id;
   });
@@ -102,7 +106,7 @@ export async function getPurchase(actor: Actor, id: string) {
 
 export async function createPurchase(actor: Actor, input: unknown) {
   requireOperations(actor);
-  const data = z.object({ submission_key: uuid, title: z.string().trim().min(3).max(180), category: z.enum(["repuestos","insumos","seguridad","servicios","otros"]),
+  const data = z.object({ submission_key: uuid, title: z.string().trim().min(3).max(180), category: z.enum(["repuestos","insumos","seguridad","servicios","operacion","otros"]),
     priority, item_id: uuid, quantity, notes: optional(2000) }).parse(input);
   return transaction(async (tx) => {
     const [item] = await tx.query("SELECT id FROM stock_items WHERE id=$1 AND active=true", [data.item_id]);
@@ -221,21 +225,21 @@ export async function receivePurchase(actor: Actor, requestId: string, input: un
 }
 
 export type Warehouse = { id: string; code: string; name: string };
-export type StockItem = { id: string; code: string; name: string; unit: string; minimum_qty: string };
+export type StockItem = { id: string; code: string; name: string; unit: string; minimum_qty: string; maximum_qty:string|null;category:string|null;unit_cost_clp:string|null };
 export type StockBalance = { item_id: string; warehouse_id: string; item_code: string; item_name: string; unit: string; warehouse_name: string; minimum_qty: string; quantity: string; reserved: string };
-export type InventoryMovement = { id: string; item_name: string; code: string; unit: string; warehouse_name: string; kind: string; qty_delta: string; reserved_delta: string; note: string; actor_name: string; created_at: Date };
+export type InventoryMovement = { id: string; item_name: string; code: string; unit: string; warehouse_name: string; kind: string; qty_delta: string; reserved_delta: string; note: string; actor_name: string; created_at: Date; document_reference:string|null;cost_center:string|null };
 export type Reservation = { id: string; item_name: string; warehouse_name: string; unit: string; quantity: string; reason: string; created_by_name: string; created_at: Date };
 
 export async function listInventory(actor: Actor, itemId = "", warehouseId = "") {
   requireOperations(actor);
   const [warehouses, items, balances, movements, reservations] = await Promise.all([
     db.query<Warehouse>("SELECT id,code,name FROM warehouses WHERE active=true ORDER BY name"),
-    db.query<StockItem>("SELECT id,code,name,unit,minimum_qty FROM stock_items WHERE active=true ORDER BY name"),
+    db.query<StockItem>("SELECT id,code,name,unit,minimum_qty,maximum_qty,category,unit_cost_clp FROM stock_items WHERE active=true ORDER BY name"),
     db.query<StockBalance>(`SELECT i.id AS item_id,w.id AS warehouse_id,i.code AS item_code,i.name AS item_name,i.unit,w.name AS warehouse_name,i.minimum_qty,
        COALESCE(b.quantity,0)::text AS quantity,COALESCE(b.reserved,0)::text AS reserved
        FROM stock_items i CROSS JOIN warehouses w LEFT JOIN stock_balances b ON b.item_id=i.id AND b.warehouse_id=w.id
        WHERE i.active=true AND w.active=true ORDER BY w.name,i.name`),
-    db.query<InventoryMovement>(`SELECT m.id,i.name AS item_name,i.code,i.unit,w.name AS warehouse_name,m.kind,m.qty_delta,m.reserved_delta,m.note,u.name AS actor_name,m.created_at
+    db.query<InventoryMovement>(`SELECT m.id,i.name AS item_name,i.code,i.unit,w.name AS warehouse_name,m.kind,m.qty_delta,m.reserved_delta,m.note,u.name AS actor_name,m.created_at,m.document_reference,m.cost_center
        FROM inventory_movements m JOIN stock_items i ON i.id=m.item_id JOIN warehouses w ON w.id=m.warehouse_id
        JOIN users u ON u.id=m.created_by WHERE ($1::text='' OR m.item_id=NULLIF($1,'')::uuid)
        AND ($2::text='' OR m.warehouse_id=NULLIF($2,'')::uuid) ORDER BY m.created_at DESC,m.id DESC LIMIT 150`,
@@ -255,7 +259,8 @@ async function activePair(tx: Db, itemId: string, warehouseId: string) {
 
 export async function adjustStock(actor: Actor, input: unknown) {
   requireOperations(actor);
-  const data = z.object({ item_id: uuid, warehouse_id: uuid, direction: z.enum(["entrada","salida"]), quantity, reason: z.string().trim().min(5).max(500) }).parse(input);
+  const data = z.object({ item_id: uuid, warehouse_id: uuid, direction: z.enum(["entrada","salida"]), quantity, reason: z.string().trim().min(5).max(500),
+    document_reference:optional(100),cost_center:optional(100) }).parse(input);
   await transaction(async (tx) => {
     await activePair(tx,data.item_id,data.warehouse_id);
     await tx.query("INSERT INTO stock_balances (item_id,warehouse_id) VALUES ($1,$2) ON CONFLICT DO NOTHING", [data.item_id,data.warehouse_id]);
@@ -263,9 +268,9 @@ export async function adjustStock(actor: Actor, input: unknown) {
     const [balance] = await tx.query(`UPDATE stock_balances SET quantity=quantity+$3 WHERE item_id=$1 AND warehouse_id=$2
       AND quantity+$3>=reserved RETURNING quantity`, [data.item_id,data.warehouse_id,signed]);
     if (!balance) reject("Saldo disponible insuficiente; hay unidades reservadas o faltantes.");
-    const [movement] = await tx.query<{ id: string }>(`INSERT INTO inventory_movements (item_id,warehouse_id,kind,qty_delta,note,created_by)
-      VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
-      [data.item_id,data.warehouse_id,data.direction === "entrada" ? "ajuste_entrada" : "ajuste_salida",signed,data.reason,actor.id]);
+    const [movement] = await tx.query<{ id: string }>(`INSERT INTO inventory_movements (item_id,warehouse_id,kind,qty_delta,note,created_by,document_reference,cost_center)
+      VALUES ($1,$2,$3,$4,$5,$6,NULLIF($7,''),NULLIF($8,'')) RETURNING id`,
+      [data.item_id,data.warehouse_id,data.direction === "entrada" ? "ajuste_entrada" : "ajuste_salida",signed,data.reason,actor.id,data.document_reference,data.cost_center]);
     await audit(tx,actor,"adjust","inventory_movement",movement.id,data);
   });
 }
