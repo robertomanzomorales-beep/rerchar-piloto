@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, ClipboardList, CalendarDays, Boxes, LogOut, Menu, ShieldCheck, Wrench, FileBarChart2, ShoppingCart, Warehouse, Fuel, Container, Users, Banknote, FileCheck2, ScrollText, FileBadge2 } from "lucide-react";
+import { LayoutDashboard, ClipboardList, CalendarDays, Boxes, LogOut, Menu, ShieldCheck, Wrench, FileBarChart2, ShoppingCart, Warehouse, Fuel, Container, Users, Banknote, FileCheck2, ScrollText, FileBadge2, Building2, FileText } from "lucide-react";
 import type { Actor } from "@/lib/auth";
 import { logoutAction } from "@/app/actions";
 import { NavPendingHint, SubmitButton } from "@/components/Transition";
@@ -13,6 +13,8 @@ export default function Shell({ actor, children }: { actor: Actor; children: Rea
   const links = [
     { href: "/", text: "Resumen", icon: LayoutDashboard, visible: true },
     { href: "/solicitudes", text: "Solicitudes", icon: ClipboardList, visible: true },
+    { href: "/clientes", text: "Clientes y documentos", icon: Building2, visible: actor.role !== "conductor" },
+    { href: "/cotizaciones", text: "Cotizaciones", icon: FileText, visible: actor.role !== "conductor" },
     { href: "/agenda", text: "Agenda", icon: CalendarDays, visible: true },
     { href: "/contenedores", text: "Tolvas y contenedores", icon: Container, visible: actor.role === "admin" || actor.role === "operaciones" },
     { href: "/flota", text: "Flota y averías", icon: Wrench, visible: actor.role === "admin" || actor.role === "operaciones" },

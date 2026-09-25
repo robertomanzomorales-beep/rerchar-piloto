@@ -16,10 +16,11 @@ export type ContainerRow={ id:string;code:string;kind:string;capacity_m3:string;
 export type ContainerMovement={id:string;container_id:string;code:string;kind:string;previous_status:string|null;previous_location:string|null;
   previous_waste_type:string|null;next_status:string;next_location:string;next_waste_type:string|null;service_id:string|null;service_folio:string|null;
   note:string;actor_name:string;created_at:Date};
+export type ContainerServiceRecord={id:string;container_id:string;code:string;kind:string;record_date:Date|string;kilometers:string|null;description:string;cost_clp:string|null;service_id:string|null;service_folio:string|null;actor_name:string};
 
 export async function listContainers(actor:Actor) {
   guard(actor);
-  const [containers,sites,services,movements]=await Promise.all([
+  const [containers,sites,services,movements,records]=await Promise.all([
     db.query<ContainerRow>(`SELECT c.*,cl.name AS client_name,cs.name AS site_name,
       CASE WHEN c.installed_at IS NOT NULL THEN GREATEST(0,(now() AT TIME ZONE 'America/Santiago')::date-(c.installed_at AT TIME ZONE 'America/Santiago')::date)::int ELSE 0 END AS stay_days
       FROM containers c LEFT JOIN clients cl ON cl.id=c.client_id LEFT JOIN client_sites cs ON cs.id=c.site_id
@@ -31,8 +32,37 @@ export async function listContainers(actor:Actor) {
     db.query<ContainerMovement>(`SELECT m.*,c.code,s.folio AS service_folio,u.name AS actor_name FROM container_movements m
       JOIN containers c ON c.id=m.container_id LEFT JOIN service_requests s ON s.id=m.service_id JOIN users u ON u.id=m.actor_id
       ORDER BY m.created_at DESC,m.id DESC LIMIT 250`),
+    db.query<ContainerServiceRecord>(`SELECT r.*,c.code,s.folio AS service_folio,u.name AS actor_name FROM container_service_records r
+      JOIN containers c ON c.id=r.container_id LEFT JOIN service_requests s ON s.id=r.service_id JOIN users u ON u.id=r.recorded_by
+      ORDER BY r.record_date DESC,r.created_at DESC LIMIT 250`),
   ]);
-  return {containers,sites,services,movements};
+  return {containers,sites,services,movements,records};
+}
+
+export async function recordContainerService(actor:Actor,input:unknown){
+  guard(actor);
+  const data=z.object({container_id:uuid,service_id:optionalId,kind:z.enum(["kilometraje","mantenimiento"]),
+    record_date:z.iso.date(),kilometers:z.union([z.literal(""),z.coerce.number().finite().min(0).max(1_000_000)]).default(""),
+    description:z.string().trim().min(5).max(500),cost_clp:z.union([z.literal(""),z.coerce.number().finite().min(0).max(100_000_000)]).default("")}).parse(input);
+  if(data.kind==="kilometraje"&&data.kilometers==="")reject("Indique los kilómetros recorridos en el traslado o arriendo.");
+  return transaction(async tx=>{
+    const [container]=await tx.query<{client_id:string|null}>("SELECT client_id FROM containers WHERE id=$1 FOR SHARE",[data.container_id]);
+    if(!container)reject("Tolva o contenedor no encontrado.");
+    if(data.service_id){
+      const [service]=await tx.query<{client_id:string}>("SELECT client_id FROM service_requests WHERE id=$1 AND deleted_at IS NULL",[data.service_id]);
+      if(!service)reject("Servicio no encontrado.");
+      if(container.client_id&&container.client_id!==service.client_id){
+        const [previous]=await tx.query("SELECT id FROM container_movements WHERE container_id=$1 AND service_id=$2 LIMIT 1",[data.container_id,data.service_id]);
+        if(!previous)reject("El servicio no corresponde al cliente actual de la unidad.");
+      }
+    }
+    const [record]=await tx.query<{id:string}>(`INSERT INTO container_service_records(container_id,service_id,kind,record_date,kilometers,description,cost_clp,recorded_by)
+      VALUES ($1,NULLIF($2,'')::uuid,$3,$4,NULLIF($5::text,'')::numeric,$6,NULLIF($7::text,'')::numeric,$8) RETURNING id`,
+      [data.container_id,data.service_id,data.kind,data.record_date,data.kilometers,data.description,data.cost_clp,actor.id]);
+    await tx.query("INSERT INTO audit_events(actor_id,action,entity_type,entity_id,next_value) VALUES ($1,'create','container_service_record',$2,$3)",
+      [actor.id,record.id,JSON.stringify(data)]);
+    return record.id;
+  });
 }
 
 export async function createContainer(actor:Actor,input:unknown) {

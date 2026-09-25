@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { ZodError } from "zod";
 import { requireActor } from "@/lib/auth";
-import { ContainerError, createContainer, moveContainer } from "@/lib/containers";
+import { ContainerError, createContainer, moveContainer,recordContainerService } from "@/lib/containers";
 
 const value=(form:FormData,key:string)=>String(form.get(key)??"");
 function message(error:unknown) {
@@ -29,4 +29,9 @@ export async function moveContainerAction(form:FormData) {
   const actor=await requireActor();
   await run(()=>moveContainer(actor,value(form,"container_id"),{action:value(form,"action"),site_id:value(form,"site_id"),
     service_id:value(form,"service_id"),location_name:value(form,"location_name"),waste_type:value(form,"waste_type"),note:value(form,"note")}));
+}
+export async function recordContainerServiceAction(form:FormData){
+  const actor=await requireActor();
+  await run(()=>recordContainerService(actor,{container_id:value(form,"container_id"),service_id:value(form,"service_id"),kind:value(form,"kind"),
+    record_date:value(form,"record_date"),kilometers:value(form,"kilometers"),description:value(form,"description"),cost_clp:value(form,"cost_clp")}));
 }

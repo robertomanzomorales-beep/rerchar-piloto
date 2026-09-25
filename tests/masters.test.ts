@@ -9,8 +9,10 @@ test("corrección de maestros conserva vínculos y registra los cambios",async()
   process.env.PGLITE_DATA_DIR="memory://";
   const {db,transaction}=await import("../lib/db");
   const {updateClient,updateSite,updateAsset,MastersError}=await import("../lib/masters");
-  const sql=await readFile(resolve(process.cwd(),"db/001_piloto.sql"),"utf8");
-  await transaction(async tx=>{for(const part of sql.split(/;\s*(?:\n|$)/).map(s=>s.trim()).filter(Boolean))await tx.query(part);});
+  for(const name of ["001_piloto.sql","002_flota_y_despacho.sql","003_abastecimiento.sql","004_mantenimiento_combustible.sql","005_contenedores.sql","006_acreditacion.sql","007_finanzas.sql","008_trazabilidad_ambiental.sql","009_certificados.sql","010_evidencia_persistente.sql","011_operacion_real_2026.sql"]){
+    const sql=await readFile(resolve(process.cwd(),`db/${name}`),"utf8");
+    await transaction(async tx=>{for(const part of sql.split(/;\s*(?:\n|$)/).map(s=>s.trim()).filter(Boolean))await tx.query(part);});
+  }
   const [operator]=await db.query<{id:string}>("INSERT INTO users (email,name,password_hash,role) VALUES ('ops@demo.cl','Operaciones','hash','operaciones') RETURNING id");
   const [client]=await db.query<{id:string}>("INSERT INTO clients (name,tax_id) VALUES ('Cliente antiguo','123') RETURNING id");
   const [site]=await db.query<{id:string}>("INSERT INTO client_sites (client_id,name,address) VALUES ($1,'Faena antigua','Calama') RETURNING id",[client.id]);

@@ -59,7 +59,10 @@ export async function cancelPurchaseAction(form: FormData) {
 }
 export async function orderPurchaseAction(form: FormData) {
   const actor = await requireActor(); const id = value(form,"request_id");
-  await run(purchasePath(id), () => orderPurchase(actor,id,{ supplier: value(form,"supplier"), order_reference: value(form,"order_reference"), expected_date: value(form,"expected_date") }));
+  const prices=Object.fromEntries([...form.entries()].filter(([key])=>key.startsWith("price_")).map(([key,val])=>[key.slice(6),String(val)]));
+  await run(purchasePath(id), () => orderPurchase(actor,id,{ supplier: value(form,"supplier"), order_reference: value(form,"order_reference"), expected_date: value(form,"expected_date"),
+    issuer:value(form,"issuer"),supplier_tax_id:value(form,"supplier_tax_id"),supplier_address:value(form,"supplier_address"),
+    payment_terms:value(form,"payment_terms"),vat_rate:value(form,"vat_rate"),prices }));
 }
 export async function receivePurchaseAction(form: FormData) {
   const actor = await requireActor(); const id = value(form,"request_id");

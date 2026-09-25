@@ -24,17 +24,17 @@ async function audit(tx:Db,actor:Actor,entityType:string,id:string,previous:obje
 
 export async function updateClient(actor:Actor,id:string,input:unknown){
   uuid.parse(id);
-  const data=z.object({name,tax_id:optional(20),contact_name:optional(120)}).parse(input);
+  const data=z.object({name,tax_id:optional(20),contact_name:optional(120),email:z.union([z.email(),z.literal("")]).default(""),address:optional(250)}).parse(input);
   await transaction(async tx=>{
     await authorize(tx,actor);
-    const [client]=await tx.query<{id:string;name:string;tax_id:string|null;contact_name:string|null}>(
-      "SELECT id,name,tax_id,contact_name FROM clients WHERE id=$1 AND deleted_at IS NULL FOR UPDATE",[id]);
+    const [client]=await tx.query<{id:string;name:string;tax_id:string|null;contact_name:string|null;email:string|null;address:string|null}>(
+      "SELECT id,name,tax_id,contact_name,email,address FROM clients WHERE id=$1 AND deleted_at IS NULL FOR UPDATE",[id]);
     if(!client)reject("El cliente no existe o ya no está activo.");
-    const next={name:data.name,tax_id:data.tax_id||null,contact_name:data.contact_name||null};
-    const previous={name:client.name,tax_id:client.tax_id,contact_name:client.contact_name};
+    const next={name:data.name,tax_id:data.tax_id||null,contact_name:data.contact_name||null,email:data.email||null,address:data.address||null};
+    const previous={name:client.name,tax_id:client.tax_id,contact_name:client.contact_name,email:client.email,address:client.address};
     if(JSON.stringify(previous)===JSON.stringify(next))return;
-    await tx.query("UPDATE clients SET name=$2,tax_id=$3,contact_name=$4 WHERE id=$1",
-      [id,next.name,next.tax_id,next.contact_name]);
+    await tx.query("UPDATE clients SET name=$2,tax_id=$3,contact_name=$4,email=$5,address=$6 WHERE id=$1",
+      [id,next.name,next.tax_id,next.contact_name,next.email,next.address]);
     await audit(tx,actor,"client",id,previous,next);
   });
 }

@@ -20,7 +20,7 @@ async function run(operation:()=>Promise<unknown>):Promise<never> {
 }
 export async function saveWorkerProfileAction(form:FormData) {
   const actor=await requireActor();
-  await run(()=>saveWorkerProfile(actor,value(form,"user_id"),{national_id:value(form,"national_id"),position:value(form,"position"),shift:value(form,"shift"),phone:value(form,"phone")}));
+  await run(()=>saveWorkerProfile(actor,value(form,"user_id"),{national_id:value(form,"national_id"),position:value(form,"position"),shift:value(form,"shift"),phone:value(form,"phone"),employer:value(form,"employer")}));
 }
 export async function createRequirementAction(form:FormData) {
   const actor=await requireActor();

@@ -108,11 +108,23 @@ export async function issueCertificate(actor:Actor,serviceId:string){
     const currentNet=Number(service.gross_kg)-Number(service.tare_kg);
     if(!Number.isFinite(currentNet)||currentNet<0||Math.abs(currentNet-Number(record.quantity_kg))>0.001)
       reject("Revise el pesaje y la ficha antes de emitir el certificado.");
+    const [guide]=await tx.query<{movement_date:Date|string;valued_guide_number:string|null;weight_ticket:string|null}>(`
+      SELECT movement_date,valued_guide_number,COALESCE(destination_ticket,origin_ticket) AS weight_ticket
+      FROM service_guide_controls WHERE service_id=$1
+      ORDER BY (guide_number=$2) DESC,movement_date DESC LIMIT 1`,[serviceId,record.guide_number]);
+    const [asset]=await tx.query<{plate:string|null}>(`SELECT a.plate FROM service_requests s
+      LEFT JOIN assets a ON a.id=s.assigned_asset_id WHERE s.id=$1`,[serviceId]);
+    const [invoice]=await tx.query<{invoice_number:string}>(`SELECT i.invoice_number FROM service_invoices i
+      JOIN service_valuations v ON v.id=i.valuation_id WHERE v.service_id=$1 AND i.status='emitida'
+      ORDER BY i.issued_on DESC LIMIT 1`,[serviceId]);
     const snapshot:CertificateSnapshot={folio:`RER-${String(service.folio).padStart(5,"0")}`,
       client_name:service.client_name,site_name:service.site_name,service_type:service.service_type,waste_type:service.waste_type,
       category:record.category,classification:record.classification,quantity_kg:record.quantity_kg,
       guide_number:record.guide_number,generator_name:record.generator_name,transporter_name:record.transporter_name,
-      receiver_name:record.receiver_name,treatment:record.treatment,closed_at:service.closed_at.toISOString()};
+      receiver_name:record.receiver_name,treatment:record.treatment,closed_at:service.closed_at.toISOString(),
+      movement_date:guide?.movement_date instanceof Date?guide.movement_date.toISOString():guide?.movement_date??null,
+      valued_guide_number:guide?.valued_guide_number??null,weight_ticket:guide?.weight_ticket??null,
+      plate:asset?.plate??null,invoice_number:invoice?.invoice_number??null};
     const [last]=await tx.query<{version:number}>("SELECT version FROM service_certificates WHERE service_id=$1 ORDER BY version DESC LIMIT 1",[serviceId]);
     const version=(last?.version??0)+1;
     const code=randomBytes(24).toString("hex");

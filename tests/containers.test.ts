@@ -9,8 +9,8 @@ test("tolva conserva una sola ubicación, historial, servicio y alerta de perman
   process.env.PGLITE_DATA_DIR="memory://";
   const {db,transaction}=await import("../lib/db");
   const {createService}=await import("../lib/pilot");
-  const {createContainer,moveContainer,listContainers,ContainerError}=await import("../lib/containers");
-  for (const name of ["001_piloto.sql","002_flota_y_despacho.sql","003_abastecimiento.sql","004_mantenimiento_combustible.sql","005_contenedores.sql","006_acreditacion.sql","007_finanzas.sql","008_trazabilidad_ambiental.sql","009_certificados.sql"]) {
+  const {createContainer,moveContainer,listContainers,recordContainerService,ContainerError}=await import("../lib/containers");
+  for (const name of ["001_piloto.sql","002_flota_y_despacho.sql","003_abastecimiento.sql","004_mantenimiento_combustible.sql","005_contenedores.sql","006_acreditacion.sql","007_finanzas.sql","008_trazabilidad_ambiental.sql","009_certificados.sql","010_evidencia_persistente.sql","011_operacion_real_2026.sql"]) {
     const sql=await readFile(resolve(process.cwd(),`db/${name}`),"utf8");
     await transaction(async tx=>{for(const part of sql.split(/;\s*(?:\n|$)/).map(s=>s.trim()).filter(Boolean)) await tx.query(part);});
   }
@@ -49,4 +49,10 @@ test("tolva conserva una sola ubicación, historial, servicio y alerta de perman
   assert.equal(movements.find(m=>m.kind==="retiro")?.previous_waste_type,"Metal");
   assert.equal(movements.filter(m=>m.service_id===serviceA).length,1);
   assert.equal(movements.filter(m=>m.service_id===serviceB).length,2);
+  await recordContainerService(owner,{container_id:id,service_id:"",kind:"kilometraje",record_date:"2026-09-25",kilometers:"148.5",description:"Retorno al patio",cost_clp:""});
+  await recordContainerService(owner,{container_id:id,service_id:"",kind:"mantenimiento",record_date:"2026-09-25",kilometers:"",description:"Revisión y reparación de bisagras",cost_clp:"25000"});
+  const current=await listContainers(owner);
+  assert.equal(current.records.length,2);
+  assert.equal(current.records.find(r=>r.kind==="kilometraje")?.kilometers,"148.50");
+  await assert.rejects(()=>recordContainerService(outsider,{container_id:id,service_id:"",kind:"kilometraje",record_date:"2026-09-25",kilometers:"500",description:"No autorizado",cost_clp:""}),ContainerError);
 });

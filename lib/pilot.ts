@@ -23,7 +23,7 @@ function needManage(actor: Actor) { if (!canManage(actor)) reject("No tiene perm
 
 export type ServiceRow = {
   id: string; folio: string; client_id: string; site_id: string; client_name: string; site_name: string;
-  service_type: string; waste_type: string; estimated_kg: string | null; origin: string; destination: string;
+  request_category:string;service_type: string; waste_type: string; estimated_kg: string | null; origin: string; destination: string;
   priority: string; scheduled_for: Date | null; status: string; notes: string | null;
   assigned_asset_id: string | null; ramp_asset_id: string | null; driver_id: string | null;
   asset_label: string | null; ramp_label: string | null; driver_name: string | null;
@@ -133,11 +133,11 @@ async function event(tx: Db, serviceId: string, actor: Actor, kind: string, desc
 
 export async function createClient(actor: Actor, input: unknown) {
   needManage(actor);
-  const data = z.object({ name: required(), tax_id: optional(20), contact_name: optional(120) }).parse(input);
+  const data = z.object({ name: required(), tax_id: optional(20), contact_name: optional(120), email:z.union([z.email(),z.literal("")]).default(""),address:optional(250) }).parse(input);
   return transaction(async (tx) => {
     const [row] = await tx.query<{ id: string }>(
-      "INSERT INTO clients (name, tax_id, contact_name) VALUES ($1, NULLIF($2,''), NULLIF($3,'')) RETURNING id",
-      [data.name, data.tax_id, data.contact_name],
+      "INSERT INTO clients (name,tax_id,contact_name,email,address) VALUES ($1,NULLIF($2,''),NULLIF($3,''),NULLIF($4,''),NULLIF($5,'')) RETURNING id",
+      [data.name,data.tax_id,data.contact_name,data.email,data.address],
     );
     await tx.query("INSERT INTO audit_events (actor_id, action, entity_type, entity_id, next_value) VALUES ($1,'create','client',$2,$3)", [actor.id, row.id, JSON.stringify({ name: data.name })]);
     return row.id;
@@ -200,6 +200,7 @@ export async function createUser(actor: Actor, input: unknown) {
 
 const createSchema = z.object({
   submission_key: uuid, client_id: uuid, site_id: uuid,
+  request_category: z.enum(["servicios", "compra", "venta", "otro"]).optional(),
   service_type: z.enum(["retiro", "traslado", "compra", "venta", "otro"]),
   waste_type: required(120), estimated_kg: z.union([positive, z.literal("")]).optional(),
   origin: required(250), destination: required(250),
@@ -209,16 +210,19 @@ const createSchema = z.object({
 export async function createService(actor: Actor, input: unknown) {
   if (actor.role === "conductor") reject("Su perfil no puede crear solicitudes.");
   const data = createSchema.parse(input);
+  const category = data.request_category ?? (["compra", "venta", "otro"].includes(data.service_type) ? data.service_type : "servicios");
+  if (category === "servicios" ? !["retiro", "traslado"].includes(data.service_type) : category !== data.service_type)
+    reject("Seleccione una clase de solicitud y un tipo de operación compatibles.");
   if (actor.role === "cliente" && actor.client_id !== data.client_id) reject("No puede crear solicitudes para otro cliente.");
   return transaction(async (tx) => {
     const [site] = await tx.query("SELECT id FROM client_sites WHERE id = $1 AND client_id = $2 AND deleted_at IS NULL", [data.site_id, data.client_id]);
     if (!site) reject("El centro no pertenece al cliente seleccionado.");
     const [created] = await tx.query<{ id: string }>(
       `INSERT INTO service_requests
-       (submission_key, client_id, site_id, service_type, waste_type, estimated_kg, origin, destination, priority, notes, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NULLIF($10,''),$11)
+       (submission_key, client_id, site_id, request_category, service_type, waste_type, estimated_kg, origin, destination, priority, notes, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NULLIF($11,''),$12)
        ON CONFLICT (submission_key) DO NOTHING RETURNING id`,
-      [data.submission_key, data.client_id, data.site_id, data.service_type, data.waste_type,
+      [data.submission_key, data.client_id, data.site_id, category, data.service_type, data.waste_type,
         data.estimated_kg === "" || data.estimated_kg === undefined ? null : data.estimated_kg,
         data.origin, data.destination, data.priority, data.notes, actor.id],
     );
@@ -425,14 +429,16 @@ function detectMime(bytes: Buffer) {
   reject("Adjunte un archivo PDF, PNG, JPG o WebP válido.");
 }
 
-export async function addEvidence(actor: Actor, id: string, description: string, file: File) {
+export async function addEvidence(actor: Actor, id: string, description: string, file: File, documentKind="evidencia") {
   const descriptionSafe = required(500).parse(description);
+  const documentKindSafe=z.enum(["evidencia","guia_traslado","guia_valorizada","hoja_servicio","factura","certificado","resumen_retiros","otro"]).parse(documentKind);
   const maxMb=process.env.VERCEL?4:5;
   if (!file || file.size < 1 || file.size > maxMb * 1024 * 1024) reject(`El archivo debe pesar entre 1 byte y ${maxMb} MB.`);
   const bytes = Buffer.from(await file.arrayBuffer());
   const kind = detectMime(bytes);
   const service = await getService(actor, id);
-  if (!canWorkService(actor, service) || !["programada", "en_ruta"].includes(service.status)) reject("No se puede incorporar evidencia en este estado.");
+  if (!(canManage(actor) ? service.status!=="cancelada" : canWorkService(actor,service) && ["programada","en_ruta"].includes(service.status)))
+    reject("No se puede incorporar documentos en este estado.");
   const databaseStorage=process.env.EVIDENCE_STORAGE==="database";
   if(process.env.NODE_ENV==="production"&&databaseStorage&&!process.env.DATABASE_URL)
     reject("Configure PostgreSQL antes de guardar evidencias en producción.");
@@ -449,13 +455,14 @@ export async function addEvidence(actor: Actor, id: string, description: string,
       const [current] = await tx.query<{ status: string; driver_id: string | null }>(
         "SELECT status, driver_id FROM service_requests WHERE id=$1 AND deleted_at IS NULL FOR UPDATE", [id],
       );
-      if (!current || !canWorkService(actor, current) || !["programada", "en_ruta"].includes(current.status)) reject("El servicio cambió de estado. Intente nuevamente.");
+      if (!current || !(canManage(actor) ? current.status!=="cancelada" : canWorkService(actor,current) && ["programada","en_ruta"].includes(current.status)))
+        reject("El servicio cambió de estado. Intente nuevamente.");
       const [evidence] = await tx.query<{ id: string }>(
-        `INSERT INTO service_evidence (service_id, description, storage_key, original_filename, mime_type, size_bytes, created_by, file_content)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
-        [id,descriptionSafe,key,file.name.slice(0,160),kind.mime,file.size,actor.id,databaseStorage?bytes:null],
+        `INSERT INTO service_evidence (service_id,description,document_kind,storage_key,original_filename,mime_type,size_bytes,created_by,file_content)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+        [id,descriptionSafe,documentKindSafe,key,file.name.slice(0,160),kind.mime,file.size,actor.id,databaseStorage?bytes:null],
       );
-      await event(tx, id, actor, "evidencia", `Evidencia incorporada: ${descriptionSafe}`, null, { evidence_id: evidence.id });
+      await event(tx, id, actor, "evidencia", `Documento incorporado: ${descriptionSafe}`, null, { evidence_id: evidence.id,document_kind:documentKindSafe });
       return evidence.id;
     });
   } catch (error) {

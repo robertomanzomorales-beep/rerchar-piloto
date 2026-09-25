@@ -67,10 +67,11 @@ export async function createStockItem(actor: Actor, input: unknown) {
 export type Purchase = {
   id: string; folio: string; title: string; category: string; priority: string; status: string;
   notes: string | null; supplier: string | null; order_reference: string | null;
+  issuer:"rerchar"|"e_y_j";supplier_tax_id:string|null;supplier_address:string|null;payment_terms:string|null;vat_rate:string;ordered_at:Date|null;
   expected_date: Date | string | null; requested_by: string; requested_name: string;
   approved_name: string | null; created_at: Date; updated_at: Date;
 };
-export type PurchaseLine = { id: string; item_id: string; code: string; name: string; unit: string; quantity: string; received_qty: string };
+export type PurchaseLine = { id: string; item_id: string; code: string; name: string; unit: string; quantity: string; received_qty: string;unit_price_clp:string|null };
 export type PurchaseReceipt = { id: string; item_name: string; warehouse_name: string; quantity: string; guide_number: string; invoice_number: string | null; payment_status: string; recorded_name: string; created_at: Date };
 export type PurchaseEvent = { id: string; kind: string; description: string; actor_name: string; created_at: Date };
 const purchaseSelect = `SELECT p.*, u.name AS requested_name, a.name AS approved_name FROM purchase_requests p
@@ -161,12 +162,23 @@ export async function cancelPurchase(actor: Actor, requestId: string, reason: un
 export async function orderPurchase(actor: Actor, requestId: string, input: unknown) {
   requireOperations(actor);
   const id = uuid.parse(requestId);
-  const data = z.object({ supplier: label(160), order_reference: label(80), expected_date: date }).parse(input);
+  const data = z.object({ supplier: label(160), order_reference: label(80), expected_date: date,
+    issuer:z.enum(["rerchar","e_y_j"]),supplier_tax_id:optional(20),supplier_address:optional(250),payment_terms:label(120),
+    vat_rate:z.enum(["0","0.19"]).default("0.19"),prices:z.record(uuid,z.union([z.string(),z.number()])) }).parse(input);
   await transaction(async (tx) => {
     const [request] = await tx.query<{ status: string }>("SELECT status FROM purchase_requests WHERE id=$1 FOR UPDATE", [id]);
     if (!request || request.status !== "aprobada") reject("Apruebe la solicitud antes de registrar la orden.");
-    await tx.query("UPDATE purchase_requests SET status='ordenada',supplier=$2,order_reference=$3,expected_date=NULLIF($4,'')::date,updated_at=now() WHERE id=$1",
-      [id,data.supplier,data.order_reference,data.expected_date]);
+    const lines=await tx.query<{id:string}>("SELECT id FROM purchase_lines WHERE request_id=$1 FOR UPDATE",[id]);
+    if(!lines.length||Object.keys(data.prices).length!==lines.length)reject("Indique el precio unitario de cada artículo de la orden.");
+    for(const line of lines){
+      const price=String(data.prices[line.id]??"").trim();
+      if(!/^\d+(?:\.\d{1,2})?$/.test(price)||Number(price)>100_000_000)reject("Precio unitario inválido en la orden.");
+      await tx.query("UPDATE purchase_lines SET unit_price_clp=$2 WHERE id=$1",[line.id,price]);
+    }
+    await tx.query(`UPDATE purchase_requests SET status='ordenada',supplier=$2,order_reference=$3,expected_date=NULLIF($4,'')::date,
+      issuer=$5,supplier_tax_id=NULLIF($6,''),supplier_address=NULLIF($7,''),payment_terms=$8,vat_rate=$9,ordered_at=now(),updated_at=now()
+      WHERE id=$1`,[id,data.supplier,data.order_reference,data.expected_date,data.issuer,data.supplier_tax_id,
+      data.supplier_address,data.payment_terms,data.vat_rate]);
     await purchaseEvent(tx, actor, id, "order", `Orden ${data.order_reference} emitida para ${data.supplier}`, data);
   });
 }

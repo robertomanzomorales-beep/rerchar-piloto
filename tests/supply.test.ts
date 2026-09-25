@@ -9,7 +9,7 @@ test("compra, recepción parcial, Kardex, bodegas y reservas mantienen los saldo
   process.env.PGLITE_DATA_DIR = "memory://";
   const { db, transaction } = await import("../lib/db");
   const supply = await import("../lib/supply");
-  for (const name of ["001_piloto.sql","002_flota_y_despacho.sql","003_abastecimiento.sql","004_mantenimiento_combustible.sql","005_contenedores.sql","006_acreditacion.sql","007_finanzas.sql","008_trazabilidad_ambiental.sql","009_certificados.sql"]) {
+  for (const name of ["001_piloto.sql","002_flota_y_despacho.sql","003_abastecimiento.sql","004_mantenimiento_combustible.sql","005_contenedores.sql","006_acreditacion.sql","007_finanzas.sql","008_trazabilidad_ambiental.sql","009_certificados.sql","010_evidencia_persistente.sql","011_operacion_real_2026.sql"]) {
     const sql = await readFile(resolve(process.cwd(),`db/${name}`),"utf8");
     await transaction(async (tx) => {
       for (const statement of sql.split(/;\s*(?:\n|$)/).map((part) => part.trim()).filter(Boolean)) await tx.query(statement);
@@ -37,7 +37,10 @@ test("compra, recepción parcial, Kardex, bodegas y reservas mantienen los saldo
   await supply.approvePurchase(owner,purchaseId);
   await assert.rejects(() => supply.addPurchaseLine(ops,purchaseId,{item_id:item,quantity:"1"}),supply.SupplyError);
   await assert.rejects(() => supply.receivePurchase(owner,purchaseId,{ submission_key:randomUUID(),line_id:randomUUID(),warehouse_id:main,quantity:"1",guide_number:"G-1",invoice_number:"",payment_status:"pendiente" }),supply.SupplyError);
-  await supply.orderPurchase(ops,purchaseId,{supplier:"Proveedora Uno",order_reference:"OC-2026-01",expected_date:"2026-09-28"});
+  const pricing=(await supply.getPurchase(owner,purchaseId)).lines;
+  await supply.orderPurchase(ops,purchaseId,{supplier:"Proveedora Uno",order_reference:"OC-2026-01",expected_date:"2026-09-28",
+    issuer:"e_y_j",supplier_tax_id:"76.000.000-0",supplier_address:"Calama",payment_terms:"Crédito 30 días",vat_rate:"0.19",
+    prices:Object.fromEntries(pricing.map(line=>[line.id,"1200"]))});
   const { lines } = await supply.getPurchase(owner,purchaseId);
   const firstLine = lines.find((line) => line.item_id === item)!;
   const secondLine = lines.find((line) => line.item_id === second)!;

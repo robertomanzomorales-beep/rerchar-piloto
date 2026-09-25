@@ -16,7 +16,7 @@ El criterio del anexo para el piloto es un flujo navegable con persistencia, per
 | Trazabilidad | Consultar línea de tiempo, evidencia descargable y reporte del servicio. |
 | Extensión opcional | Revisar ficha ambiental interna y emitir certificado PDF/QR con URL estable. |
 
-Las once pruebas automatizadas cubren el flujo base y reglas de los módulos adicionales, incluida la evidencia persistida en la base y la restricción de descarga por cliente. La compilación de producción y la revisión en un navegador conectado al despliegue son comprobaciones separadas que deben realizarse antes de declarar la demo en línea lista.
+Las doce pruebas automatizadas cubren el flujo base y reglas de los módulos adicionales, incluida la evidencia persistida en la base, la restricción de descarga por cliente y el control de cotizaciones y guías. El levantamiento de las planillas reales y las nuevas funciones están en [LEVANTAMIENTO_OPERACION_REAL_25-09-2026.md](LEVANTAMIENTO_OPERACION_REAL_25-09-2026.md). La compilación de producción y la revisión en un navegador conectado al despliegue son comprobaciones separadas que deben realizarse antes de declarar la demo en línea lista.
 
 ## Para mostrarlo en una URL
 
@@ -29,7 +29,7 @@ Después del despliegue, realice el recorrido anterior desde un navegador con la
 - Confirmar con RERCHAR los procesos, campos, roles, documentos, formato de certificado y criterios de aceptación; registrar observaciones y conformidad por escrito.
 - Probar el despliegue real con navegador y móvil; acordar responsables del dominio, acceso, respaldos y restauración antes de incorporar datos reales.
 - Completar el alcance de los veinte módulos según la matriz: trabajo sin conexión y sincronización, aprobaciones/documentos, reportes pactados, integraciones y reglas reales.
-- Recibir y conciliar las planillas originales para una migración trazable; aún no se importó información real.
+- Conciliar las planillas originales ya recibidas para una migración trazable; aún no se importó información real.
 - Revisar seguridad, permisos, rendimiento y recuperación con la infraestructura final. El almacenamiento en PostgreSQL de imágenes y PDF pequeños es una solución acotada para esta demo, no la solución documental definitiva.
 
 **Estado:** código del piloto preparado para revisión local y para desplegarlo con una base externa; la URL pública y la aceptación de RERCHAR sólo se pueden confirmar después de la publicación y del recorrido real.

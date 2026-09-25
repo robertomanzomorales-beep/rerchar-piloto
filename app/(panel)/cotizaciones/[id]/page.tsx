@@ -1,0 +1,30 @@
+import Link from "next/link";
+import {notFound} from "next/navigation";
+import {FileDown,Mail} from "lucide-react";
+import {requireActor} from "@/lib/auth";
+import {getQuote,QuoteError,issuers,quoteMailConfigured} from "@/lib/quotes";
+import {addQuoteLineAction,sendQuoteAction,quoteDecisionAction,resolveQuoteSendingAction} from "@/app/quote-actions";
+import {Notice} from "@/components/UI";
+import {SubmitButton} from "@/components/Transition";
+
+const money=(n:number)=>`$${n.toLocaleString("es-CL")}`;
+function date(d:Date|string){return new Intl.DateTimeFormat("es-CL",{dateStyle:"long",timeZone:"UTC"}).format(new Date(d));}
+export default async function QuoteDetail({params,searchParams}:{params:Promise<{id:string}>;searchParams:Promise<{error?:string;ok?:string}>}){
+  const actor=await requireActor();const {id}=await params;let detail;
+  try{detail=await getQuote(actor,id);}catch(error){if(error instanceof QuoteError)notFound();throw error;}
+  const {quote,lines,totals}=detail;const query=await searchParams;const editable=actor.role!=="cliente"&&actor.role!=="conductor";
+  const folio=`COT-${String(quote.folio).padStart(5,"0")}`;
+  return <><Link href="/cotizaciones" className="back-link">← Cotizaciones</Link><div className="page-title-row"><div><div className="eyebrow">{issuers[quote.issuer].name}</div><h1>Cotización {folio}</h1><p className="page-intro">{quote.client_name} · {quote.title}</p></div><span className={`badge supply-status-${quote.status}`}>{quote.status}</span></div>
+    <Notice error={query.error} ok={query.ok}/>
+    <div className="order-actions"><Link className="button button-primary" href={`/api/cotizaciones/${id}/pdf`}><FileDown size={16}/> Descargar PDF</Link><Link className="button button-outline" href={`/clientes/${quote.client_id}`}>Carpeta del cliente</Link></div>
+    <section className="section-card"><div className="facts-grid"><div className="fact"><span>Cliente</span><strong>{quote.client_name}</strong></div><div className="fact"><span>RUT / correo</span><strong>{quote.client_tax_id||"RUT pendiente"} · {quote.client_email||"Correo pendiente"}</strong></div><div className="fact"><span>Fecha</span><strong>{date(quote.issued_on)}</strong></div><div className="fact"><span>Vigencia</span><strong>{date(quote.valid_until)}</strong></div></div>
+      <div className="table-wrap"><table className="data-table"><thead><tr><th>Concepto</th><th>Cantidad</th><th>Precio unitario</th><th>Neto</th></tr></thead><tbody>{lines.map((line,i)=><tr key={line.id}><td><strong>{line.description}</strong>{!line.taxable&&<small className="table-sub">Sin IVA</small>}</td><td>{Number(line.quantity).toLocaleString("es-CL",{maximumFractionDigits:3})} {line.unit}</td><td>{money(Number(line.unit_price_clp))}</td><td>{money(totals.lines[i])}</td></tr>)}</tbody></table></div>
+      <div className="quote-totals"><div><span>Neto</span><strong>{money(totals.net)}</strong></div><div><span>IVA ({Number(quote.vat_rate)*100}%)</span><strong>{money(totals.vat)}</strong></div><div><span>Total</span><strong>{money(totals.total)}</strong></div></div>
+      {quote.notes&&<div className="note-block"><span>Observaciones</span><p>{quote.notes}</p></div>}
+    </section>
+    {editable&&quote.status==="borrador"&&<div className="supply-columns"><section className="section-card"><h2>Agregar producto o servicio</h2><form action={addQuoteLineAction} className="form-stack compact"><input type="hidden" name="quote_id" value={id}/><label>Concepto<input name="description" required maxLength={240}/></label><div className="two-fields"><label>Cantidad<input name="quantity" type="number" min="0.001" step="0.001" required/></label><label>Unidad<input name="unit" defaultValue="servicio" maxLength={30} required/></label></div><label>Precio unitario (CLP)<input name="unit_price_clp" type="number" min="0" step="0.01" required/></label><label className="check-row"><input name="taxable" type="checkbox" defaultChecked/> Afecto a IVA</label><SubmitButton className="button button-outline">Añadir a la cotización</SubmitButton></form></section>
+      <section className="section-card"><h2><Mail size={18}/> Enviar al cliente</h2><p className="helper-text">El PDF se adjunta al correo registrado cuando el remitente SMTP de RERCHAR está configurado.</p><p><strong>Destinatario:</strong> {quote.client_email||"Registre el correo del cliente antes de emitir una nueva cotización."}</p><form action={sendQuoteAction}><input type="hidden" name="quote_id" value={id}/><SubmitButton className="button button-primary" disabled={!quote.client_email||!quoteMailConfigured()}>Enviar cotización en PDF</SubmitButton></form>{!quoteMailConfigured()&&<p className="helper-text">El envío automático queda disponible al configurar el correo SMTP. Puede descargar el PDF ahora.</p>}</section></div>}
+    {editable&&quote.status==="enviada"&&<section className="section-card"><h2>Respuesta del cliente</h2><div className="order-actions">{(["aceptada","rechazada"] as const).map(decision=><form key={decision} action={quoteDecisionAction}><input type="hidden" name="quote_id" value={id}/><input type="hidden" name="decision" value={decision}/><SubmitButton className="button button-outline">Registrar {decision}</SubmitButton></form>)}</div></section>}
+    {quote.status==="enviando"&&<section className="section-card"><p className="resource-alert">El servidor no confirmó el envío. Revise el correo saliente antes de volver a enviarla.</p>{actor.role==="admin"&&<form action={resolveQuoteSendingAction} className="form-stack compact"><input name="quote_id" type="hidden" value={id}/><label>Resultado de la verificación<select name="outcome" required><option value="">Seleccione después de revisar el correo</option><option value="enviada">El mensaje sí salió</option><option value="borrador">El mensaje no salió; permitir nuevo intento</option></select></label><label>Cómo se verificó<textarea name="reason" required minLength={10} maxLength={500}/></label><SubmitButton className="button button-outline">Registrar verificación</SubmitButton></form>}</section>}
+  </>;
+}

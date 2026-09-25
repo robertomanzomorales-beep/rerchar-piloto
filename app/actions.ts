@@ -38,7 +38,7 @@ export async function logoutAction() { await signOut(); redirect("/ingresar"); }
 
 export async function createClientAction(form: FormData) {
   const actor = await requireActor();
-  await run("/maestros", () => createClient(actor, { name: value(form,"name"), tax_id: value(form,"tax_id"), contact_name: value(form,"contact_name") }));
+  await run("/maestros", () => createClient(actor, { name: value(form,"name"), tax_id: value(form,"tax_id"), contact_name: value(form,"contact_name"), email:value(form,"email"), address:value(form,"address") }));
 }
 export async function createSiteAction(form: FormData) {
   const actor = await requireActor();
@@ -51,7 +51,7 @@ export async function createAssetAction(form: FormData) {
 export async function updateClientAction(form:FormData){
   const actor=await requireActor();
   await run("/maestros",()=>updateClient(actor,value(form,"id"),{
-    name:value(form,"name"),tax_id:value(form,"tax_id"),contact_name:value(form,"contact_name"),
+    name:value(form,"name"),tax_id:value(form,"tax_id"),contact_name:value(form,"contact_name"),email:value(form,"email"),address:value(form,"address"),
   }));
 }
 export async function updateSiteAction(form:FormData){
@@ -80,7 +80,7 @@ export async function createServiceAction(form: FormData) {
   try {
     id = await createService(actor, {
       submission_key: value(form,"submission_key"), client_id: value(form,"client_id"), site_id: value(form,"site_id"),
-      service_type: value(form,"service_type"), waste_type: value(form,"waste_type"),
+      request_category:value(form,"request_category"),service_type: value(form,"service_type"), waste_type: value(form,"waste_type"),
       estimated_kg: value(form,"estimated_kg"), origin: value(form,"origin"), destination: value(form,"destination"),
       priority: value(form,"priority"), notes: value(form,"notes"),
     });
@@ -130,5 +130,5 @@ export async function finishServiceAction(form: FormData) {
 }
 export async function addEvidenceAction(form: FormData) {
   const actor = await requireActor(); const id = value(form,"id");
-  await run(servicePath(id), () => addEvidence(actor, id, value(form,"description"), form.get("file") as File));
+  await run(servicePath(id), () => addEvidence(actor, id, value(form,"description"), form.get("file") as File,value(form,"document_kind")||"evidencia"));
 }

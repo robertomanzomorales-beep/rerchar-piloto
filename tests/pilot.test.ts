@@ -13,7 +13,7 @@ test("solicitud, permisos, planificación, checklist, evidencia y cierre", async
   try {
     const { db, transaction } = await import("../lib/db");
     const { createClient, createSite, createAsset, createService, assignService, cancelService, reportFleetIncident, resolveFleetIncident, listFleet, reportServices, normalizeReportFilters, saveChecklist, startService, addEvidence, finishService, getService, listServices, listAgenda, PilotError } = await import("../lib/pilot");
-    for (const migration of ["001_piloto.sql", "002_flota_y_despacho.sql", "003_abastecimiento.sql", "004_mantenimiento_combustible.sql", "005_contenedores.sql", "006_acreditacion.sql", "007_finanzas.sql", "008_trazabilidad_ambiental.sql", "009_certificados.sql", "010_evidencia_persistente.sql"]) {
+    for (const migration of ["001_piloto.sql", "002_flota_y_despacho.sql", "003_abastecimiento.sql", "004_mantenimiento_combustible.sql", "005_contenedores.sql", "006_acreditacion.sql", "007_finanzas.sql", "008_trazabilidad_ambiental.sql", "009_certificados.sql", "010_evidencia_persistente.sql", "011_operacion_real_2026.sql"]) {
       const sql = await readFile(resolve(process.cwd(), `db/${migration}`), "utf8");
       await transaction(async (tx) => {
         for (const statement of sql.split(/;\s*(?:\n|$)/).map((text) => text.trim()).filter(Boolean)) await tx.query(statement);

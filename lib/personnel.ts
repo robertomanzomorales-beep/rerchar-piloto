@@ -20,7 +20,7 @@ export async function findMissingRequirements(tx:Db,workerId:string,clientId:str
   return rows.map((row)=>row.name);
 }
 
-export type Worker={id:string;name:string;email:string;role:string;national_id:string|null;position:string|null;shift:string|null;phone:string|null};
+export type Worker={id:string;name:string;email:string;role:string;national_id:string|null;position:string|null;shift:string|null;phone:string|null;employer:string|null};
 export type Requirement={id:string;client_id:string;site_id:string|null;client_name:string;site_name:string|null;name:string;kind:string;warning_days:number;created_at:Date};
 export type Credential={id:string;user_id:string;requirement_id:string;worker_name:string;requirement_name:string;client_name:string;site_name:string|null;
   reference:string;issued_on:Date|string;expires_on:Date|string;state:string;reviewed_by_name:string|null;review_note:string|null;created_at:Date};
@@ -28,7 +28,7 @@ export type Credential={id:string;user_id:string;requirement_id:string;worker_na
 export async function listPersonnel(actor:Actor) {
   guard(actor);
   const [workers,clients,sites,requirements,credentials]=await Promise.all([
-    db.query<Worker>(`SELECT u.id,u.name,u.email,u.role,p.national_id,p.position,p.shift,p.phone FROM users u
+    db.query<Worker>(`SELECT u.id,u.name,u.email,u.role,p.national_id,p.position,p.shift,p.phone,p.employer FROM users u
       LEFT JOIN worker_profiles p ON p.user_id=u.id WHERE u.active=true AND u.role IN ('conductor','operaciones') ORDER BY u.name`),
     db.query<{id:string;name:string}>("SELECT id,name FROM clients WHERE deleted_at IS NULL ORDER BY name"),
     db.query<{id:string;client_id:string;name:string;client_name:string}>(`SELECT s.id,s.client_id,s.name,c.name AS client_name FROM client_sites s
@@ -48,13 +48,13 @@ export async function listPersonnel(actor:Actor) {
 export async function saveWorkerProfile(actor:Actor,userId:string,input:unknown) {
   guard(actor);
   const id=uuid.parse(userId);
-  const data=z.object({national_id:optional(20),position:optional(120),shift:optional(80),phone:optional(40)}).parse(input);
+  const data=z.object({national_id:optional(20),position:optional(120),shift:optional(80),phone:optional(40),employer:z.enum(["rerchar","e_y_j"]).default("rerchar")}).parse(input);
   await transaction(async(tx)=>{
     const [worker]=await tx.query("SELECT id FROM users WHERE id=$1 AND role IN ('conductor','operaciones') AND active=true",[id]);
     if (!worker) reject("Seleccione un trabajador activo del equipo de operaciones.");
-    await tx.query(`INSERT INTO worker_profiles (user_id,national_id,position,shift,phone,updated_by) VALUES ($1,NULLIF($2,''),NULLIF($3,''),NULLIF($4,''),NULLIF($5,''),$6)
-      ON CONFLICT (user_id) DO UPDATE SET national_id=NULLIF($2,''),position=NULLIF($3,''),shift=NULLIF($4,''),phone=NULLIF($5,''),updated_by=$6,updated_at=now()`,
-      [id,data.national_id,data.position,data.shift,data.phone,actor.id]);
+    await tx.query(`INSERT INTO worker_profiles (user_id,national_id,position,shift,phone,employer,updated_by) VALUES ($1,NULLIF($2,''),NULLIF($3,''),NULLIF($4,''),NULLIF($5,''),$6,$7)
+      ON CONFLICT (user_id) DO UPDATE SET national_id=NULLIF($2,''),position=NULLIF($3,''),shift=NULLIF($4,''),phone=NULLIF($5,''),employer=$6,updated_by=$7,updated_at=now()`,
+      [id,data.national_id,data.position,data.shift,data.phone,data.employer,actor.id]);
     await tx.query("INSERT INTO audit_events (actor_id,action,entity_type,entity_id,next_value) VALUES ($1,'profile','worker_profile',$2,$3)",
       [actor.id,id,JSON.stringify(data)]);
   });
