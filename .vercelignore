@@ -1,0 +1,12 @@
+.local/
+.next/
+node_modules/
+tmp/
+tests/
+docs/
+.env
+.env.*
+!.env.example
+*.zip
+*.log
+*.tsbuildinfo

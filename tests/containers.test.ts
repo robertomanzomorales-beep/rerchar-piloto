@@ -1,0 +1,52 @@
+import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
+import test from "node:test";
+import type { Actor } from "../lib/auth";
+
+test("tolva conserva una sola ubicación, historial, servicio y alerta de permanencia",async()=>{
+  process.env.PGLITE_DATA_DIR="memory://";
+  const {db,transaction}=await import("../lib/db");
+  const {createService}=await import("../lib/pilot");
+  const {createContainer,moveContainer,listContainers,ContainerError}=await import("../lib/containers");
+  for (const name of ["001_piloto.sql","002_flota_y_despacho.sql","003_abastecimiento.sql","004_mantenimiento_combustible.sql","005_contenedores.sql","006_acreditacion.sql","007_finanzas.sql","008_trazabilidad_ambiental.sql","009_certificados.sql"]) {
+    const sql=await readFile(resolve(process.cwd(),`db/${name}`),"utf8");
+    await transaction(async tx=>{for(const part of sql.split(/;\s*(?:\n|$)/).map(s=>s.trim()).filter(Boolean)) await tx.query(part);});
+  }
+  const [admin]=await db.query<{id:string}>("INSERT INTO users (email,name,password_hash,role) VALUES ('admin@demo.cl','Admin','hash','admin') RETURNING id");
+  const [clientA,clientB]=await db.query<{id:string}>("INSERT INTO clients (name) VALUES ('Cliente A'),('Cliente B') RETURNING id");
+  const [siteA]=await db.query<{id:string}>("INSERT INTO client_sites (client_id,name) VALUES ($1,'Faena A') RETURNING id",[clientA.id]);
+  const [siteB]=await db.query<{id:string}>("INSERT INTO client_sites (client_id,name) VALUES ($1,'Faena B') RETURNING id",[clientB.id]);
+  const [clientUser]=await db.query<{id:string}>("INSERT INTO users (email,name,password_hash,role,client_id) VALUES ('cliente@demo.cl','Cliente','hash','cliente',$1) RETURNING id",[clientA.id]);
+  const owner:Actor={id:admin.id,name:"Admin",email:"admin@demo.cl",role:"admin",client_id:null};
+  const outsider:Actor={id:clientUser.id,name:"Cliente",email:"cliente@demo.cl",role:"cliente",client_id:clientA.id};
+  await assert.rejects(()=>createContainer(outsider,{code:"TOL-01",kind:"tolva",capacity_m3:12,location_name:"Patio",max_stay_days:14}),ContainerError);
+  const serviceInput={submission_key:randomUUID(),client_id:clientA.id,site_id:siteA.id,service_type:"retiro",waste_type:"Chatarra",estimated_kg:"200",origin:"Faena",destination:"Patio",priority:"normal",notes:""};
+  const serviceA=await createService(owner,serviceInput);
+  const serviceB=await createService(owner,{...serviceInput,submission_key:randomUUID(),client_id:clientB.id,site_id:siteB.id});
+  const id=await createContainer(owner,{code:"TOL-01",kind:"tolva",capacity_m3:12,location_name:"Patio principal",max_stay_days:14});
+  await moveContainer(owner,id,{action:"instalar",site_id:siteA.id,service_id:serviceA,location_name:"",waste_type:"Chatarra",note:"Instalación en cliente A"});
+  await assert.rejects(()=>moveContainer(owner,id,{action:"instalar",site_id:siteB.id,service_id:"",location_name:"",waste_type:"Chatarra",note:"Doble ubicación no permitida"}),ContainerError);
+  await assert.rejects(()=>moveContainer(owner,id,{action:"reubicar",site_id:siteB.id,service_id:serviceA,location_name:"",waste_type:"Metal",note:"Servicio incorrecto"}),ContainerError);
+  assert.equal((await listContainers(owner)).containers[0].site_id,siteA.id,"la transición rechazada se revierte");
+  await moveContainer(owner,id,{action:"reubicar",site_id:siteB.id,service_id:serviceB,location_name:"",waste_type:"Metal",note:"Traslado a faena B"});
+  await db.query("UPDATE containers SET installed_at=now()-interval '20 days' WHERE id=$1",[id]);
+  const [installed]=(await listContainers(owner)).containers;
+  assert.equal(installed.site_id,siteB.id);
+  assert.ok(installed.stay_days>=19);
+  assert.ok(installed.stay_days>=installed.max_stay_days);
+  await moveContainer(owner,id,{action:"retirar",site_id:"",service_id:serviceB,location_name:"Patio principal",waste_type:"",note:"Tolva retirada de faena B"});
+  await assert.rejects(()=>moveContainer(owner,id,{action:"retirar",site_id:"",service_id:"",location_name:"Patio",waste_type:"",note:"Segundo retiro inválido"}),ContainerError);
+  await moveContainer(owner,id,{action:"traslado",site_id:"",service_id:"",location_name:"Camión 1",waste_type:"",note:"Traslado interno en ruta"});
+  await moveContainer(owner,id,{action:"fuera_servicio",site_id:"",service_id:"",location_name:"Taller",waste_type:"",note:"Revisión de estructura"});
+  await moveContainer(owner,id,{action:"reactivar",site_id:"",service_id:"",location_name:"Patio principal",waste_type:"",note:"Inspección terminada"});
+  const {containers,movements}=await listContainers(owner);
+  assert.equal(containers[0].status,"patio");
+  assert.equal(containers[0].client_id,null);
+  assert.equal(containers[0].site_id,null);
+  assert.equal(movements.length,7);
+  assert.equal(movements.find(m=>m.kind==="retiro")?.previous_waste_type,"Metal");
+  assert.equal(movements.filter(m=>m.service_id===serviceA).length,1);
+  assert.equal(movements.filter(m=>m.service_id===serviceB).length,2);
+});

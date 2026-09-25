@@ -1,0 +1,76 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
+import { randomUUID } from "node:crypto";
+import test from "node:test";
+import type { Actor } from "../lib/auth";
+
+test("avería a orden de trabajo, repuestos y disponibilidad; planes, combustible y neumáticos",async () => {
+  process.env.PGLITE_DATA_DIR="memory://";
+  const {db,transaction}=await import("../lib/db");
+  const pilot=await import("../lib/pilot");
+  const continuity=await import("../lib/continuity");
+  const supply=await import("../lib/supply");
+  for (const name of ["001_piloto.sql","002_flota_y_despacho.sql","003_abastecimiento.sql","004_mantenimiento_combustible.sql","005_contenedores.sql","006_acreditacion.sql","007_finanzas.sql","008_trazabilidad_ambiental.sql","009_certificados.sql"]) {
+    const sql=await readFile(resolve(process.cwd(),`db/${name}`),"utf8");
+    await transaction(async tx => { for (const part of sql.split(/;\s*(?:\n|$)/).map(s=>s.trim()).filter(Boolean)) await tx.query(part); });
+  }
+  const [admin]=await db.query<{id:string}>("INSERT INTO users (email,name,password_hash,role) VALUES ('admin@test.cl','Administrador','hash','admin') RETURNING id");
+  const [driver]=await db.query<{id:string}>("INSERT INTO users (email,name,password_hash,role) VALUES ('driver@test.cl','Conductor','hash','conductor') RETURNING id");
+  const actor:Actor={id:admin.id,name:"Administrador",email:"admin@test.cl",role:"admin",client_id:null};
+  const outsider:Actor={id:driver.id,name:"Conductor",email:"driver@test.cl",role:"conductor",client_id:null};
+  const asset=await pilot.createAsset(actor,{code:"CAM-900",label:"Camión piloto",kind:"camion",plate:""});
+  await assert.rejects(()=>continuity.setAssetDetails(outsider,asset,{brand:"Marca",model:"Serie",model_year:"2020",reading_unit:"km"}),continuity.ContinuityError);
+  await continuity.setAssetDetails(actor,asset,{brand:"Marca",model:"Serie",model_year:"2020",reading_unit:"km"});
+  await continuity.recordAssetReading(actor,asset,{reading:100,note:"Lectura inicial del odómetro"});
+  await assert.rejects(()=>continuity.recordAssetReading(actor,asset,{reading:99,note:"Lectura que retrocede"}),continuity.ContinuityError);
+  const warehouse=await supply.createWarehouse(actor,{code:"B-01",name:"Principal"});
+  const item=await supply.createStockItem(actor,{code:"FILTRO-01",name:"Filtro de aceite",unit:"un",minimum_qty:"1"});
+  await supply.adjustStock(actor,{item_id:item,warehouse_id:warehouse,direction:"entrada",quantity:"5",reason:"Apertura inventario de prueba"});
+  const incident=await pilot.reportFleetIncident(actor,{asset_id:asset,description:"Falla hidráulica en operación",severity:"alta"});
+  const order=await continuity.createWorkOrder(actor,{asset_id:asset,plan_id:"",incident_id:incident,kind:"correctiva",title:"Reparar sistema hidráulico",description:"Cambio de filtros",scheduled_for:"",blocks_asset:true});
+  await assert.rejects(()=>pilot.resolveFleetIncident(actor,incident,"Resolver sin orden"),pilot.PilotError);
+  await continuity.startWorkOrder(actor,order);
+  await continuity.reserveForWorkOrder(actor,order,{item_id:item,warehouse_id:warehouse,quantity:2,reason:"Filtro para reparación"});
+  await assert.rejects(()=>continuity.reserveForWorkOrder(actor,order,{item_id:item,warehouse_id:warehouse,quantity:4,reason:"Cantidad sin stock libre"}),continuity.ContinuityError);
+  let inventory=await supply.listInventory(actor);
+  assert.equal(inventory.balances.find(b=>b.item_id===item)?.reserved,"2.000");
+  await continuity.closeWorkOrder(actor,order,{resolution:"Filtros cambiados y equipo probado",supplier:"Taller Local",labor_cost:45000,parts_cost:25000,reading:110});
+  const detail=await continuity.getWorkOrder(actor,order);
+  assert.equal(detail.order.status,"cerrada");
+  assert.equal(detail.reservations[0].status,"consumida");
+  inventory=await supply.listInventory(actor);
+  assert.equal(inventory.balances.find(b=>b.item_id===item)?.quantity,"3.000");
+  assert.equal(inventory.balances.find(b=>b.item_id===item)?.reserved,"0.000");
+  assert.equal((await pilot.listFleet(actor)).assets.find(a=>a.id===asset)?.available,true);
+  const [fault]=await db.query<{status:string}>("SELECT status FROM fleet_incidents WHERE id=$1",[incident]);
+  assert.equal(fault.status,"resuelta");
+
+  const plan=await continuity.createMaintenancePlan(actor,{asset_id:asset,title:"Servicio cada 50 km",frequency_kind:"lectura",interval_reading:"50",next_due_reading:"120",interval_days:"",next_due_date:"",lead_days:15,lead_reading:10});
+  const plans=await continuity.listMaintenance(actor);
+  assert.equal(plans.plans.find(p=>p.id===plan)?.warning,true);
+  const preventive=await continuity.createWorkOrder(actor,{asset_id:asset,plan_id:plan,incident_id:"",kind:"preventiva",title:"Cambio programado",description:"",scheduled_for:"",blocks_asset:false});
+  await assert.rejects(()=>continuity.createWorkOrder(actor,{asset_id:asset,plan_id:plan,incident_id:"",kind:"preventiva",title:"Duplicado del plan",description:"",scheduled_for:"",blocks_asset:false}));
+  await continuity.startWorkOrder(actor,preventive);
+  await continuity.closeWorkOrder(actor,preventive,{resolution:"Pauta de mantención completada",supplier:"",labor_cost:0,parts_cost:0,reading:125});
+  const [rescheduled]=await db.query<{next_due_reading:string}>("SELECT next_due_reading FROM maintenance_plans WHERE id=$1",[plan]);
+  assert.equal(rescheduled.next_due_reading,"175.00");
+  const first={submission_key:randomUUID(),asset_id:asset,driver_id:driver.id,service_id:"",fuel_date:"2026-09-24",liters:25,cost_clp:30000,reading:200,full_tank:true,supplier:"Estación local",receipt_number:"B-100",notes:""};
+  const fuelId=await continuity.registerFuel(actor,first);
+  assert.equal(await continuity.registerFuel(actor,first),fuelId);
+  await assert.rejects(()=>continuity.registerFuel(actor,{...first,submission_key:randomUUID(),reading:150,receipt_number:"B-101"}),continuity.ContinuityError);
+  await continuity.registerFuel(actor,{...first,submission_key:randomUUID(),reading:310,liters:10,receipt_number:"B-102"});
+  const fuel=await continuity.listFuel(actor);
+  assert.equal(fuel.entries.length,2);
+  assert.equal(Number(fuel.entries[0].km_per_liter),11);
+  assert.equal((await continuity.listAssets(actor)).find(a=>a.id===asset)?.current_reading,"310.00");
+
+  const tire=await continuity.createTire(actor,{code:"NEU-01",brand:"Marca",size:"22.5"});
+  await continuity.moveTire(actor,tire,{action:"instalar",asset_id:asset,position:"delantera izquierda",reason:"Montaje inicial"});
+  const other=await continuity.createTire(actor,{code:"NEU-02",brand:"Marca",size:"22.5"});
+  await assert.rejects(()=>continuity.moveTire(actor,other,{action:"instalar",asset_id:asset,position:"delantera izquierda",reason:"Posición ocupada"}),continuity.ContinuityError);
+  await continuity.moveTire(actor,tire,{action:"retirar",asset_id:"",position:"",reason:"Cambio programado"});
+  await continuity.moveTire(actor,other,{action:"instalar",asset_id:asset,position:"delantera izquierda",reason:"Montaje después de retiro"});
+  const [tireEvents]=await db.query<{total:string}>("SELECT count(*)::text AS total FROM tire_events WHERE tire_id=$1",[tire]);
+  assert.equal(Number(tireEvents.total),3);
+});
