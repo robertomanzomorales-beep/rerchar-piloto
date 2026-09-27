@@ -10,7 +10,7 @@ export async function renderQuotePdf(quote:Quote,lines:QuoteLine[]){
   const bold=await doc.embedFont(await readFile(resolve(process.cwd(),"public/fonts/montserrat-bold.ttf")),{subset:true});
   const logo=await doc.embedPng(await readFile(resolve(process.cwd(),"public/rerchar-logo-transparente.png")));
   const dark=rgb(0.12,0.18,0.16),green=rgb(0,0.45,0.32),gray=rgb(0.43,0.48,0.46),rule=rgb(0.82,0.87,0.84),pale=rgb(0.96,0.98,0.96);
-  const safe=(s:unknown)=>[...String(s??"").normalize("NFC")].map(ch=>/[\u0020-\u024f]/.test(ch)?ch:"?").join("");
+  const safe=(s:unknown)=>[...String(s??"").normalize("NFC")].map(ch=>/[\u0020-\u024f\u2013\u2014\u2018\u2019\u201c\u201d\u2022\u2026]/.test(ch)?ch:"?").join("");
   const money=(n:number)=>`$${n.toLocaleString("es-CL")}`;
   const fmt=(d:Date|string)=>new Intl.DateTimeFormat("es-CL",{dateStyle:"long",timeZone:"UTC"}).format(new Date(d));
   const issuer=issuers[quote.issuer];const totals=quoteTotals(lines,Number(quote.vat_rate));

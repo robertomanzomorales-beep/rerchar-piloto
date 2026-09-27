@@ -26,7 +26,7 @@ export async function renderCertificatePdf(certificate:PrintableCertificate,veri
   const pale=rgb(0.95,0.97,0.95),line=rgb(0.82,0.87,0.83),white=rgb(1,1,1);
   // This embedded Latin font covers Spanish text. Replace emoji and unsupported script characters.
   function safe(text:unknown){return [...String(text??"").normalize("NFC")].map(char=>
-    /^[\u0020-\u024f]$/.test(char)?char:"?").join("");}
+    /^[\u0020-\u024f\u2013\u2014\u2018\u2019\u201c\u201d\u2022\u2026]$/.test(char)?char:"?").join("");}
   function fit(text:unknown,font:PDFFont,size:number,maxWidth:number){
     let source=safe(text).replace(/\s+/g," ").trim();
     if(font.widthOfTextAtSize(source,size)<=maxWidth)return source||"-";
