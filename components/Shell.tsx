@@ -25,7 +25,6 @@ export default function Shell({ actor, children }: { actor: Actor; children: Rea
     { href: "/personal", text: "Personal", icon: Users, visible: actor.role === "admin" || actor.role === "operaciones" },
     { href: "/compras", text: "Compras", icon: ShoppingCart, visible: actor.role === "admin" || actor.role === "operaciones" },
     { href: "/facturas-recibidas", text: "Facturas recibidas", icon: FileText, visible: actor.role === "admin" },
-    { href: "/planillas", text: "Planillas originales", icon: FileBarChart2, visible: actor.role === "admin" },
     { href: "/inventario", text: "Inventario", icon: Warehouse, visible: actor.role === "admin" || actor.role === "operaciones" },
     { href: "/finanzas", text: "Finanzas", icon: Banknote, visible: actor.role === "admin" },
     { href: "/cumplimiento", text: "Registro ambiental", icon: FileCheck2, visible: actor.role === "admin" || actor.role === "operaciones" },

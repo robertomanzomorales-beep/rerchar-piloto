@@ -2,7 +2,7 @@
 
 ## Alcance de esta revisión
 
-Se inspeccionaron los libros originales entregados en la reunión y tres ejemplos de certificados. Las cifras y nombres de terceros contenidos en ellos no forman parte del repositorio. La importación privada de las planillas al archivo consultable es independiente de la conciliación de registros activos y de la publicación del sitio.
+Se inspeccionaron los libros originales entregados en la reunión y tres ejemplos de certificados. Las cifras y nombres de terceros contenidos en ellos no forman parte del repositorio. La migración de registros históricos a los módulos operativos queda para una etapa posterior acordada con RERCHAR.
 
 | Fuente entregada | Datos y uso identificados | Pantalla/registro preparado | Pendiente para migración |
 | --- | --- | --- | --- |
@@ -33,9 +33,9 @@ Una guía puede actualizarse por su número en el mismo servicio; cada modificac
 
 ## Integración operativa y datos históricos
 
-Las migraciones `012` y `013` agregan captura y control para ingresos, excedentes, facturas recibidas, seguimiento de guías, precios de guías, Kardex y archivo consultable de las once planillas originales. El archivo del Excel conserva nombre, huella, hoja, fila, valores y fórmulas cuando existen. Se importa a un área sólo de administración, sin convertir automáticamente una fila ambigua en una factura o una guía vigente. Las pantallas nuevas se imprimen o guardan como PDF desde el navegador; el certificado, la cotización y otros PDF existentes siguen con sus descargas específicas.
+La migración `012` agrega captura y control para ingresos, excedentes, facturas recibidas, seguimiento de guías, precios de guías y Kardex. Las pantallas nuevas se imprimen o guardan como PDF desde el navegador; el certificado, la cotización y otros PDF existentes siguen con sus descargas específicas.
 
-La importación del archivo original se realiza con los scripts documentados en README una vez que esté disponible la PostgreSQL persistente de la instancia. En desarrollo se verificó la importación con archivos de muestra. No se cargan datos reales al repositorio. Vincular movimientos históricos al registro activo exige conciliar cliente, ticket, base de neto y duplicados con operaciones.
+La migración posterior de movimientos históricos al registro activo exigirá conciliar cliente, ticket, base de neto y duplicados con operaciones.
 
 ## Estado de las peticiones de la reunión
 
@@ -56,4 +56,4 @@ La importación del archivo original se realiza con los scripts documentados en 
 
 ## Criterios para el piloto del 28 de septiembre
 
-Demostrar con datos ficticios cliente → solicitud → guía/pesajes → evidencia → carpeta y certificado, más cotización PDF y solicitud → aprobación → orden de compra. Antes de abrir una URL pública, disponer de PostgreSQL persistente, aplicar migraciones 001–013 y verificar en esa URL permisos, evidencia, PDF, QR y generación de documentos. No anunciar emisión tributaria, importación RCV, Shell ni GPS como funciones conectadas antes de probarlas con acceso oficial.
+Demostrar con datos ficticios cliente → solicitud → guía/pesajes → evidencia → carpeta y certificado, más cotización PDF y solicitud → aprobación → orden de compra. Antes de abrir una URL pública, disponer de PostgreSQL persistente, aplicar las migraciones vigentes y verificar en esa URL permisos, evidencia, PDF, QR y generación de documentos. No anunciar emisión tributaria, importación RCV, Shell ni GPS como funciones conectadas antes de probarlas con acceso oficial.
