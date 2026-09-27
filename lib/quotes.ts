@@ -94,6 +94,20 @@ export async function recordQuoteDecision(actor:Actor,quoteId:string,decision:"a
   });
 }
 
+export async function recordManualQuoteDelivery(actor:Actor,quoteId:string,input:unknown){
+  canEdit(actor);const id=uuid.parse(quoteId);
+  const data=z.object({channel:z.enum(["correo","presencial","otro"]),recipient:z.union([z.email(),z.literal("")]).default(""),
+    reference:z.string().trim().min(10).max(500)}).parse(input);
+  if(data.channel==="correo"&&!data.recipient)reject("Indique el correo al que entregó el PDF.");
+  await transaction(async tx=>{
+    const [quote]=await tx.query<{status:string}>("SELECT status FROM client_quotes WHERE id=$1 FOR UPDATE",[id]);
+    if(!quote||quote.status!=="borrador")reject("Sólo puede registrar la entrega de un borrador vigente.");
+    await tx.query("UPDATE client_quotes SET status='enviada',sent_at=now() WHERE id=$1",[id]);
+    await tx.query("INSERT INTO audit_events(actor_id,action,entity_type,entity_id,next_value) VALUES ($1,'manual_delivery','client_quote',$2,$3)",
+      [actor.id,id,JSON.stringify(data)]);
+  });
+}
+
 export async function resolveQuoteSending(actor:Actor,quoteId:string,outcome:"borrador"|"enviada",reason:unknown){
   if(actor.role!=="admin")reject("Sólo administración puede resolver un envío sin confirmación.");
   const id=uuid.parse(quoteId),note=z.string().trim().min(10).max(500).parse(reason);

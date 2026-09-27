@@ -11,7 +11,7 @@ export async function saveGuideControlAction(form:FormData){
   const actor=await requireActor();
   const id=value(form,"service_id");
   const path=`/solicitudes/${encodeURIComponent(id)}/guias`;
-  const fields=["guide_number","movement_date","movement_type","origin_ticket","destination_ticket","return_ticket",
+  const fields=["control_id","guide_number","line_number","movement_date","movement_type","origin_ticket","destination_ticket","return_ticket",
     "origin_kg","complementary_kg","arrival_kg","returned_impurities_kg","return_weight_kg","destination_impurities_kg",
     "invoice_kg","invoice_number","valued_guide_number","notes","departure_ticket","driver_name","truck_plate",
     "material_name","agreed_price_clp","invoice_price_clp","invoice_issued_on","payment_on","freight_company",

@@ -6,7 +6,7 @@ import { ZodError } from "zod";
 import { requireActor } from "@/lib/auth";
 import {
   SupplyError, addPurchaseLine, adjustStock, approvePurchase, cancelPurchase, closeReservation,
-  createPurchase, createStockItem, createWarehouse, orderPurchase, receivePurchase, reserveStock, transferStock,
+  createPurchase, createStockItem, createWarehouse, issuePurchaseDraft, receivePurchase, reserveStock, savePurchaseDraft, transferStock,
 } from "@/lib/supply";
 
 const value = (form: FormData, key: string) => String(form.get(key) ?? "");
@@ -58,12 +58,18 @@ export async function cancelPurchaseAction(form: FormData) {
   const actor = await requireActor(); const id = value(form,"request_id");
   await run(purchasePath(id), () => cancelPurchase(actor,id,value(form,"reason")));
 }
-export async function orderPurchaseAction(form: FormData) {
+export async function savePurchaseDraftAction(form: FormData) {
   const actor = await requireActor(); const id = value(form,"request_id");
   const prices=Object.fromEntries([...form.entries()].filter(([key])=>key.startsWith("price_")).map(([key,val])=>[key.slice(6),String(val)]));
-  await run(purchasePath(id), () => orderPurchase(actor,id,{ supplier: value(form,"supplier"), order_reference: value(form,"order_reference"), expected_date: value(form,"expected_date"),
+  const discounts=Object.fromEntries([...form.entries()].filter(([key])=>key.startsWith("discount_")).map(([key,val])=>[key.slice(9),String(val)]));
+  await run(purchasePath(id), () => savePurchaseDraft(actor,id,{ supplier: value(form,"supplier"), order_reference: value(form,"order_reference"), expected_date: value(form,"expected_date"),
     issuer:value(form,"issuer"),supplier_tax_id:value(form,"supplier_tax_id"),supplier_address:value(form,"supplier_address"),
-    payment_terms:value(form,"payment_terms"),vat_rate:value(form,"vat_rate"),prices }));
+    supplier_contact:value(form,"supplier_contact"),cost_center:value(form,"cost_center"),
+    payment_terms:value(form,"payment_terms"),vat_rate:value(form,"vat_rate"),prices,discounts }));
+}
+export async function orderPurchaseAction(form: FormData) {
+  const actor = await requireActor(); const id = value(form,"request_id");
+  await run(purchasePath(id), () => issuePurchaseDraft(actor,id,value(form,"confirmation")));
 }
 export async function receivePurchaseAction(form: FormData) {
   const actor = await requireActor(); const id = value(form,"request_id");

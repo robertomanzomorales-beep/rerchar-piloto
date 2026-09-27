@@ -65,9 +65,18 @@ test("ingresos, facturas y seguimiento conservan cálculos, permisos y respaldos
     invoice_price_clp:"240",freight_company:"Transportes"});
   const [guide]=await guides.listGuideControls(viewer,service.id);
   assert.deepEqual(guides.guideValues(guide),{estimated_clp:20000,billed_clp:19200,variance_clp:800});
-  await guides.saveGuideControl(owner,service.id,{guide_number:"G-1",movement_date:"2026-09-25",movement_type:"venta",invoice_price_clp:"250"});
+  await guides.saveGuideControl(owner,service.id,{control_id:guide.id,guide_number:"G-1",movement_date:"2026-09-25",movement_type:"venta",invoice_price_clp:"250"});
   const [updated]=await guides.listGuideControls(viewer,service.id);
   assert.equal(updated.arrival_kg,"90.00");
   assert.equal(updated.freight_company,"Transportes");
   assert.equal(guides.guideValues(updated).variance_clp,0);
+  await guides.saveGuideControl(owner,service.id,{guide_number:"G-1",line_number:2,movement_date:"2026-09-25",movement_type:"venta",
+    material_name:"Aluminio",origin_kg:"60",arrival_kg:"55"});
+  const controls=await guides.listGuideControls(viewer,service.id);
+  assert.equal(controls.length,2);
+  assert.deepEqual(controls.map(row=>[row.guide_number,row.line_number,row.material_name,row.origin_kg]),
+    [["G-1",1,null,"100.00"],["G-1",2,"Aluminio","60.00"]]);
+  await assert.rejects(()=>guides.saveGuideControl(owner,service.id,{guide_number:"G-1",line_number:1,
+    movement_date:"2026-09-25",movement_type:"venta",origin_kg:"999"}),guides.GuideError);
+  assert.equal((await guides.listGuideControls(viewer,service.id))[0].origin_kg,"100.00");
 });

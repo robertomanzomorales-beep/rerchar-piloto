@@ -108,10 +108,12 @@ export async function issueCertificate(actor:Actor,serviceId:string){
     const currentNet=Number(service.gross_kg)-Number(service.tare_kg);
     if(!Number.isFinite(currentNet)||currentNet<0||Math.abs(currentNet-Number(record.quantity_kg))>0.001)
       reject("Revise el pesaje y la ficha antes de emitir el certificado.");
+    // En una guía con varios materiales, un ticket individual no representa por sí solo el peso certificado del servicio.
     const [guide]=await tx.query<{movement_date:Date|string;valued_guide_number:string|null;weight_ticket:string|null}>(`
-      SELECT movement_date,valued_guide_number,COALESCE(destination_ticket,origin_ticket) AS weight_ticket
-      FROM service_guide_controls WHERE service_id=$1
-      ORDER BY (guide_number=$2) DESC,movement_date DESC LIMIT 1`,[serviceId,record.guide_number]);
+      SELECT g.movement_date,g.valued_guide_number,COALESCE(g.destination_ticket,g.origin_ticket) AS weight_ticket
+      FROM service_guide_controls g WHERE g.service_id=$1 AND g.guide_number=$2
+        AND (SELECT count(*) FROM service_guide_controls WHERE service_id=$1 AND guide_number=$2)=1
+      LIMIT 1`,[serviceId,record.guide_number]);
     const [asset]=await tx.query<{plate:string|null}>(`SELECT a.plate FROM service_requests s
       LEFT JOIN assets a ON a.id=s.assigned_asset_id WHERE s.id=$1`,[serviceId]);
     const [invoice]=await tx.query<{invoice_number:string}>(`SELECT i.invoice_number FROM service_invoices i

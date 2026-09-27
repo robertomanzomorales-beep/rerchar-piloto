@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import {randomUUID} from "node:crypto";
-import {readFile} from "node:fs/promises";
+import {readFile,readdir} from "node:fs/promises";
 import {resolve} from "node:path";
 import test from "node:test";
 import {PDFDocument} from "pdf-lib";
@@ -12,7 +12,7 @@ test("cotización del cliente, PDF y guía de tres pesos respetan totales y perm
   const quotes=await import("../lib/quotes");
   const guides=await import("../lib/guides");
   const {renderQuotePdf}=await import("../lib/quote-pdf");
-  for(const name of ["001_piloto.sql","002_flota_y_despacho.sql","003_abastecimiento.sql","004_mantenimiento_combustible.sql","005_contenedores.sql","006_acreditacion.sql","007_finanzas.sql","008_trazabilidad_ambiental.sql","009_certificados.sql","010_evidencia_persistente.sql","011_operacion_real_2026.sql","012_planillas_operacion.sql"]){
+  for(const name of (await readdir(resolve(process.cwd(),"db"))).filter(file=>/^\d+.*\.sql$/.test(file)).sort()){
     const sql=await readFile(resolve(process.cwd(),`db/${name}`),"utf8");
     await transaction(async tx=>{for(const statement of sql.split(/;\s*(?:\n|$)/).map(x=>x.trim()).filter(Boolean))await tx.query(statement);});
   }
@@ -39,6 +39,11 @@ test("cotización del cliente, PDF y guía de tres pesos respetan totales y perm
   await assert.rejects(()=>quotes.resolveQuoteSending(viewer,quoteId,"enviada","Revisé el correo de salida"),quotes.QuoteError);
   await quotes.resolveQuoteSending(owner,quoteId,"borrador","No figuraba en la bandeja de salida");
   assert.equal((await quotes.getQuote(owner,quoteId)).quote.status,"borrador");
+  await assert.rejects(()=>quotes.recordManualQuoteDelivery(viewer,quoteId,{channel:"correo",recipient:"compras@cliente.cl",reference:"Entregado manualmente"}),quotes.QuoteError);
+  await assert.rejects(()=>quotes.recordManualQuoteDelivery(owner,quoteId,{channel:"correo",recipient:"",reference:"Entregado manualmente"}),quotes.QuoteError);
+  await quotes.recordManualQuoteDelivery(owner,quoteId,{channel:"correo",recipient:"compras@cliente.cl",reference:"Enviado fuera del sistema y confirmado"});
+  assert.equal((await quotes.getQuote(viewer,quoteId)).quote.status,"enviada");
+  await assert.rejects(()=>quotes.recordManualQuoteDelivery(owner,quoteId,{channel:"correo",recipient:"compras@cliente.cl",reference:"Enviado otra vez"}),quotes.QuoteError);
 
   const [service]=await db.query<{id:string}>(`INSERT INTO service_requests(submission_key,client_id,site_id,service_type,waste_type,origin,destination,created_by)
     VALUES ($1,$2,$3,'retiro','Chatarra','Faena','Receptor',$4) RETURNING id`,[randomUUID(),clientA.id,site.id,owner.id]);

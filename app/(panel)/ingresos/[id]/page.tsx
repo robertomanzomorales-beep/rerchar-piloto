@@ -26,8 +26,8 @@ export default async function MaterialDetail({params,searchParams}:{params:Promi
     ["Informe impurezas",r.impurity_report],["Guía origen",r.origin_guide],["Guía traslado",r.transfer_guide],
     ["Hoja ingreso",r.entry_sheet],["Guía valorizada",r.valued_guide],["Certificado",r.certificate_number],["Acta",r.act_number],
     ["Factura",r.invoice_number],["Estado de pago",r.payment_status],["Fecha de pago",date(r.paid_on)]];
-  return <><div className="order-actions print-hide"><Link href="/ingresos" className="back-link">← Ingresos de material</Link><PrintButton label="Imprimir hoja / guardar PDF"/></div><div className="print-hide"><Notice error={query.error} ok={query.ok}/></div>
-    <article className="order-sheet"><header className="order-header"><div><div className="order-system">RERCHAR CHILE SPA</div><h1>{r.kind==="excedente"?"Control de excedentes":"Hoja de ingreso de material"}</h1></div><div className="order-number"><small>TICKET</small><h1>{r.weighing_ticket}</h1></div></header>
+  return <><div className="order-actions print-hide"><Link href="/ingresos" className="back-link">← Ingresos de material</Link><div className="order-actions"><Link href={`/ingresos/${id}/hoja`} className="button button-outline">Hoja de ingreso imprimible</Link><PrintButton label="Imprimir control / guardar PDF"/></div></div><div className="print-hide"><Notice error={query.error} ok={query.ok}/></div>
+    <article className="order-sheet"><header className="order-header"><div><div className="order-system">RERCHAR CHILE SPA</div><h1>{r.kind==="excedente"?"Control de excedentes":"Control de ingreso de material"}</h1></div><div className="order-number"><small>TICKET</small><h1>{r.weighing_ticket}</h1></div></header>
       {r.service_id&&<p>Servicio: <Link href={`/solicitudes/${r.service_id}`}>RER-{String(r.service_folio).padStart(5,"0")}</Link></p>}
       <div className="order-section"><div className="order-grid">{facts.map(([label,value])=><div key={label}><small>{label}</small><strong>{value||"—"}</strong></div>)}</div></div>
       {r.notes&&<div className="order-section"><h2>Observaciones</h2><p>{r.notes}</p></div>}

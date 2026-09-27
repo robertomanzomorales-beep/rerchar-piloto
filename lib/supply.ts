@@ -71,11 +71,12 @@ export async function createStockItem(actor: Actor, input: unknown) {
 export type Purchase = {
   id: string; folio: string; title: string; category: string; priority: string; status: string;
   notes: string | null; supplier: string | null; order_reference: string | null;
-  issuer:"rerchar"|"e_y_j";supplier_tax_id:string|null;supplier_address:string|null;payment_terms:string|null;vat_rate:string;ordered_at:Date|null;
+  issuer:"rerchar"|"e_y_j";supplier_tax_id:string|null;supplier_address:string|null;supplier_contact:string|null;cost_center:string|null;
+  payment_terms:string|null;vat_rate:string;ordered_at:Date|null;
   expected_date: Date | string | null; requested_by: string; requested_name: string;
   approved_name: string | null; created_at: Date; updated_at: Date;
 };
-export type PurchaseLine = { id: string; item_id: string; code: string; name: string; unit: string; quantity: string; received_qty: string;unit_price_clp:string|null };
+export type PurchaseLine = { id: string; item_id: string; code: string; name: string; unit: string; quantity: string; received_qty: string;unit_price_clp:string|null;discount_clp:string };
 export type PurchaseReceipt = { id: string; item_name: string; warehouse_name: string; quantity: string; guide_number: string; invoice_number: string | null; payment_status: string; recorded_name: string; created_at: Date };
 export type PurchaseEvent = { id: string; kind: string; description: string; actor_name: string; created_at: Date };
 const purchaseSelect = `SELECT p.*, u.name AS requested_name, a.name AS approved_name FROM purchase_requests p
@@ -163,27 +164,58 @@ export async function cancelPurchase(actor: Actor, requestId: string, reason: un
   });
 }
 
-export async function orderPurchase(actor: Actor, requestId: string, input: unknown) {
+export function purchaseTotals(lines:Pick<PurchaseLine,"quantity"|"unit_price_clp"|"discount_clp">[],vatRate:number){
+  const amounts=lines.map(line=>Math.round(Number(line.quantity)*(Number(line.unit_price_clp??0)-Number(line.discount_clp))));
+  const net=amounts.reduce((sum,amount)=>sum+amount,0);
+  const vat=Math.round(net*vatRate);
+  return {amounts,net,vat,total:net+vat};
+}
+
+export async function savePurchaseDraft(actor: Actor, requestId: string, input: unknown) {
   requireOperations(actor);
   const id = uuid.parse(requestId);
   const data = z.object({ supplier: label(160), order_reference: label(80), expected_date: date,
-    issuer:z.enum(["rerchar","e_y_j"]),supplier_tax_id:optional(20),supplier_address:optional(250),payment_terms:label(120),
-    vat_rate:z.enum(["0","0.19"]).default("0.19"),prices:z.record(uuid,z.union([z.string(),z.number()])) }).parse(input);
+    issuer:z.enum(["rerchar","e_y_j"]),supplier_tax_id:optional(20),supplier_address:optional(250),
+    supplier_contact:optional(120),cost_center:optional(120),payment_terms:label(120),
+    vat_rate:z.enum(["0","0.19"]).default("0.19"),prices:z.record(uuid,z.union([z.string(),z.number()])),
+    discounts:z.record(uuid,z.union([z.string(),z.number()])).default({}) }).parse(input);
   await transaction(async (tx) => {
     const [request] = await tx.query<{ status: string }>("SELECT status FROM purchase_requests WHERE id=$1 FOR UPDATE", [id]);
-    if (!request || request.status !== "aprobada") reject("Apruebe la solicitud antes de registrar la orden.");
+    if (!request || request.status !== "aprobada") reject("Apruebe la solicitud antes de preparar la orden.");
     const lines=await tx.query<{id:string}>("SELECT id FROM purchase_lines WHERE request_id=$1 FOR UPDATE",[id]);
-    if(!lines.length||Object.keys(data.prices).length!==lines.length)reject("Indique el precio unitario de cada artículo de la orden.");
+    if(!lines.length||Object.keys(data.prices).length!==lines.length||
+       Object.keys(data.discounts).some(key=>!lines.some(line=>line.id===key)))
+      reject("Indique el precio unitario de cada artículo de la orden.");
     for(const line of lines){
       const price=String(data.prices[line.id]??"").trim();
+      const discount=String(data.discounts[line.id]??"0").trim()||"0";
       if(!/^\d+(?:\.\d{1,2})?$/.test(price)||Number(price)>100_000_000)reject("Precio unitario inválido en la orden.");
-      await tx.query("UPDATE purchase_lines SET unit_price_clp=$2 WHERE id=$1",[line.id,price]);
+      if(!/^\d+(?:\.\d{1,2})?$/.test(discount)||Number(discount)>Number(price))
+        reject("El descuento unitario debe ser igual o menor que el precio.");
+      await tx.query("UPDATE purchase_lines SET unit_price_clp=$2,discount_clp=$3 WHERE id=$1",[line.id,price,discount]);
     }
-    await tx.query(`UPDATE purchase_requests SET status='ordenada',supplier=$2,order_reference=$3,expected_date=NULLIF($4,'')::date,
-      issuer=$5,supplier_tax_id=NULLIF($6,''),supplier_address=NULLIF($7,''),payment_terms=$8,vat_rate=$9,ordered_at=now(),updated_at=now()
+    await tx.query(`UPDATE purchase_requests SET supplier=$2,order_reference=$3,expected_date=NULLIF($4,'')::date,
+      issuer=$5,supplier_tax_id=NULLIF($6,''),supplier_address=NULLIF($7,''),payment_terms=$8,vat_rate=$9,
+      supplier_contact=NULLIF($10,''),cost_center=NULLIF($11,''),updated_at=now()
       WHERE id=$1`,[id,data.supplier,data.order_reference,data.expected_date,data.issuer,data.supplier_tax_id,
-      data.supplier_address,data.payment_terms,data.vat_rate]);
-    await purchaseEvent(tx, actor, id, "order", `Orden ${data.order_reference} emitida para ${data.supplier}`, data);
+      data.supplier_address,data.payment_terms,data.vat_rate,data.supplier_contact,data.cost_center]);
+    await purchaseEvent(tx, actor, id, "draft_order", `Borrador de OC ${data.order_reference} guardado sin emitir`, data);
+  });
+}
+
+export async function issuePurchaseDraft(actor:Actor,requestId:string,confirmation:unknown){
+  requireOperations(actor);
+  const id=uuid.parse(requestId);
+  if(confirmation!=="EMITIR")reject("Confirme la emisión escribiendo EMITIR.");
+  await transaction(async tx=>{
+    const [request]=await tx.query<Purchase>("SELECT * FROM purchase_requests WHERE id=$1 FOR UPDATE",[id]);
+    if(!request||request.status!=="aprobada"||!request.supplier||!request.order_reference||!request.payment_terms)
+      reject("Guarde y revise el borrador antes de emitir la orden.");
+    const lines=await tx.query<PurchaseLine>("SELECT * FROM purchase_lines WHERE request_id=$1 FOR UPDATE",[id]);
+    if(!lines.length||lines.some(line=>line.unit_price_clp==null))reject("El borrador requiere precios para cada artículo.");
+    await tx.query("UPDATE purchase_requests SET status='ordenada',ordered_at=now(),updated_at=now() WHERE id=$1",[id]);
+    await purchaseEvent(tx,actor,id,"order",`Orden ${request.order_reference} emitida para ${request.supplier}`,
+      {order_reference:request.order_reference,supplier:request.supplier});
   });
 }
 

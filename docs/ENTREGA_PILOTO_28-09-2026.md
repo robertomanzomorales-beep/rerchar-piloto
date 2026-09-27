@@ -1,6 +1,6 @@
 # Entrega de revisión del piloto · 28 de septiembre de 2026
 
-Versión preparada el 25 de septiembre de 2026. Los materiales de alcance recibidos sitúan la entrega formal del piloto el lunes 28. El anexo disponible es una versión de trabajo; la aceptación contractual debe referirse a los documentos firmados y a la revisión de RERCHAR.
+Actualizado el 27 de septiembre de 2026. El piloto está publicado en https://rerchar-piloto.vercel.app y se verificó con datos ficticios el acceso, la cotización PDF, el servicio programado, el control de guía y el ingreso de material. La entrega del lunes 28 es una revisión de piloto, sujeta a validación de RERCHAR, no una aceptación del sistema completo.
 
 ## Qué puede revisar RERCHAR
 
@@ -14,15 +14,16 @@ El criterio del anexo para el piloto es un flujo navegable con persistencia, per
 | Despacho | Programar camión, conductor y fecha; consultar agenda y orden de servicio. |
 | Terreno | Guardar checklist, iniciar ruta, adjuntar archivo pequeño, registrar bruto y tara y cerrar. |
 | Trazabilidad | Consultar línea de tiempo, evidencia descargable y reporte del servicio. |
-| Extensión opcional | Revisar ficha ambiental interna y emitir certificado PDF/QR con URL estable. |
+| Extensión opcional | Revisar ficha ambiental y el flujo condicionado de certificado PDF/QR; no emitir constancias de un retiro ficticio como si hubiera ocurrido. |
+| Formatos reales | Mostrar ítems separados bajo una misma guía, hoja de ingreso imprimible y borrador de OC rotulado «sin emitir», tras publicar el parche de ajustes. |
 
-Las doce pruebas automatizadas cubren el flujo base y reglas de los módulos adicionales, incluida la evidencia persistida en la base, la restricción de descarga por cliente y el control de cotizaciones y guías. El levantamiento de las planillas reales y las nuevas funciones están en [LEVANTAMIENTO_OPERACION_REAL_25-09-2026.md](LEVANTAMIENTO_OPERACION_REAL_25-09-2026.md). La compilación de producción y la revisión en un navegador conectado al despliegue son comprobaciones separadas que deben realizarse antes de declarar la demo en línea lista.
+Las trece pruebas automatizadas cubren el flujo base y reglas adicionales, incluida la evidencia persistida, los permisos por cliente, cotizaciones, múltiples materiales por guía y borrador de OC. El levantamiento de las planillas reales está en [LEVANTAMIENTO_OPERACION_REAL_25-09-2026.md](LEVANTAMIENTO_OPERACION_REAL_25-09-2026.md). La compilación y pruebas locales de los ajustes pasan; falta repetir el recorrido en la URL publicada una vez instalados.
 
-## Para mostrarlo en una URL
+## Antes de la demostración en la URL publicada
 
-Se requiere un proyecto de hosting para Next.js (por ejemplo, Vercel), una base PostgreSQL persistente y acceso autorizado para configurarlos. Publique el código en la carpeta `rerchar` sin necesidad de GitHub; aplique `npm run db:migrate` a la base **antes** de abrir el sitio y cree el primer administrador con `npm run db:seed -- --demo` y variables de entorno temporales. En el proyecto configure `DATABASE_URL`, `EVIDENCE_STORAGE=database` y `APP_BASE_URL` con el dominio HTTPS estable. La configuración y comandos completos están en el [README](../README.md). Sólo se cargan datos ficticios para la revisión.
+El proyecto de Vercel y PostgreSQL persistente ya existen. Para habilitar los cambios, primero aplique las migraciones `015` y `016` en la base, publique el parche y después aplique `017` cuando el despliegue figure como listo. La primera fase deja intacta la restricción antigua para que el sitio actual siga funcionando. No cargue las planillas originales como un módulo ni sustituya los datos DEMO por movimientos reales sin conciliación.
 
-Después del despliegue, realice el recorrido anterior desde un navegador con la URL real y pruebe el inicio de sesión, la carga/descarga de un PDF o imagen de menos de 4 MB, el cierre, la ficha, el PDF y la lectura del QR. Valide la presentación en móvil y escritorio. Una URL generada sin estos pasos no confirma que el piloto funcione.
+Después de publicar, compruebe cliente → cotización → PDF, la opción de registrar una entrega manual efectivamente realizada, servicio → guía con dos materiales → ingreso → hoja imprimible, y solicitud de compra aprobada → borrador de OC. El borrador no se emite para una compra ficticia. Verifique permisos del portal y la impresión en navegador antes de la reunión. El QR de un certificado vigente debe probarse sólo con una operación legítimamente cerrada y documentada.
 
 ## Qué falta para aceptar o entregar como sistema completo
 
@@ -32,4 +33,4 @@ Después del despliegue, realice el recorrido anterior desde un navegador con la
 - Conciliar las planillas originales ya recibidas para una migración trazable; aún no se importó información real.
 - Revisar seguridad, permisos, rendimiento y recuperación con la infraestructura final. El almacenamiento en PostgreSQL de imágenes y PDF pequeños es una solución acotada para esta demo, no la solución documental definitiva.
 
-**Estado:** código del piloto preparado para revisión local y para desplegarlo con una base externa; la URL pública y la aceptación de RERCHAR sólo se pueden confirmar después de la publicación y del recorrido real.
+**Estado:** URL publicada con datos DEMO y recorrido parcial comprobado. Los cambios de esta revisión requieren publicación y prueba en la URL antes de mostrar esos tres formatos nuevos. Los libros reales aún no se han migrado al registro operativo.

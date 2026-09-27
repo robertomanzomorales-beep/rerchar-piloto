@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
@@ -9,7 +9,7 @@ test("compra, recepción parcial, Kardex, bodegas y reservas mantienen los saldo
   process.env.PGLITE_DATA_DIR = "memory://";
   const { db, transaction } = await import("../lib/db");
   const supply = await import("../lib/supply");
-  for (const name of ["001_piloto.sql","002_flota_y_despacho.sql","003_abastecimiento.sql","004_mantenimiento_combustible.sql","005_contenedores.sql","006_acreditacion.sql","007_finanzas.sql","008_trazabilidad_ambiental.sql","009_certificados.sql","010_evidencia_persistente.sql","011_operacion_real_2026.sql","012_planillas_operacion.sql"]) {
+  for (const name of (await readdir(resolve(process.cwd(),"db"))).filter(file=>/^\d+.*\.sql$/.test(file)).sort()) {
     const sql = await readFile(resolve(process.cwd(),`db/${name}`),"utf8");
     await transaction(async (tx) => {
       for (const statement of sql.split(/;\s*(?:\n|$)/).map((part) => part.trim()).filter(Boolean)) await tx.query(statement);
@@ -38,9 +38,20 @@ test("compra, recepción parcial, Kardex, bodegas y reservas mantienen los saldo
   await assert.rejects(() => supply.addPurchaseLine(ops,purchaseId,{item_id:item,quantity:"1"}),supply.SupplyError);
   await assert.rejects(() => supply.receivePurchase(owner,purchaseId,{ submission_key:randomUUID(),line_id:randomUUID(),warehouse_id:main,quantity:"1",guide_number:"G-1",invoice_number:"",payment_status:"pendiente" }),supply.SupplyError);
   const pricing=(await supply.getPurchase(owner,purchaseId)).lines;
-  await supply.orderPurchase(ops,purchaseId,{supplier:"Proveedora Uno",order_reference:"OC-2026-01",expected_date:"2026-09-28",
-    issuer:"e_y_j",supplier_tax_id:"76.000.000-0",supplier_address:"Calama",payment_terms:"Crédito 30 días",vat_rate:"0.19",
-    prices:Object.fromEntries(pricing.map(line=>[line.id,"1200"]))});
+  const draft={supplier:"Proveedora Uno",order_reference:"OC-2026-01",expected_date:"2026-09-28",
+    issuer:"e_y_j",supplier_tax_id:"76.000.000-0",supplier_address:"Calama",supplier_contact:"Proveedora Uno",
+    cost_center:"Operación",payment_terms:"Crédito 30 días",vat_rate:"0.19",
+    prices:Object.fromEntries(pricing.map(line=>[line.id,"1200"])),discounts:{[pricing[0].id]:"100"}};
+  await assert.rejects(()=>supply.savePurchaseDraft(ops,purchaseId,{...draft,discounts:{[pricing[0].id]:"1300"}}),supply.SupplyError);
+  await supply.savePurchaseDraft(ops,purchaseId,draft);
+  const prepared=await supply.getPurchase(owner,purchaseId);
+  assert.equal(prepared.purchase.status,"aprobada");
+  assert.equal(prepared.purchase.ordered_at,null);
+  assert.equal(prepared.purchase.cost_center,"Operación");
+  assert.deepEqual(supply.purchaseTotals(prepared.lines,0.19),{amounts:[4400,12000],net:16400,vat:3116,total:19516});
+  await assert.rejects(()=>supply.issuePurchaseDraft(ops,purchaseId,""),supply.SupplyError);
+  await supply.issuePurchaseDraft(ops,purchaseId,"EMITIR");
+  assert.equal((await supply.getPurchase(owner,purchaseId)).purchase.status,"ordenada");
   const { lines } = await supply.getPurchase(owner,purchaseId);
   const firstLine = lines.find((line) => line.item_id === item)!;
   const secondLine = lines.find((line) => line.item_id === second)!;
@@ -56,7 +67,7 @@ test("compra, recepción parcial, Kardex, bodegas y reservas mantienen los saldo
   const detail = await supply.getPurchase(owner,purchaseId);
   assert.equal(detail.purchase.status,"recibida");
   assert.equal(detail.receipts.length,3);
-  assert.equal(detail.events.length,7);
+  assert.equal(detail.events.length,8);
   let inventory = await supply.listInventory(ops);
   const balance = (itemId:string,warehouseId:string) => inventory.balances.find((row) => row.item_id===itemId && row.warehouse_id===warehouseId)!;
   assert.equal(balance(item,main).quantity,"10.000");
@@ -84,5 +95,5 @@ test("compra, recepción parcial, Kardex, bodegas y reservas mantienen los saldo
   assert.equal(Number(ledger.quantity),Number(balance(item,branch).quantity));
   assert.equal(Number(ledger.reserved),Number(balance(item,branch).reserved));
   const [audits] = await db.query<{total:string}>("SELECT count(*)::text AS total FROM audit_events WHERE entity_type='purchase_request' AND entity_id=$1",[purchaseId]);
-  assert.equal(Number(audits.total),7);
+  assert.equal(Number(audits.total),8);
 });
