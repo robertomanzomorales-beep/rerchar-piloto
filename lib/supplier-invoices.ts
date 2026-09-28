@@ -24,6 +24,7 @@ export type SupplierInvoice={id:string;issuer:"rerchar"|"e_y_j";supplier_tax_id:
   invoice_number:string;issued_on:Date|string;due_on:Date|string|null;description:string;net_clp:string|null;
   vat_clp:string|null;total_clp:string;cost_area:string|null;purchase_id:string|null;service_id:string|null;
   status:string;paid_clp:string;paid_on:Date|string|null;notes:string|null;created_at:Date};
+export type SupplierInvoiceDetail=SupplierInvoice&{purchase_folio:string|null;purchase_title:string|null;service_folio:string|null};
 export type SupplierPayment={id:string;amount_clp:string;paid_on:Date|string;reference:string;actor_name:string;created_at:Date};
 
 export async function listSupplierInvoices(actor:Actor){
@@ -32,12 +33,32 @@ export async function listSupplierInvoices(actor:Actor){
 }
 export async function getSupplierInvoice(actor:Actor,id:string){
   admin(actor);if(!uuid.safeParse(id).success)reject("Factura no encontrada.");
-  const [invoice]=await db.query<SupplierInvoice>("SELECT * FROM supplier_invoices WHERE id=$1",[id]);
+  const [invoice]=await db.query<SupplierInvoiceDetail>(`SELECT i.*,p.folio::text AS purchase_folio,p.title AS purchase_title,
+    s.folio::text AS service_folio FROM supplier_invoices i
+    LEFT JOIN purchase_requests p ON p.id=i.purchase_id
+    LEFT JOIN service_requests s ON s.id=i.service_id WHERE i.id=$1`,[id]);
   if(!invoice)reject("Factura no encontrada.");
   const payments=await db.query<SupplierPayment>(`SELECT p.id,p.amount_clp,p.paid_on,p.reference,p.created_at,u.name AS actor_name
     FROM supplier_invoice_payments p JOIN users u ON u.id=p.recorded_by WHERE p.invoice_id=$1
     ORDER BY p.created_at DESC`,[id]);
   return {invoice,payments};
+}
+export async function updateSupplierInvoiceDueDate(actor:Actor,id:string,input:unknown){
+  admin(actor);uuid.parse(id);
+  const data=z.object({due_on:z.iso.date(),reason:z.string().trim().min(5).max(300)}).parse(input);
+  await transaction(async tx=>{
+    const [invoice]=await tx.query<{issued_on:Date|string;due_on:Date|string|null}>(
+      "SELECT issued_on,due_on FROM supplier_invoices WHERE id=$1 FOR UPDATE",[id]);
+    if(!invoice)reject("Factura no encontrada.");
+    const issuedOn=invoice.issued_on instanceof Date?invoice.issued_on.toISOString().slice(0,10):String(invoice.issued_on).slice(0,10);
+    if(data.due_on<issuedOn)reject("El vencimiento no puede ser anterior a la emisión.");
+    const previous=invoice.due_on instanceof Date?invoice.due_on.toISOString().slice(0,10):invoice.due_on?String(invoice.due_on).slice(0,10):null;
+    if(previous===data.due_on)return;
+    await tx.query("UPDATE supplier_invoices SET due_on=$2,updated_at=now() WHERE id=$1",[id,data.due_on]);
+    await tx.query(`INSERT INTO audit_events(actor_id,action,entity_type,entity_id,previous_value,next_value)
+      VALUES($1,'update_due_date','supplier_invoice',$2,$3,$4)`,
+      [actor.id,id,JSON.stringify({due_on:previous}),JSON.stringify({due_on:data.due_on,reason:data.reason})]);
+  });
 }
 export async function createSupplierInvoice(actor:Actor,input:unknown){
   admin(actor);

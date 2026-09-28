@@ -5,7 +5,7 @@ import {revalidatePath} from "next/cache";
 import {ZodError} from "zod";
 import {requireActor} from "@/lib/auth";
 import {MaterialError,createMaterialReceipt,updateMaterialPayment,updateMaterialReferences} from "@/lib/materials";
-import {SupplierInvoiceError,createSupplierInvoice,registerSupplierPayment} from "@/lib/supplier-invoices";
+import {SupplierInvoiceError,createSupplierInvoice,registerSupplierPayment,updateSupplierInvoiceDueDate} from "@/lib/supplier-invoices";
 import {LedgerError,saveGuideFollowup,saveCommercialDetails} from "@/lib/service-ledger";
 import {OperationFileError,addOperationFile} from "@/lib/operation-files";
 
@@ -52,6 +52,11 @@ export async function registerSupplierPaymentAction(form:FormData){
   const actor=await requireActor(),id=val(form,"id");
   await run(`/facturas-recibidas/${encodeURIComponent(id)}`,()=>registerSupplierPayment(actor,id,{
     submission_key:val(form,"submission_key"),amount_clp:val(form,"amount_clp"),paid_on:val(form,"paid_on"),reference:val(form,"reference")}));
+}
+export async function updateSupplierInvoiceDueDateAction(form:FormData){
+  const actor=await requireActor(),id=val(form,"id");
+  await run(`/facturas-recibidas/${encodeURIComponent(id)}`,
+    ()=>updateSupplierInvoiceDueDate(actor,id,{due_on:val(form,"due_on"),reason:val(form,"reason")}));
 }
 export async function addOperationFileAction(form:FormData){
   const actor=await requireActor(),id=val(form,"id");

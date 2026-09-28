@@ -48,6 +48,15 @@ test("ingresos, facturas y seguimiento conservan cálculos, permisos y respaldos
     invoice_number:"123",issued_on:"2026-09-20",due_on:"2026-10-20",description:"Insumo mensual",net_clp:"10000",
     vat_clp:"1900",total_clp:"11900",cost_area:"Flota"});
   await assert.rejects(()=>invoices.getSupplierInvoice(viewer,invoice),invoices.SupplierInvoiceError);
+  await assert.rejects(()=>invoices.updateSupplierInvoiceDueDate(viewer,invoice,{due_on:"2026-10-28",reason:"Fecha corregida"}),invoices.SupplierInvoiceError);
+  await assert.rejects(()=>invoices.updateSupplierInvoiceDueDate(owner,invoice,{due_on:"2026-09-19",reason:"Fecha corregida"}),invoices.SupplierInvoiceError);
+  await invoices.updateSupplierInvoiceDueDate(owner,invoice,{due_on:"2026-10-28",reason:"Corrección de digitación"});
+  const correctedDue=(await invoices.getSupplierInvoice(owner,invoice)).invoice.due_on;
+  assert.equal(correctedDue instanceof Date?correctedDue.toISOString().slice(0,10):String(correctedDue).slice(0,10),"2026-10-28");
+  const [dueAudit]=await db.query<{previous_value:{due_on:string};next_value:{due_on:string;reason:string}}>(
+    "SELECT previous_value,next_value FROM audit_events WHERE entity_id=$1 AND action='update_due_date'",[invoice]);
+  assert.equal(dueAudit.previous_value.due_on,"2026-10-20");
+  assert.equal(dueAudit.next_value.reason,"Corrección de digitación");
   const key=randomUUID();
   const payment=await invoices.registerSupplierPayment(owner,invoice,{submission_key:key,amount_clp:"5000",paid_on:"2026-09-25",reference:"Transferencia 123"});
   assert.equal(await invoices.registerSupplierPayment(owner,invoice,{submission_key:key,amount_clp:"5000",paid_on:"2026-09-25",reference:"Transferencia 123"}),payment);
