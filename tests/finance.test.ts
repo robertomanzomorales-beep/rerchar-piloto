@@ -37,6 +37,16 @@ test("tarifa vigente, valorización, reemisión, pagos y margen conservan saldos
   let {service:detail}=await finance.getFinancialService(owner,service.id);
   assert.equal(detail.quantity,"50.00");
   assert.equal(detail.total_clp,"50000.00");
+  await assert.rejects(()=>finance.updateClientOrderReference(ops,service.id,{
+    client_order_reference:"",reason:"Ingreso por error"}),finance.FinanceError);
+  await finance.updateClientOrderReference(owner,service.id,{
+    client_order_reference:"",reason:"Referencia de proveedor ingresada por error"});
+  ({service:detail}=await finance.getFinancialService(owner,service.id));
+  assert.equal(detail.client_order_reference,null);
+  const [correction]=await db.query<{action:string;previous_value:{client_order_reference:string};next_value:{reason:string}}>(
+    "SELECT action,previous_value,next_value FROM audit_events WHERE entity_type='service_valuation' AND action='update_reference'");
+  assert.equal(correction.previous_value.client_order_reference,"OC-CLIENTE-1");
+  assert.equal(correction.next_value.reason,"Referencia de proveedor ingresada por error");
   const firstInvoice=await finance.registerInvoice(owner,service.id,{invoice_number:"F-ANULADA",issued_on:"2026-09-24",due_on:"2026-10-01"});
   await finance.voidInvoice(owner,firstInvoice,"Error de folio externo");
   const activeInvoice=await finance.registerInvoice(owner,service.id,{invoice_number:"F-001",issued_on:"2026-09-24",due_on:"2026-10-01"});

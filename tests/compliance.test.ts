@@ -55,5 +55,11 @@ test("ficha ambiental exige servicio cerrado y evidencia; conserva revisión y d
   await assert.rejects(()=>compliance.listWasteRecords(customer),compliance.ComplianceError);
   const auditRows=await audit.auditReport(owner,audit.auditFilter({}),100);
   assert.equal(auditRows.filter(row=>row.entity_type==="waste_record").length,7);
+  await db.query(`INSERT INTO audit_events(actor_id,action,entity_type,entity_id,created_at)
+    VALUES ($1,'check','timezone_check',$2,'2026-09-29T02:30:00Z')`,[owner.id,service.id]);
+  const localDay=await audit.auditReport(owner,audit.auditFilter({from:"2026-09-28",to:"2026-09-28",kind:"timezone_check"}));
+  assert.equal(localDay.length,1);
+  const nextDay=await audit.auditReport(owner,audit.auditFilter({from:"2026-09-29",to:"2026-09-29",kind:"timezone_check"}));
+  assert.equal(nextDay.length,0);
   await assert.rejects(()=>audit.auditReport(customer,audit.auditFilter({})),/administración/);
 });

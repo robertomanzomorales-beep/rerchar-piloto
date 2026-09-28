@@ -273,6 +273,9 @@ input::placeholder,textarea::placeholder{color:#959e9d}
 .cancel-control{border-top:1px solid #e8eee9;margin-top:20px;padding-top:14px}
 .cancel-control summary{cursor:pointer;font-size:11px;color:#8b5348;font-weight:730;width:max-content}
 .cancel-control form{margin-top:14px;max-width:500px}.cancel-control button{justify-self:start;color:#985c4d;border-color:#dabdb7}.cancel-control button:hover{color:#8e453a;background:#fff4f1}
+.reference-control{border-top:1px solid #e8eee9;margin-top:20px;padding-top:14px}
+.reference-control summary{cursor:pointer;font-size:13px;color:#087a60;font-weight:730;width:max-content}
+.reference-control form{margin-top:14px;max-width:520px}
 .cancelled-note{background:#fff2ed;border-left:3px solid #d58a71;padding:10px;font-size:12px;color:#855344}
 @media(max-width:1100px){.fleet-grid{grid-template-columns:1fr}}
 @media(max-width:680px){.fleet-stats{grid-template-columns:repeat(3,minmax(0,1fr))}.fleet-stats>div{padding:10px}.fleet-stats strong{font-size:23px}.incident-grid{grid-template-columns:1fr}.fleet-state{white-space:normal;text-align:right}}

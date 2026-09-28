@@ -154,6 +154,28 @@ export async function valueService(actor:Actor,serviceId:string,input:unknown){
   });
 }
 
+export async function updateClientOrderReference(actor:Actor,serviceId:string,input:unknown){
+  admin(actor);
+  const id=uuid.parse(serviceId);
+  const data=z.object({
+    client_order_reference:optional(80),
+    reason:z.string().trim().min(5).max(300),
+  }).parse(input);
+  await transaction(async tx=>{
+    const [valuation]=await tx.query<{id:string;client_order_reference:string|null}>(
+      "SELECT id,client_order_reference FROM service_valuations WHERE service_id=$1 FOR UPDATE",[id]);
+    if(!valuation)reject("Valorice el servicio antes de corregir la referencia.");
+    const previous=valuation.client_order_reference??"";
+    if(previous===data.client_order_reference)reject("La referencia no cambió.");
+    await tx.query("UPDATE service_valuations SET client_order_reference=NULLIF($2,'') WHERE id=$1",
+      [valuation.id,data.client_order_reference]);
+    await tx.query(`INSERT INTO audit_events(actor_id,action,entity_type,entity_id,previous_value,next_value)
+      VALUES($1,'update_reference','service_valuation',$2,$3,$4)`,
+      [actor.id,valuation.id,JSON.stringify({client_order_reference:previous||null}),
+        JSON.stringify({client_order_reference:data.client_order_reference||null,reason:data.reason})]);
+  });
+}
+
 export async function registerInvoice(actor:Actor,serviceId:string,input:unknown){
   admin(actor);
   const id=uuid.parse(serviceId);

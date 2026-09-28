@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { ZodError } from "zod";
 import { requireActor } from "@/lib/auth";
-import { addServiceCost, createContract, createTariff, FinanceError, registerInvoice, registerPayment, valueService, voidInvoice } from "@/lib/finance";
+import { addServiceCost, createContract, createTariff, FinanceError, registerInvoice, registerPayment, updateClientOrderReference, valueService, voidInvoice } from "@/lib/finance";
 
 const value=(form:FormData,key:string)=>String(form.get(key)??"");
 const detail=(id:string)=>`/finanzas/${encodeURIComponent(id)}`;
@@ -28,6 +28,8 @@ export async function createTariffAction(form:FormData){const actor=await requir
   unit_price_clp:value(form,"unit_price_clp"),valid_from:value(form,"valid_from"),valid_until:value(form,"valid_until")}));}
 export async function valueServiceAction(form:FormData){const actor=await requireActor();const id=value(form,"service_id");await run(detail(id),()=>valueService(actor,id,{
   tariff_id:value(form,"tariff_id"),client_order_reference:value(form,"client_order_reference")}));}
+export async function updateClientOrderReferenceAction(form:FormData){const actor=await requireActor();const id=value(form,"service_id");await run(detail(id),()=>updateClientOrderReference(actor,id,{
+  client_order_reference:value(form,"client_order_reference"),reason:value(form,"reason")}));}
 export async function registerInvoiceAction(form:FormData){const actor=await requireActor();const id=value(form,"service_id");await run(detail(id),()=>registerInvoice(actor,id,{
   invoice_number:value(form,"invoice_number"),issued_on:value(form,"issued_on"),due_on:value(form,"due_on")}));}
 export async function voidInvoiceAction(form:FormData){const actor=await requireActor();const id=value(form,"service_id");await run(detail(id),()=>voidInvoice(actor,value(form,"invoice_id"),value(form,"reason")));}
