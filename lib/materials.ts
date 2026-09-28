@@ -97,3 +97,16 @@ export async function updateMaterialPayment(actor:Actor,id:string,input:unknown)
       [actor.id,id,JSON.stringify(row),JSON.stringify(data)]);
   });
 }
+export async function updateMaterialReferences(actor:Actor,id:string,input:unknown){
+  manage(actor);uuid.parse(id);
+  const data=z.object({entry_sheet:z.string().trim().max(80),invoice_number:z.string().trim().max(80)}).parse(input);
+  await transaction(async tx=>{
+    const [row]=await tx.query<{entry_sheet:string|null;invoice_number:string|null}>(
+      "SELECT entry_sheet,invoice_number FROM material_receipts WHERE id=$1 FOR UPDATE",[id]);
+    if(!row)reject("Ingreso no encontrado.");
+    await tx.query("UPDATE material_receipts SET entry_sheet=NULLIF($2,''),invoice_number=NULLIF($3,''),updated_at=now() WHERE id=$1",
+      [id,data.entry_sheet,data.invoice_number]);
+    await tx.query("INSERT INTO audit_events(actor_id,action,entity_type,entity_id,previous_value,next_value) VALUES ($1,'update','material_receipt',$2,$3,$4)",
+      [actor.id,id,JSON.stringify(row),JSON.stringify(data)]);
+  });
+}
