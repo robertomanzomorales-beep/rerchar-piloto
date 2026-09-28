@@ -20,6 +20,9 @@ test("avería a orden de trabajo, repuestos y disponibilidad; planes, combustibl
   const actor:Actor={id:admin.id,name:"Administrador",email:"admin@test.cl",role:"admin",client_id:null};
   const outsider:Actor={id:driver.id,name:"Conductor",email:"driver@test.cl",role:"conductor",client_id:null};
   const asset=await pilot.createAsset(actor,{code:"CAM-900",label:"Camión piloto",kind:"camion",plate:""});
+  assert.equal((await continuity.listAssets(actor)).find(a=>a.id===asset)?.reading_unit,"km");
+  const ramp=await pilot.createAsset(actor,{code:"RAM-900",label:"Rampa piloto",kind:"rampa",plate:""});
+  assert.equal((await continuity.listAssets(actor)).find(a=>a.id===ramp)?.reading_unit,"sin");
   await assert.rejects(()=>continuity.setAssetDetails(outsider,asset,{brand:"Marca",model:"Serie",model_year:"2020",reading_unit:"km"}),continuity.ContinuityError);
   await continuity.setAssetDetails(actor,asset,{brand:"Marca",model:"Serie",model_year:"2020",reading_unit:"km"});
   await continuity.recordAssetReading(actor,asset,{reading:100,note:"Lectura inicial del odómetro"});
