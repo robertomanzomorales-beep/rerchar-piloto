@@ -10,6 +10,9 @@ test("Control de Guía registra una venta real con varios materiales y conserva 
   const {db,transaction}=await import("../lib/db");
   const guides=await import("../lib/material-guides");
   const materials=await import("../lib/materials");
+  const {entryHeaders,entryRow,buildEntryWorkbook}=await import("../lib/material-export");
+  const {addOperationFile}=await import("../lib/operation-files");
+  const {rercharReceiptGuideDashboard}=await import("../lib/company-dashboard");
   const stock=await import("../lib/material-stock");
   for(const name of (await readdir(resolve(process.cwd(),"db"))).filter(n=>/^\d+.*\.sql$/.test(n)).sort()){
     const sql=await readFile(resolve(process.cwd(),`db/${name}`),"utf8");
@@ -34,6 +37,28 @@ test("Control de Guía registra una venta real con varios materiales y conserva 
     truck_plate:"ABCD-12",origin_guide:"EXT-12",material_id:iron.id,supplier_kg:"900",rerchar_kg:"850",
     impurity_kg:"30",net_basis:"rerchar"});
   assert.equal((await materials.getMaterialReceipt(actor,receipt)).weighing_ticket,null,"recepción directa acepta guía sin ticket");
+  const monthly=await materials.exportMaterialReceipts(actor,"2026-09");
+  assert.equal(monthly.length,1);
+  assert.equal((await materials.exportMaterialReceipts(actor,"2026-10")).length,0);
+  assert.equal(entryHeaders.length,21,"columnas B:V del formato operativo");
+  assert.equal(entryRow(monthly[0])[10],820,"peso recibido calculado sin impurezas");
+  assert.equal(entryRow(monthly[0])[13],"EXT-12","guía de origen en la columna de la planilla");
+  assert.equal(buildEntryWorkbook(monthly,"2026-09").subarray(0,2).toString(),"PK","archivo Excel real");
+  await assert.rejects(()=>materials.exportMaterialReceipts(customer,"2026-09"),materials.MaterialError);
+  await materials.updateMaterialGuideFollowup(actor,receipt,{requested_on:"2026-09-02",received_on:"",valued_guide:""});
+  assert.equal((await materials.getMaterialReceipt(actor,receipt)).valued_guide,null,"ingreso pendiente sin bloqueo");
+  assert.equal((await rercharReceiptGuideDashboard()).pending,"1","la alerta muestra la guía pendiente");
+  await assert.rejects(()=>materials.updateMaterialGuideFollowup(actor,receipt,{requested_on:"2026-09-02",received_on:"2026-09-03",valued_guide:"GV-125"}),
+    /Adjunte la guía valorizada/);
+  const jpg=()=>new File([new Uint8Array([0xff,0xd8,0xff,0xd9])],"documento.jpg",{type:"image/jpeg"});
+  await addOperationFile(actor,"receipt",receipt,"foto_diferencia",jpg());
+  await addOperationFile(actor,"receipt",receipt,"guia_valorizada",jpg());
+  await assert.rejects(()=>materials.updateMaterialGuideFollowup(actor,receipt,{requested_on:"2026-09-04",received_on:"2026-09-03",valued_guide:"GV-125"}),
+    /no puede preceder/);
+  await materials.updateMaterialGuideFollowup(actor,receipt,{requested_on:"2026-09-02",received_on:"2026-09-03",valued_guide:"GV-125"});
+  assert.equal((await materials.getMaterialReceipt(actor,receipt)).valued_guide,"GV-125");
+  assert.equal((await rercharReceiptGuideDashboard()).pending,"0","al recibirla desaparece la alerta");
+  await assert.rejects(()=>materials.updateMaterialGuideFollowup(customer,receipt,{requested_on:"",received_on:"",valued_guide:""}),materials.MaterialError);
   assert.equal((await stock.listMaterialCatalog(actor)).find(m=>m.id===iron.id)?.quantity_kg,"0","registrar no suma stock sin confirmación");
   const receiptPosting=await stock.postReceiptToMaterialStock(actor,receipt);
   assert.equal(await stock.postReceiptToMaterialStock(actor,receipt),receiptPosting,"confirmación idempotente");

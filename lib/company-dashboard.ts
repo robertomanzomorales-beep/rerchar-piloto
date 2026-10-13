@@ -8,6 +8,18 @@ function missingTable(error:unknown){
   return typeof error==="object"&&error!==null&&"code" in error&&error.code==="42P01";
 }
 
+export async function rercharReceiptGuideDashboard(){
+  try{
+    const [row]=await db.query<{pending:string}>(`SELECT count(*)::text AS pending FROM material_receipts
+      WHERE valued_guide_requested_on IS NOT NULL AND valued_guide IS NULL`);
+    return {pending:row?.pending??"0",ready:true};
+  }catch(error){
+    if(typeof error==="object"&&error!==null&&"code" in error&&["42P01","42703"].includes(String(error.code)))
+      return {pending:"0",ready:false};
+    throw error;
+  }
+}
+
 // El panel sigue disponible cuando un despliegue de código antecede a la migración.
 // Otros errores de base de datos se propagan para no presentar cifras falsas.
 export async function rercharMaterialDashboard():Promise<MaterialStats>{

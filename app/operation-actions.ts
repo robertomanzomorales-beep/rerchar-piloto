@@ -4,7 +4,7 @@ import {redirect} from "next/navigation";
 import {revalidatePath} from "next/cache";
 import {ZodError} from "zod";
 import {requireActor} from "@/lib/auth";
-import {MaterialError,createMaterialReceipt,updateMaterialPayment,updateMaterialReferences} from "@/lib/materials";
+import {MaterialError,createMaterialReceipt,updateMaterialGuideFollowup,updateMaterialPayment,updateMaterialReferences} from "@/lib/materials";
 import {MaterialStockError} from "@/lib/material-stock";
 import {SupplierInvoiceError,createSupplierInvoice,registerSupplierPayment,updateSupplierInvoiceDueDate} from "@/lib/supplier-invoices";
 import {LedgerError,saveGuideFollowup,saveCommercialDetails} from "@/lib/service-ledger";
@@ -40,6 +40,11 @@ export async function updateMaterialReferencesAction(form:FormData){
   const actor=await requireActor(),id=val(form,"id");
   await run(`/ingresos/${encodeURIComponent(id)}`,()=>updateMaterialReferences(actor,id,{
     entry_sheet:val(form,"entry_sheet"),invoice_number:val(form,"invoice_number")}));
+}
+export async function updateMaterialGuideFollowupAction(form:FormData){
+  const actor=await requireActor(),id=val(form,"id");
+  await run(`/ingresos/${encodeURIComponent(id)}`,()=>updateMaterialGuideFollowup(actor,id,{
+    requested_on:val(form,"requested_on"),received_on:val(form,"received_on"),valued_guide:val(form,"valued_guide")}));
 }
 export async function createSupplierInvoiceAction(form:FormData){
   const actor=await requireActor();let id:string;

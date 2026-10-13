@@ -7,7 +7,7 @@ import { companies, type Company } from "@/lib/companies";
 import { listServices } from "@/lib/pilot";
 import { listQuotes, quoteFolio } from "@/lib/quotes";
 import { ServiceTable, chileDate } from "@/components/UI";
-import {rercharMaterialDashboard,eyjPaymentDashboard} from "@/lib/company-dashboard";
+import {rercharMaterialDashboard,rercharReceiptGuideDashboard,eyjPaymentDashboard} from "@/lib/company-dashboard";
 
 type ServiceMetrics = { total:string; requested:string; scheduled:string; in_route:string; pending_review:string; completed:string; critical:string };
 type QuoteMetrics = { total:string; draft:string; sent:string; accepted:string; expired:string };
@@ -22,7 +22,7 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
   const company = companies[selected];
   const showQuotes = actor.role !== "conductor";
   const today = new Intl.DateTimeFormat("sv-SE",{timeZone:"America/Santiago",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
-  const [quotes,services,serviceStats,quoteStats,months,guideAlerts,invoiceAlerts,unclassified,materials,payments] = await Promise.all([
+  const [quotes,services,serviceStats,quoteStats,months,guideAlerts,invoiceAlerts,unclassified,materials,payments,receiptGuides] = await Promise.all([
     showQuotes ? listQuotes(actor,"",selected) : Promise.resolve([]),
     listServices(actor,"","",selected),
     db.query<ServiceMetrics>(`SELECT count(*)::text AS total,
@@ -56,6 +56,7 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
     canManage(actor) ? db.query<{total:string}>("SELECT count(*)::text AS total FROM service_requests WHERE operating_company IS NULL AND deleted_at IS NULL") : Promise.resolve([]),
     selected==="rerchar"&&canManage(actor) ? rercharMaterialDashboard() : Promise.resolve(null),
     selected==="e_y_j"&&canManage(actor) ? eyjPaymentDashboard() : Promise.resolve(null),
+    selected==="rerchar"&&canManage(actor) ? rercharReceiptGuideDashboard() : Promise.resolve(null),
   ]);
   const s=serviceStats[0],q=quoteStats[0];
   const maxMonth=Math.max(1,...months.map(m=>value(m.total)));
@@ -73,6 +74,7 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
     ...(canManage(actor)?[{label:"Compras con documentos por validar",count:value(s?.pending_review),href:`/solicitudes?empresa=${selected}&estado=pendiente_revision`}]:[]),
     ...(canManage(actor)?[{label:"Guías valorizadas solicitadas y no recibidas",count:value(guideAlerts[0]?.total),href:`/seguimiento-guias?empresa=${selected}`}]:[]),
     ...(selected==="rerchar"&&canManage(actor)?[{label:"Ventas de material con pesaje, factura o pago pendientes",count:value(materials?.guides.pending),href:"/control-guias"}]:[]),
+    ...(selected==="rerchar"&&canManage(actor)&&receiptGuides?.ready?[{label:"Ingresos esperando guía valorizada",count:value(receiptGuides.pending),href:"/ingresos"}]:[]),
     ...(selected==="rerchar"&&canManage(actor)&&materials?.stock_ready?[{label:"Guías anteriores con salida de stock por conciliar",count:value(materials.guides.stock_pending),href:"/control-guias"}]:[]),
     ...(selected==="e_y_j"&&canManage(actor)&&payments?.ready?[{label:"Estados de pago por completar o corregir",count:value(payments.pending),href:"/estados-pago"}]:[]),
     ...(actor.role==="admin"?[{label:"Facturas de proveedores vencidas con saldo",count:value(invoiceAlerts[0]?.total),href:`/facturas-recibidas?empresa=${selected}`}]:[]),

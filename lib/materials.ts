@@ -28,6 +28,7 @@ export type MaterialReceipt={id:string;client_id:string;client_name:string;servi
   weighing_ticket:string|null;material_name:string;supplier_kg:string|null;rerchar_kg:string|null;impurity_kg:string;
   net_basis:"proveedor"|"rerchar";net_reported_kg:string|null;impurity_report:string|null;origin_guide:string|null;
   transfer_guide:string|null;entry_sheet:string|null;valued_guide:string|null;certificate_number:string|null;
+  valued_guide_requested_on:Date|string|null;valued_guide_received_on:Date|string|null;
   act_number:string|null;invoice_number:string|null;unit_price_clp:string|null;payment_status:string;paid_on:Date|string|null;
   notes:string|null;created_at:Date};
 const select=`SELECT r.*,c.name AS client_name,s.folio AS service_folio FROM material_receipts r JOIN clients c ON c.id=r.client_id
@@ -43,6 +44,17 @@ export async function getMaterialReceipt(actor:Actor,id:string){
   const [row]=await db.query<MaterialReceipt>(`${select} WHERE r.id=$1`,[id]);
   if(!row||actor.role==="conductor"||(actor.role==="cliente"&&actor.client_id!==row.client_id))reject("Ingreso no disponible.");
   return row;
+}
+export async function exportMaterialReceipts(actor:Actor,month:string,clientId=""){
+  manage(actor);
+  if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month))reject("Seleccione un mes válido.");
+  if(clientId&&!uuid.safeParse(clientId).success)reject("Seleccione un cliente válido.");
+  const rows=await db.query<MaterialReceipt>(`${select} WHERE r.movement_on >= $1::date
+    AND r.movement_on < $1::date + interval '1 month'
+    AND ($2::text='' OR r.client_id=NULLIF($2,'')::uuid)
+    ORDER BY r.movement_on,r.created_at,r.id LIMIT 10001`,[`${month}-01`,clientId]);
+  if(rows.length>10000)reject("El mes supera 10.000 registros. Descargue por cliente para conservar todos los ingresos.");
+  return rows;
 }
 export async function createMaterialReceipt(actor:Actor,input:unknown){
   manage(actor);
@@ -122,6 +134,30 @@ export async function updateMaterialReferences(actor:Actor,id:string,input:unkno
     await tx.query("UPDATE material_receipts SET entry_sheet=NULLIF($2,''),invoice_number=NULLIF($3,''),updated_at=now() WHERE id=$1",
       [id,data.entry_sheet,data.invoice_number]);
     await tx.query("INSERT INTO audit_events(actor_id,action,entity_type,entity_id,previous_value,next_value) VALUES ($1,'update','material_receipt',$2,$3,$4)",
+      [actor.id,id,JSON.stringify(row),JSON.stringify(data)]);
+  });
+}
+
+export async function updateMaterialGuideFollowup(actor:Actor,id:string,input:unknown){
+  manage(actor);uuid.parse(id);
+  const data=z.object({requested_on:z.union([z.iso.date(),z.literal("")]),
+    received_on:z.union([z.iso.date(),z.literal("")]),valued_guide:z.string().trim().max(80)}).parse(input);
+  if(Boolean(data.received_on)!==Boolean(data.valued_guide))
+    reject("Para registrar la recepción indique fecha y número de guía valorizada juntos.");
+  if(data.requested_on&&data.received_on&&data.received_on<data.requested_on)
+    reject("La recepción no puede preceder a la solicitud.");
+  await transaction(async tx=>{
+    const [row]=await tx.query<{valued_guide:string|null;valued_guide_requested_on:Date|string|null;valued_guide_received_on:Date|string|null}>(
+      "SELECT valued_guide,valued_guide_requested_on,valued_guide_received_on FROM material_receipts WHERE id=$1 FOR UPDATE",[id]);
+    if(!row)reject("Ingreso no encontrado.");
+    if(data.valued_guide){
+      const [file]=await tx.query("SELECT id FROM operation_files WHERE receipt_id=$1 AND kind='guia_valorizada' LIMIT 1",[id]);
+      if(!file)reject("Adjunte la guía valorizada recibida antes de registrar su número y fecha.");
+    }
+    await tx.query(`UPDATE material_receipts SET valued_guide_requested_on=NULLIF($2,'')::date,
+      valued_guide_received_on=NULLIF($3,'')::date,valued_guide=NULLIF($4,''),updated_at=now() WHERE id=$1`,
+      [id,data.requested_on,data.received_on,data.valued_guide]);
+    await tx.query("INSERT INTO audit_events(actor_id,action,entity_type,entity_id,previous_value,next_value) VALUES ($1,'valued_guide','material_receipt',$2,$3,$4)",
       [actor.id,id,JSON.stringify(row),JSON.stringify(data)]);
   });
 }

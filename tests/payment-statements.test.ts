@@ -8,7 +8,7 @@ import type {Actor} from "../lib/auth";
 test("panel RERCHAR no cae entre migraciones y E y J calcula los dos formatos EDP",async()=>{
   process.env.PGLITE_DATA_DIR="memory://";
   const {db,transaction}=await import("../lib/db");
-  const {rercharMaterialDashboard,eyjPaymentDashboard}=await import("../lib/company-dashboard");
+  const {rercharMaterialDashboard,rercharReceiptGuideDashboard,eyjPaymentDashboard}=await import("../lib/company-dashboard");
   const {moduleReady}=await import("../lib/schema-readiness");
   const edp=await import("../lib/payment-statements");
   const migrations=(await readdir(resolve(process.cwd(),"db"))).filter(n=>/^\d+.*\.sql$/.test(n)).sort();
@@ -26,6 +26,7 @@ test("panel RERCHAR no cae entre migraciones y E y J calcula los dos formatos ED
   assert.equal((await rercharMaterialDashboard()).stock_ready,false,"la ausencia de tabla 020 no deja pantalla negra");
   assert.equal((await eyjPaymentDashboard()).ready,false,"el panel E y J admite código anterior a la tabla EDP");
   await apply("020_stock_materiales_y_recepcion_directa.sql");
+  assert.equal((await rercharReceiptGuideDashboard()).ready,false,"la alerta nueva no derriba el panel antes de migrar 024");
   assert.equal(await moduleReady("guias"),true);
   assert.equal(await moduleReady("ingresos"),true);
   assert.equal(await moduleReady("stock"),true);
