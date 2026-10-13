@@ -21,7 +21,7 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
   const company = companies[selected];
   const showQuotes = actor.role !== "conductor";
   const today = new Intl.DateTimeFormat("sv-SE",{timeZone:"America/Santiago",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
-  const [quotes,services,serviceStats,quoteStats,months,guideAlerts,invoiceAlerts,unclassified] = await Promise.all([
+  const [quotes,services,serviceStats,quoteStats,months,guideAlerts,invoiceAlerts,unclassified,materialGuideStats] = await Promise.all([
     showQuotes ? listQuotes(actor,"",selected) : Promise.resolve([]),
     listServices(actor,"","",selected),
     db.query<ServiceMetrics>(`SELECT count(*)::text AS total,
@@ -52,6 +52,11 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
     actor.role === "admin" ? db.query<{total:string}>(`SELECT count(*)::text AS total FROM supplier_invoices
       WHERE issuer=$1 AND due_on<$2::date AND status IN ('pendiente','parcial') AND paid_clp<total_clp`,[selected,today]) : Promise.resolve([]),
     canManage(actor) ? db.query<{total:string}>("SELECT count(*)::text AS total FROM service_requests WHERE operating_company IS NULL AND deleted_at IS NULL") : Promise.resolve([]),
+    selected==="rerchar"&&canManage(actor) ? db.query<{total:string;pending:string}>(`SELECT count(*)::text AS total,
+      count(*) FILTER (WHERE movement_type='venta' AND EXISTS (
+        SELECT 1 FROM material_guide_items i WHERE i.guide_id=g.id AND
+          (i.arrival_kg IS NULL OR i.invoice_number IS NULL OR (i.invoice_number IS NOT NULL AND i.invoice_status IS DISTINCT FROM 'pagada'))))::text AS pending
+      FROM material_guides g WHERE operating_company='rerchar'`) : Promise.resolve([]),
   ]);
   const s=serviceStats[0],q=quoteStats[0];
   const maxMonth=Math.max(1,...months.map(m=>value(m.total)));
@@ -66,6 +71,7 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
     ...(showQuotes?[{label:"Cotizaciones enviadas con vigencia vencida",count:value(q?.expired),href:`/cotizaciones?empresa=${selected}`}]:[]),
     {label:"Servicios críticos aún abiertos",count:value(s?.critical),href:`/solicitudes?empresa=${selected}`},
     ...(canManage(actor)?[{label:"Guías valorizadas solicitadas y no recibidas",count:value(guideAlerts[0]?.total),href:`/seguimiento-guias?empresa=${selected}`}]:[]),
+    ...(selected==="rerchar"&&canManage(actor)?[{label:"Ventas de material con pesaje, factura o pago pendientes",count:value(materialGuideStats[0]?.pending),href:"/control-guias"}]:[]),
     ...(actor.role==="admin"?[{label:"Facturas de proveedores vencidas con saldo",count:value(invoiceAlerts[0]?.total),href:`/facturas-recibidas?empresa=${selected}`}]:[]),
   ];
   return <>
@@ -77,7 +83,7 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
     <div className="company-metric-grid">
       <Link href={`/cotizaciones?empresa=${selected}`} className="company-metric"><span>Cotizaciones</span><strong>{value(q?.total)}</strong><small>{value(q?.accepted)} aceptadas</small></Link>
       <Link href={`/solicitudes?empresa=${selected}`} className="company-metric"><span>Servicios registrados</span><strong>{value(s?.total)}</strong><small>{value(s?.requested)} por planificar</small></Link>
-      <Link href={`/solicitudes?empresa=${selected}&estado=en_ruta`} className="company-metric"><span>En ruta</span><strong>{value(s?.in_route)}</strong><small>En ejecución</small></Link>
+      {selected==="rerchar"&&canManage(actor)?<Link href="/control-guias" className="company-metric"><span>Control de guías</span><strong>{value(materialGuideStats[0]?.total)}</strong><small>{value(materialGuideStats[0]?.pending)} ventas por cerrar</small></Link>:<Link href={`/solicitudes?empresa=${selected}&estado=en_ruta`} className="company-metric"><span>En ruta</span><strong>{value(s?.in_route)}</strong><small>En ejecución</small></Link>}
       <Link href={`/solicitudes?empresa=${selected}&estado=completada`} className="company-metric"><span>Completados</span><strong>{value(s?.completed)}</strong><small>Con cierre registrado</small></Link>
     </div>
     <div className="company-analytics">
@@ -87,8 +93,8 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
     <section className="section-card company-alerts"><div className="section-heading"><div><div className="eyebrow">ATENCIÓN DEL EQUIPO</div><h2><AlertTriangle size={20}/> Alertas y pendientes</h2></div></div><div className="company-alert-list">{alerts.map(a=><Link href={a.href} key={a.label} className="company-alert"><strong>{a.count}</strong><span>{a.label}</span><ArrowRight size={17}/></Link>)}</div>{alerts.every(a=>a.count===0)&&<p className="helper-text"><CheckCircle2 size={15}/> Sin pendientes registrados en estas categorías.</p>}</section>
     <section className="section-card company-processes"><div className="eyebrow">PROCESO SEGÚN PLANILLAS Y REUNIONES</div><h2>{selected==="rerchar"?"Compra, venta y gestión de material":"Servicios, transporte y arriendos"}</h2><div className="company-process-links">
       <Link href={`/cotizaciones?empresa=${selected}`}>1. Cotizaciones <ArrowRight size={16}/></Link>
-      <Link href={`/solicitudes?empresa=${selected}`}>2. Solicitudes y planificación <ArrowRight size={16}/></Link>
-      <Link href={`/seguimiento-guias?empresa=${selected}`}>3. Guías y seguimiento <ArrowRight size={16}/></Link>
+      {selected==="rerchar"&&canManage(actor)?<Link href="/control-guias">2. Control de guía y salida de material <ArrowRight size={16}/></Link>:<Link href={`/solicitudes?empresa=${selected}`}>2. Solicitudes y planificación <ArrowRight size={16}/></Link>}
+      {selected==="rerchar"?<Link href="/ingresos">3. Ingreso de material <ArrowRight size={16}/></Link>:<Link href={`/seguimiento-guias?empresa=${selected}`}>3. Guías y seguimiento <ArrowRight size={16}/></Link>}
       <Link href={`/finanzas?empresa=${selected}`}>4. Valorización y cobros <ArrowRight size={16}/></Link>
     </div><p className="helper-text">El flujo completo de estados de pago, arriendos y otras observaciones continúa en desarrollo; estos accesos muestran los módulos existentes.</p></section>
     {showQuotes && <section className="section-card"><div className="section-heading"><div><div className="eyebrow">COMERCIAL · {company.short}</div><h2>Cotizaciones recientes</h2></div><Link href={`/cotizaciones?empresa=${selected}`} className="text-link">Ver todas <ArrowRight size={16}/></Link></div>{quotes.length ? <div className="table-wrap"><table className="data-table"><thead><tr><th>Folio</th><th>Cliente</th><th>Asunto</th><th>Estado</th><th>Fecha</th></tr></thead><tbody>{quotes.slice(0,5).map(item=><tr key={item.id}><td><Link href={`/cotizaciones/${item.id}`}><strong>{quoteFolio(item)}</strong></Link></td><td>{item.client_name}</td><td>{item.title}</td><td>{item.status}</td><td>{chileDate(item.created_at)}</td></tr>)}</tbody></table></div> : <p className="muted">Aún no hay cotizaciones registradas para {company.short}.</p>}</section>}

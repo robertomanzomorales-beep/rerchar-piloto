@@ -24,6 +24,7 @@ export default function Shell({ actor, children }: { actor: Actor; children: Rea
     { group:"Comercial", href: "/cotizaciones", text: "Cotizaciones", icon: FileText, visible: actor.role !== "conductor" },
     { group:"Comercial", href: "/clientes", text: "Clientes y documentos", icon: Building2, visible: actor.role !== "conductor" },
     { group:"Operación", href: "/solicitudes", text: "Solicitudes y despacho", icon: ClipboardList, visible: true },
+    { group:"Operación", href: "/control-guias", text: "Control de guías · material", icon: FileText, visible: selectedCompany!=="e_y_j" && (actor.role === "admin" || actor.role === "operaciones") },
     { group:"Operación", href: "/agenda", text: "Agenda", icon: CalendarDays, visible: true },
     { group:"Operación", href: "/seguimiento-guias", text: "Guías valorizadas", icon: ClipboardList, visible: actor.role === "admin" || actor.role === "operaciones" },
     { group:"Operación", href: "/ingresos", text: "Ingreso de material", icon: Boxes, visible: actor.role !== "conductor" },
