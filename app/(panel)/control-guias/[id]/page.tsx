@@ -10,6 +10,8 @@ import {saveMaterialGuideItemAction,updateMaterialGuideAction} from "@/app/mater
 import {SubmitButton} from "@/components/Transition";
 import {Notice} from "@/components/UI";
 import PrintButton from "@/components/PrintButton";
+import {moduleReady} from "@/lib/schema-readiness";
+import ModuleUnavailable from "@/components/ModuleUnavailable";
 
 const kg=(v:number|string|null)=>v==null?"Pendiente":`${Number(v).toLocaleString("es-CL",{maximumFractionDigits:2})} kg`;
 const money=(v:number|string|null)=>v==null?"Pendiente":`$${Number(v).toLocaleString("es-CL",{maximumFractionDigits:2})}`;
@@ -18,6 +20,7 @@ const company="RERCHAR CHILE SPA";
 
 export default async function MaterialGuideDetail({params,searchParams}:{params:Promise<{id:string}>;searchParams:Promise<{error?:string;ok?:string;editar?:string}>}){
   const actor=await requireActor(),{id}=await params;
+  if(!await moduleReady("guias"))return <ModuleUnavailable title="Control de guías" company="rerchar"/>;
   let detail;
   try{detail=await getMaterialGuide(actor,id);}catch(error){if(error instanceof MaterialGuideError)notFound();throw error;}
   const [clients,catalog,postings,query]=await Promise.all([db.query<{id:string;name:string}>("SELECT id,name FROM clients WHERE deleted_at IS NULL ORDER BY name"),

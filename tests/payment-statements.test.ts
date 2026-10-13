@@ -9,16 +9,29 @@ test("panel RERCHAR no cae entre migraciones y E y J calcula los dos formatos ED
   process.env.PGLITE_DATA_DIR="memory://";
   const {db,transaction}=await import("../lib/db");
   const {rercharMaterialDashboard,eyjPaymentDashboard}=await import("../lib/company-dashboard");
+  const {moduleReady}=await import("../lib/schema-readiness");
   const edp=await import("../lib/payment-statements");
   const migrations=(await readdir(resolve(process.cwd(),"db"))).filter(n=>/^\d+.*\.sql$/.test(n)).sort();
   async function apply(name:string){
     const sql=await readFile(resolve(process.cwd(),`db/${name}`),"utf8");
     await transaction(async tx=>{for(const part of sql.split(/;\s*(?:\n|$)/).map(s=>s.trim()).filter(Boolean))await tx.query(part);});
   }
-  for(const name of migrations.filter(n=>n<"020"))await apply(name);
+  for(const name of migrations.filter(n=>n<"019"))await apply(name);
+  assert.equal(await moduleReady("guias"),false);
+  assert.equal(await moduleReady("ingresos"),false);
+  assert.equal(await moduleReady("stock"),false);
+  assert.equal(await moduleReady("edp"),false);
+  await apply("019_control_guias_material.sql");
+  assert.equal(await moduleReady("guias"),false,"el módulo espera también la salida de stock 020");
   assert.equal((await rercharMaterialDashboard()).stock_ready,false,"la ausencia de tabla 020 no deja pantalla negra");
   assert.equal((await eyjPaymentDashboard()).ready,false,"el panel E y J admite código anterior a la tabla EDP");
-  for(const name of migrations.filter(n=>n>="020"))await apply(name);
+  await apply("020_stock_materiales_y_recepcion_directa.sql");
+  assert.equal(await moduleReady("guias"),true);
+  assert.equal(await moduleReady("ingresos"),true);
+  assert.equal(await moduleReady("stock"),true);
+  assert.equal(await moduleReady("edp"),false);
+  await apply("021_estados_pago_eyj.sql");
+  assert.equal(await moduleReady("edp"),true);
   assert.equal((await rercharMaterialDashboard()).stock_ready,true);
   assert.equal((await eyjPaymentDashboard()).ready,true);
   const [client]=await db.query<{id:string}>("INSERT INTO clients(name,tax_id,address,email) VALUES('Cliente Industrial A','99.999.999-9','Dirección de prueba 123','contacto@ejemplo.cl') RETURNING id");

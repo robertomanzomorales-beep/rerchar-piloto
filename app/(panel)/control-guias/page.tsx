@@ -4,6 +4,8 @@ import {requireActor,canManage} from "@/lib/auth";
 import {db} from "@/lib/db";
 import {listMaterialGuides} from "@/lib/material-guides";
 import {serviceFolio} from "@/lib/companies";
+import {moduleReady} from "@/lib/schema-readiness";
+import ModuleUnavailable from "@/components/ModuleUnavailable";
 
 const kg=(value:string|null)=>value==null?"—":`${Number(value).toLocaleString("es-CL",{maximumFractionDigits:2})} kg`;
 const day=(value:Date|string)=>new Intl.DateTimeFormat("es-CL",{dateStyle:"short",timeZone:"UTC"}).format(new Date(value));
@@ -12,6 +14,7 @@ type LinkedGuide={service_id:string;folio:string;guide_number:string;client_name
 export default async function MaterialGuides({searchParams}:{searchParams:Promise<{q?:string;tipo?:string}>}){
   const actor=await requireActor();
   if(!canManage(actor))return <section className="section-card"><h1>Control de guías</h1><p>Este registro está disponible para administración y operaciones.</p></section>;
+  if(!await moduleReady("guias"))return <ModuleUnavailable title="Control de guías" company="rerchar"/>;
   const {q="",tipo=""}=await searchParams;
   const type=["venta","compra","traslado"].includes(tipo)?tipo:"";
   const [guides,linked]=await Promise.all([

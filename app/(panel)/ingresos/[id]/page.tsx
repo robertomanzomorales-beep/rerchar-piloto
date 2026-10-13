@@ -9,11 +9,14 @@ import {SubmitButton} from "@/components/Transition";
 import PrintButton from "@/components/PrintButton";
 import {listMaterialCatalog,receiptStockPosting} from "@/lib/material-stock";
 import {linkReceiptMaterialAction,postReceiptMaterialAction} from "@/app/material-stock-actions";
+import {moduleReady} from "@/lib/schema-readiness";
+import ModuleUnavailable from "@/components/ModuleUnavailable";
 
 const format=(n:number|null)=>n==null?"—":n.toLocaleString("es-CL",{maximumFractionDigits:2});
 const date=(v:Date|string|null)=>!v?"—":v instanceof Date?v.toISOString().slice(0,10):String(v).slice(0,10);
 export default async function MaterialDetail({params,searchParams}:{params:Promise<{id:string}>;searchParams:Promise<{error?:string;ok?:string}>}){
   const actor=await requireActor(),{id}=await params;
+  if(!await moduleReady("ingresos"))return <ModuleUnavailable title="Ingreso de material" company="rerchar"/>;
   let r;try{r=await getMaterialReceipt(actor,id);}catch(e){if(e instanceof MaterialError)notFound();throw e;}
   const [files,query,catalog,posting]=await Promise.all([listOperationFiles(actor,"receipt",id),searchParams,
     canManage(actor)?listMaterialCatalog(actor):Promise.resolve([]),canManage(actor)?receiptStockPosting(actor,id):Promise.resolve(null)]);

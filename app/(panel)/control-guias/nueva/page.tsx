@@ -8,10 +8,13 @@ import {GuideHeaderFields,GuideItemFields} from "@/components/MaterialGuideForms
 import {createMaterialGuideAction} from "@/app/material-guide-actions";
 import {SubmitButton} from "@/components/Transition";
 import {Notice} from "@/components/UI";
+import {moduleReady} from "@/lib/schema-readiness";
+import ModuleUnavailable from "@/components/ModuleUnavailable";
 
 export default async function NewMaterialGuide({searchParams}:{searchParams:Promise<{error?:string}>}){
   const actor=await requireActor();
   if(!canManage(actor))return <section className="section-card"><h1>Nueva guía</h1><p>Sin permiso para registrar guías.</p></section>;
+  if(!await moduleReady("guias"))return <ModuleUnavailable title="Nueva guía de material" company="rerchar"/>;
   const [clients,catalog,query]=await Promise.all([db.query<{id:string;name:string}>("SELECT id,name FROM clients WHERE deleted_at IS NULL ORDER BY name"),listMaterialCatalog(actor),searchParams]);
   const today=new Intl.DateTimeFormat("sv-SE",{timeZone:"America/Santiago",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
   return <>

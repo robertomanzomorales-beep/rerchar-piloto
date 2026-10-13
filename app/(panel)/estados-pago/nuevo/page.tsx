@@ -7,9 +7,12 @@ import StatementHeaderForm from "@/components/StatementHeaderForm";
 import {createStatementAction} from "@/app/payment-statement-actions";
 import {Notice} from "@/components/UI";
 import {SubmitButton} from "@/components/Transition";
+import {moduleReady} from "@/lib/schema-readiness";
+import ModuleUnavailable from "@/components/ModuleUnavailable";
 
 export default async function NewStatement({searchParams}:{searchParams:Promise<{error?:string}>}){
   const actor=await requireActor();if(actor.role!=="admin")redirect("/estados-pago");
+  if(!await moduleReady("edp"))return <ModuleUnavailable title="Nuevo estado de pago" company="e_y_j"/>;
   const [clients,query]=await Promise.all([db.query<{id:string;name:string;tax_id:string|null;address:string|null;email:string|null}>(
     "SELECT id,name,tax_id,address,email FROM clients WHERE deleted_at IS NULL ORDER BY name"),searchParams]);
   const today=new Intl.DateTimeFormat("sv-SE",{timeZone:"America/Santiago",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());

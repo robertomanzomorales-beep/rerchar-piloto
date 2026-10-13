@@ -4,11 +4,14 @@ import {Plus,ReceiptText} from "lucide-react";
 import {requireActor,canManage} from "@/lib/auth";
 import {listPaymentStatements} from "@/lib/payment-statements";
 import {Notice} from "@/components/UI";
+import {moduleReady} from "@/lib/schema-readiness";
+import ModuleUnavailable from "@/components/ModuleUnavailable";
 
 const day=(v:Date|string)=>new Intl.DateTimeFormat("es-CL",{month:"long",year:"numeric",timeZone:"UTC"}).format(new Date(v));
 const labels={residuos:"Transporte y disposición",arriendo:"Arriendo de equipo"};
 export default async function PaymentStatements({searchParams}:{searchParams:Promise<{error?:string;ok?:string}>}){
   const actor=await requireActor();if(!canManage(actor))redirect("/");
+  if(!await moduleReady("edp"))return <ModuleUnavailable title="Estados de pago" company="e_y_j"/>;
   const [rows,query]=await Promise.all([listPaymentStatements(actor),searchParams]);
   return <>
     <div className="page-title-row"><div><div className="eyebrow">E Y J · COBRANZA CONTRACTUAL</div><h1>Estados de pago</h1><p className="page-intro">Transporte y disposición por tickets, o arriendo de equipo por período. Valores en CLP o UF según el contrato.</p></div>{actor.role==="admin"&&<Link href="/estados-pago/nuevo" className="button button-primary"><Plus size={17}/> Nuevo EDP</Link>}</div>

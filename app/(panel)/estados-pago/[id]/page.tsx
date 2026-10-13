@@ -6,6 +6,8 @@ import {saveStatementOperationAction,saveStatementChargeAction,deleteStatementLi
 import {Notice} from "@/components/UI";
 import {SubmitButton} from "@/components/Transition";
 import PrintButton from "@/components/PrintButton";
+import {moduleReady} from "@/lib/schema-readiness";
+import ModuleUnavailable from "@/components/ModuleUnavailable";
 
 const money=(value:number|null)=>value==null?"Pendiente":`$${value.toLocaleString("es-CL")}`;
 const number=(value:string|number|null)=>value==null?"—":Number(value).toLocaleString("es-CL",{maximumFractionDigits:3});
@@ -42,6 +44,7 @@ function ChargeFields({item,next,type}:{item?:Charge;next:number;type:"residuos"
 
 export default async function StatementDetail({params,searchParams}:{params:Promise<{id:string}>;searchParams:Promise<{error?:string;ok?:string}>}){
   const actor=await requireActor();if(!canManage(actor))redirect("/");
+  if(!await moduleReady("edp"))return <ModuleUnavailable title="Estado de pago" company="e_y_j"/>;
   const {id}=await params;
   let detail;try{detail=await getPaymentStatement(actor,id);}catch(error){if(error instanceof PaymentStatementError)notFound();throw error;}
   const query=await searchParams,{statement:s,operations,charges,totals}=detail;

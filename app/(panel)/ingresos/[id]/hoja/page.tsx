@@ -5,12 +5,15 @@ import {requireActor} from "@/lib/auth";
 import {db} from "@/lib/db";
 import {getMaterialReceipt,materialAmounts,MaterialError} from "@/lib/materials";
 import PrintButton from "@/components/PrintButton";
+import {moduleReady} from "@/lib/schema-readiness";
+import ModuleUnavailable from "@/components/ModuleUnavailable";
 
 const format=(n:number|null)=>n==null?"Pendiente":n.toLocaleString("es-CL",{maximumFractionDigits:2});
 const date=(value:Date|string)=>new Intl.DateTimeFormat("es-CL",{dateStyle:"long",timeZone:"UTC"}).format(new Date(value));
 
 export default async function EntrySheet({params}:{params:Promise<{id:string}>}){
   const actor=await requireActor();
+  if(!await moduleReady("ingresos"))return <ModuleUnavailable title="Hoja de ingreso" company="rerchar"/>;
   const {id}=await params;
   let receipt;
   try{receipt=await getMaterialReceipt(actor,id);}catch(error){if(error instanceof MaterialError)notFound();throw error;}

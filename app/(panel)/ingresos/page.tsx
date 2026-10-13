@@ -9,11 +9,14 @@ import {Notice} from "@/components/UI";
 import {SubmitButton} from "@/components/Transition";
 import {serviceFolio} from "@/lib/companies";
 import {listMaterialCatalog} from "@/lib/material-stock";
+import {moduleReady} from "@/lib/schema-readiness";
+import ModuleUnavailable from "@/components/ModuleUnavailable";
 
 const date=(v:Date|string)=>v instanceof Date?v.toISOString().slice(0,10):String(v).slice(0,10);
 
 export default async function MaterialReceipts({searchParams}:{searchParams:Promise<{error?:string;ok?:string}>}){
   const actor=await requireActor();if(actor.role==="conductor")redirect("/");
+  if(!await moduleReady("ingresos"))return <ModuleUnavailable title="Ingresos de material" company="rerchar"/>;
   const [query,rows,clients,services,catalog]=await Promise.all([searchParams,listMaterialReceipts(actor),
     canManage(actor)?db.query<{id:string;name:string}>("SELECT id,name FROM clients WHERE deleted_at IS NULL ORDER BY name"):Promise.resolve([]),
     canManage(actor)?db.query<{id:string;folio:string;operating_company:"rerchar";client_name:string}>(`SELECT s.id,s.folio,s.operating_company,c.name AS client_name FROM service_requests s

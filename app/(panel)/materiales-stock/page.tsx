@@ -5,6 +5,8 @@ import {listMaterialCatalog,listMaterialStockMovements} from "@/lib/material-sto
 import {adjustMaterialStockAction} from "@/app/material-stock-actions";
 import {Notice} from "@/components/UI";
 import {SubmitButton} from "@/components/Transition";
+import {moduleReady} from "@/lib/schema-readiness";
+import ModuleUnavailable from "@/components/ModuleUnavailable";
 
 const kg=(v:string|number)=>`${Number(v).toLocaleString("es-CL",{maximumFractionDigits:2})} kg`;
 const date=(v:Date|string)=>v instanceof Date?v.toISOString().slice(0,10):String(v).slice(0,10);
@@ -12,6 +14,7 @@ const kinds:Record<string,string>={saldo_inicial:"Saldo inicial",ingreso:"Recepc
 
 export default async function MaterialStockPage({searchParams}:{searchParams:Promise<{material?:string;error?:string;ok?:string}>}){
   const actor=await requireActor();if(!canManage(actor))redirect("/");
+  if(!await moduleReady("stock"))return <ModuleUnavailable title="Stock de materiales" company="rerchar"/>;
   const params=await searchParams;
   const [catalog,allMovements]=await Promise.all([listMaterialCatalog(actor),listMaterialStockMovements(actor)]);
   const selected=catalog.find(m=>m.id===params.material);
