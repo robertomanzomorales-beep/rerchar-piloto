@@ -85,7 +85,11 @@ export async function createServiceAction(form: FormData) {
       estimated_kg: value(form,"estimated_kg"), origin: value(form,"origin"), destination: value(form,"destination"),
       priority: value(form,"priority"), notes: value(form,"notes"),
     });
-  } catch (error) { redirect(`/solicitudes/nueva?error=${encodeURIComponent(message(error))}`); }
+  } catch (error) {
+    const params=new URLSearchParams({error:message(error)});
+    if(value(form,"quote_id"))params.set("cotizacion",value(form,"quote_id"));
+    redirect(`/solicitudes/nueva?${params.toString()}`);
+  }
   revalidatePath("/", "layout");
   redirect(`${servicePath(id)}?ok=1`);
 }

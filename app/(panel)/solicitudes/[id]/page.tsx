@@ -5,7 +5,8 @@ import { requireActor, canManage, canPlan, canWorkService } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getService, PilotError } from "@/lib/pilot";
 import { addEvidenceAction, assignServiceAction, cancelServiceAction, classifyServiceCompanyAction, createDriverForServiceAction, finishServiceAction, saveChecklistAction, startServiceAction } from "@/app/actions";
-import {companyName,serviceFolio} from "@/lib/companies";
+import {companyName,serviceFolio,quoteFolio} from "@/lib/companies";
+import type {Company} from "@/lib/companies";
 import { Badge, Breadcrumb, chileDate, Notice } from "@/components/UI";
 import { SubmitButton } from "@/components/Transition";
 
@@ -21,7 +22,7 @@ export default async function ServiceDetail({ params, searchParams }: { params: 
   let service;
   try { service = await getService(actor, id); }
   catch (error) { if (error instanceof PilotError) notFound(); throw error; }
-  const [timeline, evidence, checks, assets, ramps, drivers, containerMoves, wasteRecord, certificate] = await Promise.all([
+  const [timeline, evidence, checks, assets, ramps, drivers, containerMoves, wasteRecord, certificate, sourceQuotes, sourceLines] = await Promise.all([
     db.query<{ id: string; description: string; kind: string; created_at: Date; actor_name: string }>(
       `SELECT e.id,e.description,e.kind,e.created_at,u.name AS actor_name FROM service_events e
        LEFT JOIN users u ON u.id=e.actor_id WHERE e.service_id=$1 ORDER BY e.created_at DESC,e.id DESC`, [id],
@@ -39,6 +40,10 @@ export default async function ServiceDetail({ params, searchParams }: { params: 
       FROM container_movements m JOIN containers c ON c.id=m.container_id WHERE m.service_id=$1 ORDER BY m.created_at DESC`,[id]),
     canPlan(actor) ? db.query<{id:string;status:string}>("SELECT id,status FROM waste_records WHERE service_id=$1",[id]) : Promise.resolve([]),
     actor.role!=="conductor"?db.query<{id:string}>("SELECT id FROM service_certificates WHERE service_id=$1 AND status='vigente'",[id]):Promise.resolve([]),
+    service.quote_id?db.query<{id:string;folio:string;display_folio:string|null;issuer:Company;title:string;notes:string|null}>(
+      "SELECT id,folio,display_folio,issuer,title,notes FROM client_quotes WHERE id=$1 AND status='aceptada'",[service.quote_id]):Promise.resolve([]),
+    service.quote_id?db.query<{description:string;quantity:string;unit:string}>(
+      "SELECT description,quantity,unit FROM client_quote_lines WHERE quote_id=$1 ORDER BY position",[service.quote_id]):Promise.resolve([]),
   ]);
   const checklist = checks[0];
   const paramsQuery = await searchParams;
@@ -56,6 +61,11 @@ export default async function ServiceDetail({ params, searchParams }: { params: 
           <div className="facts-grid"><div className="fact"><span>Tipo de servicio</span><strong className="capitalize">{service.service_type}</strong></div><div className="fact"><span>Residuo o material</span><strong>{service.waste_type}</strong></div><div className="fact"><span>Cantidad estimada</span><strong>{service.estimated_kg ? `${Number(service.estimated_kg).toLocaleString("es-CL")} kg` : "Sin estimación"}</strong></div><div className="fact"><span>Registrada</span><strong>{chileDate(service.created_at)}</strong></div><div className="fact"><span><MapPin size={15}/> Origen</span><strong>{service.origin}</strong></div><div className="fact"><span><MapPin size={15}/> Destino</span><strong>{service.destination}</strong></div></div>
           {service.notes && <div className="note-block"><span>Observaciones</span><p>{service.notes}</p></div>}
         </section>
+        {sourceQuotes[0]&&<section className="section-card"><div className="section-heading"><div><div className="eyebrow">ORIGEN COMERCIAL</div><h2>Cotización aceptada</h2></div>{actor.role!=="conductor"&&<Link href={`/cotizaciones/${sourceQuotes[0].id}`} className="text-link">Ver propuesta →</Link>}</div>
+          <p className="helper-text"><strong>{quoteFolio(sourceQuotes[0])}</strong> · {sourceQuotes[0].title}</p>
+          <ul className="quote-source-list">{sourceLines.map((line,i)=><li key={i}>{line.description}<span>{Number(line.quantity).toLocaleString("es-CL",{maximumFractionDigits:3})} {line.unit}</span></li>)}</ul>
+          {sourceQuotes[0].notes&&<div className="note-block"><span>Condiciones de la propuesta</span><p>{sourceQuotes[0].notes}</p></div>}
+        </section>}
         <section className="section-card"><div className="section-heading"><div><div className="eyebrow">DESPACHO</div><h2><Truck size={19}/> Planificación y recursos</h2></div></div>
           {service.scheduled_for && <div className="assigned-summary"><div><CalendarDays size={19}/><span><small>Fecha y hora</small><strong>{chileDate(service.scheduled_for)}</strong></span></div><div><Truck size={19}/><span><small>Camión / conductor</small><strong>{service.asset_label ?? "—"} · {service.driver_name ?? "—"}</strong></span></div>{service.ramp_label && <div><Truck size={19}/><span><small>Rampa asignada</small><strong>{service.ramp_label}</strong></span></div>}{service.guide_number && <div><FileText size={19}/><span><small>Guía</small><strong>{service.guide_number}</strong></span></div>}</div>}
           {service.scheduled_for && <Link className="order-link" href={`/solicitudes/${service.id}/orden`}><FileText size={16}/> Ver orden de servicio para imprimir →</Link>}
