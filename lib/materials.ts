@@ -30,6 +30,8 @@ export type MaterialReceipt={id:string;client_id:string;client_name:string;servi
   transfer_guide:string|null;entry_sheet:string|null;valued_guide:string|null;certificate_number:string|null;
   valued_guide_requested_on:Date|string|null;valued_guide_received_on:Date|string|null;
   act_number:string|null;invoice_number:string|null;unit_price_clp:string|null;payment_status:string;paid_on:Date|string|null;
+  invoice_direction:"emitida"|"recibida"|null;invoice_issued_on:Date|string|null;payment_reference:string|null;
+  closure_notified_on:Date|string|null;closure_recipient:string|null;closure_note:string|null;
   notes:string|null;created_at:Date};
 const select=`SELECT r.*,c.name AS client_name,s.folio AS service_folio FROM material_receipts r JOIN clients c ON c.id=r.client_id
   LEFT JOIN service_requests s ON s.id=r.service_id`;
@@ -74,7 +76,8 @@ export async function createMaterialReceipt(actor:Actor,input:unknown){
   if(values.net_kg==null||values.net_kg<0)reject("Indique un peso válido para la base elegida y compruebe las impurezas.");
   if(values.variance_kg!==null&&Math.abs(values.variance_kg)>0.01&&data.notes.length<10)
     reject("El neto anotado difiere del cálculo. Explique la diferencia en observaciones.");
-  if(data.payment_status==="pagado"&&!data.paid_on)reject("Indique la fecha del pago.");
+  if(data.payment_status==="pagado"||data.payment_status==="parcial"||data.paid_on)
+    reject("Registre primero el ingreso. Después adjunte el comprobante y actualice el pago desde su ficha.");
   if(!data.material_id&&data.material_name.length<2)reject("Seleccione el material del catálogo o escriba su nombre.");
   if(![data.weighing_ticket,data.origin_guide,data.transfer_guide,data.entry_sheet].some(Boolean))
     reject("Indique al menos un ticket, guía de traslado o hoja de ingreso.");
@@ -113,30 +116,86 @@ export async function createMaterialReceipt(actor:Actor,input:unknown){
 export async function updateMaterialPayment(actor:Actor,id:string,input:unknown){
   manage(actor);uuid.parse(id);
   const data=z.object({payment_status:z.enum(["pendiente","parcial","pagado","no_aplica"]),
-    paid_on:z.union([z.iso.date(),z.literal("")]).default("")}).parse(input);
-  if(data.payment_status==="pagado"&&!data.paid_on)reject("Indique la fecha del pago.");
+    paid_on:z.union([z.iso.date(),z.literal("")]).default(""),payment_reference:z.string().trim().max(120).default("")}).parse(input);
+  if(["parcial","pagado"].includes(data.payment_status)&&(!data.paid_on||!data.payment_reference))
+    reject("Para un pago parcial o total indique fecha y referencia del comprobante.");
+  if(["pendiente","no_aplica"].includes(data.payment_status)&&(data.paid_on||data.payment_reference))
+    reject("Quite fecha y referencia si el estado es pendiente o no aplica.");
   await transaction(async tx=>{
-    const [row]=await tx.query<{payment_status:string;paid_on:Date|string|null}>("SELECT payment_status,paid_on FROM material_receipts WHERE id=$1 FOR UPDATE",[id]);
+    const [row]=await tx.query<{payment_status:string;paid_on:Date|string|null;payment_reference:string|null}>(
+      "SELECT payment_status,paid_on,payment_reference FROM material_receipts WHERE id=$1 FOR UPDATE",[id]);
     if(!row)reject("Ingreso no encontrado.");
-    await tx.query("UPDATE material_receipts SET payment_status=$2,paid_on=NULLIF($3,'')::date,updated_at=now() WHERE id=$1",
-      [id,data.payment_status,data.paid_on]);
+    if(["parcial","pagado"].includes(data.payment_status)){
+      const [file]=await tx.query("SELECT id FROM operation_files WHERE receipt_id=$1 AND kind='comprobante' LIMIT 1",[id]);
+      if(!file)reject("Adjunte primero el comprobante de pago al ingreso.");
+    }
+    await tx.query("UPDATE material_receipts SET payment_status=$2,paid_on=NULLIF($3,'')::date,payment_reference=NULLIF($4,''),updated_at=now() WHERE id=$1",
+      [id,data.payment_status,data.paid_on,data.payment_reference]);
     await tx.query("INSERT INTO audit_events(actor_id,action,entity_type,entity_id,previous_value,next_value) VALUES ($1,'payment','material_receipt',$2,$3,$4)",
       [actor.id,id,JSON.stringify(row),JSON.stringify(data)]);
   });
 }
 export async function updateMaterialReferences(actor:Actor,id:string,input:unknown){
   manage(actor);uuid.parse(id);
-  const data=z.object({entry_sheet:z.string().trim().max(80),invoice_number:z.string().trim().max(80)}).parse(input);
+  const data=z.object({entry_sheet:z.string().trim().max(80),invoice_number:z.string().trim().max(80),
+    certificate_number:z.string().trim().max(80).default(""),
+    invoice_direction:z.enum(["","emitida","recibida"]).default(""),
+    invoice_issued_on:z.union([z.iso.date(),z.literal("")]).default("")}).parse(input);
+  if(data.invoice_direction&&(!data.invoice_number||!data.invoice_issued_on))
+    reject("Para confirmar la factura indique dirección, número y fecha.");
+  if(!data.invoice_number&&(data.invoice_direction||data.invoice_issued_on))
+    reject("Indique el número de factura antes de registrar sus datos.");
   await transaction(async tx=>{
-    const [row]=await tx.query<{entry_sheet:string|null;invoice_number:string|null}>(
-      "SELECT entry_sheet,invoice_number FROM material_receipts WHERE id=$1 FOR UPDATE",[id]);
+    const [row]=await tx.query<{entry_sheet:string|null;invoice_number:string|null;invoice_direction:string|null;
+      invoice_issued_on:Date|string|null;certificate_number:string|null;closure_notified_on:Date|string|null}>(
+      "SELECT entry_sheet,invoice_number,invoice_direction,invoice_issued_on,certificate_number,closure_notified_on FROM material_receipts WHERE id=$1 FOR UPDATE",[id]);
     if(!row)reject("Ingreso no encontrado.");
-    await tx.query("UPDATE material_receipts SET entry_sheet=NULLIF($2,''),invoice_number=NULLIF($3,''),updated_at=now() WHERE id=$1",
-      [id,data.entry_sheet,data.invoice_number]);
+    if(data.invoice_direction){
+      const [file]=await tx.query("SELECT id FROM operation_files WHERE receipt_id=$1 AND kind='factura' LIMIT 1",[id]);
+      if(!file)reject("Adjunte la factura antes de confirmar si fue emitida o recibida.");
+    }
+    const reopen=(row.invoice_number??"")!==data.invoice_number||(row.invoice_direction??"")!==data.invoice_direction||
+      (row.invoice_issued_on?dateOnly(row.invoice_issued_on):"")!==data.invoice_issued_on||
+      (row.certificate_number??"")!==data.certificate_number;
+    await tx.query(`UPDATE material_receipts SET entry_sheet=NULLIF($2,''),invoice_number=NULLIF($3,''),
+      invoice_direction=NULLIF($4,''),invoice_issued_on=NULLIF($5,'')::date,certificate_number=NULLIF($6,''),
+      closure_notified_on=CASE WHEN $7::boolean THEN NULL ELSE closure_notified_on END,
+      closure_recipient=CASE WHEN $7::boolean THEN NULL ELSE closure_recipient END,
+      closure_note=CASE WHEN $7::boolean THEN NULL ELSE closure_note END,updated_at=now() WHERE id=$1`,
+      [id,data.entry_sheet,data.invoice_number,data.invoice_direction,data.invoice_issued_on,data.certificate_number,reopen]);
     await tx.query("INSERT INTO audit_events(actor_id,action,entity_type,entity_id,previous_value,next_value) VALUES ($1,'update','material_receipt',$2,$3,$4)",
       [actor.id,id,JSON.stringify(row),JSON.stringify(data)]);
   });
 }
+
+export async function recordMaterialClosureNotification(actor:Actor,id:string,input:unknown){
+  manage(actor);uuid.parse(id);
+  const data=z.object({notified_on:z.iso.date(),recipient:z.string().trim().min(3).max(180),
+    note:z.string().trim().max(500).default("")}).parse(input);
+  await transaction(async tx=>{
+    const [row]=await tx.query<{valued_guide:string|null;valued_guide_received_on:Date|string|null;
+      invoice_number:string|null;invoice_direction:string|null;invoice_issued_on:Date|string|null;
+      certificate_number:string|null;closure_notified_on:Date|string|null;closure_recipient:string|null;closure_note:string|null}>(
+      `SELECT valued_guide,valued_guide_received_on,invoice_number,invoice_direction,invoice_issued_on,
+        certificate_number,closure_notified_on,closure_recipient,closure_note FROM material_receipts WHERE id=$1 FOR UPDATE`,[id]);
+    if(!row)reject("Ingreso no encontrado.");
+    if(!row.valued_guide||!row.valued_guide_received_on||!row.invoice_number||!row.invoice_direction||!row.invoice_issued_on)
+      reject("Complete guía valorizada y factura con número, fecha y dirección antes de registrar el aviso.");
+    if(data.notified_on<dateOnly(row.valued_guide_received_on)||data.notified_on<dateOnly(row.invoice_issued_on))
+      reject("La fecha del aviso no puede preceder la recepción de la guía ni la fecha de la factura.");
+    const docs=await tx.query<{kind:string}>(
+      "SELECT DISTINCT kind FROM operation_files WHERE receipt_id=$1 AND kind IN ('guia_valorizada','factura','certificado')",[id]);
+    const kinds=new Set(docs.map(d=>d.kind));
+    if(!kinds.has("guia_valorizada")||!kinds.has("factura")||row.certificate_number&&!kinds.has("certificado"))
+      reject("Adjunte guía valorizada y factura; si anotó un certificado, adjúntelo también.");
+    await tx.query(`UPDATE material_receipts SET closure_notified_on=$2::date,closure_recipient=$3,
+      closure_note=NULLIF($4,''),updated_at=now() WHERE id=$1`,[id,data.notified_on,data.recipient,data.note]);
+    await tx.query("INSERT INTO audit_events(actor_id,action,entity_type,entity_id,previous_value,next_value) VALUES ($1,'closure_notice','material_receipt',$2,$3,$4)",
+      [actor.id,id,JSON.stringify({notified_on:row.closure_notified_on,recipient:row.closure_recipient,note:row.closure_note}),JSON.stringify(data)]);
+  });
+}
+
+function dateOnly(value:Date|string){return value instanceof Date?value.toISOString().slice(0,10):String(value).slice(0,10);}
 
 export async function updateMaterialGuideFollowup(actor:Actor,id:string,input:unknown){
   manage(actor);uuid.parse(id);
@@ -154,9 +213,14 @@ export async function updateMaterialGuideFollowup(actor:Actor,id:string,input:un
       const [file]=await tx.query("SELECT id FROM operation_files WHERE receipt_id=$1 AND kind='guia_valorizada' LIMIT 1",[id]);
       if(!file)reject("Adjunte la guía valorizada recibida antes de registrar su número y fecha.");
     }
+    const reopen=(row.valued_guide??"")!==data.valued_guide||
+      (row.valued_guide_received_on?dateOnly(row.valued_guide_received_on):"")!==data.received_on;
     await tx.query(`UPDATE material_receipts SET valued_guide_requested_on=NULLIF($2,'')::date,
-      valued_guide_received_on=NULLIF($3,'')::date,valued_guide=NULLIF($4,''),updated_at=now() WHERE id=$1`,
-      [id,data.requested_on,data.received_on,data.valued_guide]);
+      valued_guide_received_on=NULLIF($3,'')::date,valued_guide=NULLIF($4,''),
+      closure_notified_on=CASE WHEN $5::boolean THEN NULL ELSE closure_notified_on END,
+      closure_recipient=CASE WHEN $5::boolean THEN NULL ELSE closure_recipient END,
+      closure_note=CASE WHEN $5::boolean THEN NULL ELSE closure_note END,updated_at=now() WHERE id=$1`,
+      [id,data.requested_on,data.received_on,data.valued_guide,reopen]);
     await tx.query("INSERT INTO audit_events(actor_id,action,entity_type,entity_id,previous_value,next_value) VALUES ($1,'valued_guide','material_receipt',$2,$3,$4)",
       [actor.id,id,JSON.stringify(row),JSON.stringify(data)]);
   });

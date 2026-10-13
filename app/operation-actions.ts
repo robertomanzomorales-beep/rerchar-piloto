@@ -4,7 +4,7 @@ import {redirect} from "next/navigation";
 import {revalidatePath} from "next/cache";
 import {ZodError} from "zod";
 import {requireActor} from "@/lib/auth";
-import {MaterialError,createMaterialReceipt,updateMaterialGuideFollowup,updateMaterialPayment,updateMaterialReferences} from "@/lib/materials";
+import {MaterialError,createMaterialReceipt,updateMaterialGuideFollowup,updateMaterialPayment,updateMaterialReferences,recordMaterialClosureNotification} from "@/lib/materials";
 import {MaterialStockError} from "@/lib/material-stock";
 import {SupplierInvoiceError,createSupplierInvoice,registerSupplierPayment,updateSupplierInvoiceDueDate} from "@/lib/supplier-invoices";
 import {LedgerError,saveGuideFollowup,saveCommercialDetails} from "@/lib/service-ledger";
@@ -34,12 +34,19 @@ export async function createMaterialAction(form:FormData){
 }
 export async function updateMaterialPaymentAction(form:FormData){
   const actor=await requireActor(),id=val(form,"id");
-  await run(`/ingresos/${encodeURIComponent(id)}`,()=>updateMaterialPayment(actor,id,{payment_status:val(form,"payment_status"),paid_on:val(form,"paid_on")}));
+  await run(`/ingresos/${encodeURIComponent(id)}`,()=>updateMaterialPayment(actor,id,{
+    payment_status:val(form,"payment_status"),paid_on:val(form,"paid_on"),payment_reference:val(form,"payment_reference")}));
 }
 export async function updateMaterialReferencesAction(form:FormData){
   const actor=await requireActor(),id=val(form,"id");
   await run(`/ingresos/${encodeURIComponent(id)}`,()=>updateMaterialReferences(actor,id,{
-    entry_sheet:val(form,"entry_sheet"),invoice_number:val(form,"invoice_number")}));
+    entry_sheet:val(form,"entry_sheet"),invoice_number:val(form,"invoice_number"),certificate_number:val(form,"certificate_number"),
+    invoice_direction:val(form,"invoice_direction"),invoice_issued_on:val(form,"invoice_issued_on")}));
+}
+export async function recordMaterialClosureNotificationAction(form:FormData){
+  const actor=await requireActor(),id=val(form,"id");
+  await run(`/ingresos/${encodeURIComponent(id)}`,()=>recordMaterialClosureNotification(actor,id,{
+    notified_on:val(form,"notified_on"),recipient:val(form,"recipient"),note:val(form,"note")}));
 }
 export async function updateMaterialGuideFollowupAction(form:FormData){
   const actor=await requireActor(),id=val(form,"id");

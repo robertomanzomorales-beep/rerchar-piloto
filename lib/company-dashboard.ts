@@ -20,6 +20,24 @@ export async function rercharReceiptGuideDashboard(){
   }
 }
 
+export async function rercharReceiptClosureDashboard(){
+  try{
+    const [row]=await db.query<{invoice_pending:string;payment_pending:string;notice_pending:string}>(`
+      SELECT count(*) FILTER (WHERE valued_guide_received_on IS NOT NULL
+        AND (invoice_number IS NULL OR invoice_direction IS NULL OR invoice_issued_on IS NULL
+          OR NOT EXISTS (SELECT 1 FROM operation_files f WHERE f.receipt_id=r.id AND f.kind='factura')))::text AS invoice_pending,
+      count(*) FILTER (WHERE invoice_number IS NOT NULL AND payment_status IN ('pendiente','parcial'))::text AS payment_pending,
+      count(*) FILTER (WHERE valued_guide_received_on IS NOT NULL AND invoice_direction IS NOT NULL
+        AND closure_notified_on IS NULL)::text AS notice_pending
+      FROM material_receipts r`);
+    return {...row,ready:true};
+  }catch(error){
+    if(typeof error==="object"&&error!==null&&"code" in error&&["42P01","42703"].includes(String(error.code)))
+      return {invoice_pending:"0",payment_pending:"0",notice_pending:"0",ready:false};
+    throw error;
+  }
+}
+
 // El panel sigue disponible cuando un despliegue de código antecede a la migración.
 // Otros errores de base de datos se propagan para no presentar cifras falsas.
 export async function rercharMaterialDashboard():Promise<MaterialStats>{

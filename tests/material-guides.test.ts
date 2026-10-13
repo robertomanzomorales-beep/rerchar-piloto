@@ -12,7 +12,7 @@ test("Control de Guía registra una venta real con varios materiales y conserva 
   const materials=await import("../lib/materials");
   const {entryHeaders,entryRow,buildEntryWorkbook}=await import("../lib/material-export");
   const {addOperationFile}=await import("../lib/operation-files");
-  const {rercharReceiptGuideDashboard}=await import("../lib/company-dashboard");
+  const {rercharReceiptGuideDashboard,rercharReceiptClosureDashboard}=await import("../lib/company-dashboard");
   const stock=await import("../lib/material-stock");
   for(const name of (await readdir(resolve(process.cwd(),"db"))).filter(n=>/^\d+.*\.sql$/.test(n)).sort()){
     const sql=await readFile(resolve(process.cwd(),`db/${name}`),"utf8");
@@ -58,6 +58,34 @@ test("Control de Guía registra una venta real con varios materiales y conserva 
   await materials.updateMaterialGuideFollowup(actor,receipt,{requested_on:"2026-09-02",received_on:"2026-09-03",valued_guide:"GV-125"});
   assert.equal((await materials.getMaterialReceipt(actor,receipt)).valued_guide,"GV-125");
   assert.equal((await rercharReceiptGuideDashboard()).pending,"0","al recibirla desaparece la alerta");
+  assert.equal((await rercharReceiptClosureDashboard()).invoice_pending,"1","falta confirmar la factura después de la guía");
+  await assert.rejects(()=>materials.updateMaterialReferences(actor,receipt,{entry_sheet:"H-13",invoice_number:"F-125",
+    invoice_direction:"emitida",invoice_issued_on:"2026-09-04"}),/Adjunte la factura/);
+  await addOperationFile(actor,"receipt",receipt,"factura",jpg());
+  await materials.updateMaterialReferences(actor,receipt,{entry_sheet:"H-13",invoice_number:"F-125",
+    invoice_direction:"emitida",invoice_issued_on:"2026-09-04",certificate_number:"C-13"});
+  assert.equal((await rercharReceiptClosureDashboard()).invoice_pending,"0");
+  assert.equal((await rercharReceiptClosureDashboard()).notice_pending,"1");
+  await assert.rejects(()=>materials.updateMaterialPayment(actor,receipt,{payment_status:"pagado",paid_on:"2026-09-05",
+    payment_reference:"TR-9"}),/Adjunte primero el comprobante/);
+  await addOperationFile(actor,"receipt",receipt,"comprobante",jpg());
+  await materials.updateMaterialPayment(actor,receipt,{payment_status:"parcial",paid_on:"2026-09-05",payment_reference:"TR-9"});
+  assert.equal((await rercharReceiptClosureDashboard()).payment_pending,"1");
+  await materials.updateMaterialPayment(actor,receipt,{payment_status:"pagado",paid_on:"2026-09-06",payment_reference:"TR-10"});
+  assert.equal((await rercharReceiptClosureDashboard()).payment_pending,"0");
+  await assert.rejects(()=>materials.recordMaterialClosureNotification(actor,receipt,{notified_on:"2026-09-05",
+    recipient:"cliente@demo.cl",note:"correo"}),/certificado/);
+  await addOperationFile(actor,"receipt",receipt,"certificado",jpg());
+  await assert.rejects(()=>materials.recordMaterialClosureNotification(actor,receipt,{notified_on:"2026-09-02",
+    recipient:"cliente@demo.cl",note:"correo"}),/no puede preceder/);
+  await materials.recordMaterialClosureNotification(actor,receipt,{notified_on:"2026-09-07",recipient:"cliente@demo.cl",note:"Correo confirmado"});
+  assert.equal((await rercharReceiptClosureDashboard()).notice_pending,"0");
+  await materials.updateMaterialReferences(actor,receipt,{entry_sheet:"H-13",invoice_number:"F-126",
+    invoice_direction:"emitida",invoice_issued_on:"2026-09-04",certificate_number:"C-13"});
+  assert.equal((await materials.getMaterialReceipt(actor,receipt)).closure_notified_on,null,"cambiar factura reabre el aviso");
+  assert.equal((await rercharReceiptClosureDashboard()).notice_pending,"1");
+  await assert.rejects(()=>materials.recordMaterialClosureNotification(customer,receipt,{notified_on:"2026-09-07",
+    recipient:"cliente@demo.cl"}),materials.MaterialError);
   await assert.rejects(()=>materials.updateMaterialGuideFollowup(customer,receipt,{requested_on:"",received_on:"",valued_guide:""}),materials.MaterialError);
   assert.equal((await stock.listMaterialCatalog(actor)).find(m=>m.id===iron.id)?.quantity_kg,"0","registrar no suma stock sin confirmación");
   const receiptPosting=await stock.postReceiptToMaterialStock(actor,receipt);
