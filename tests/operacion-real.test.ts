@@ -31,9 +31,16 @@ test("cotización del cliente, PDF y guía de tres pesos respetan totales y perm
   const pdf=await renderQuotePdf(quote,lines);
   assert.equal((await PDFDocument.load(pdf)).getPageCount(),1);
   assert.ok(pdf.length>7000);
+  await quotes.updateQuoteLine(owner,quoteId,lines[0].id,{description:"Transporte corregido",quantity:"3",unit:"viaje",unit_price_clp:"12000",taxable:true});
+  assert.equal((await quotes.getQuote(owner,quoteId)).totals.total,47840,"la corrección actualiza neto e IVA sin cambiar el folio");
+  await quotes.removeQuoteLine(owner,quoteId,lines[0].id);
+  await assert.rejects(()=>quotes.removeQuoteLine(owner,quoteId,lines[1].id),quotes.QuoteError,"el borrador conserva al menos un concepto");
+  await quotes.addQuoteLine(owner,quoteId,{description:"Nuevo material",quantity:"2",unit:"kg",unit_price_clp:"100",taxable:false});
+  assert.deepEqual((await quotes.getQuote(owner,quoteId)).lines.map(line=>line.position),[2,3],"agregar después de quitar una línea no reutiliza su posición");
   assert.equal((await quotes.listQuotes(viewer)).length,0,"el borrador no se muestra al cliente");
   await assert.rejects(()=>quotes.getQuote(stranger,quoteId),quotes.QuoteError);
   await assert.rejects(()=>quotes.addQuoteLine(viewer,quoteId,{description:"Otro",quantity:"1",unit:"kg",unit_price_clp:"10",taxable:true}),quotes.QuoteError);
+  await assert.rejects(()=>quotes.updateQuoteLine(viewer,quoteId,lines[1].id,{description:"Otro",quantity:"1",unit:"kg",unit_price_clp:"10",taxable:true}),quotes.QuoteError);
   await db.query("UPDATE client_quotes SET status='enviando' WHERE id=$1",[quoteId]);
   assert.equal((await quotes.listQuotes(viewer)).length,0,"un envío sin confirmar permanece oculto");
   await assert.rejects(()=>quotes.resolveQuoteSending(viewer,quoteId,"enviada","Revisé el correo de salida"),quotes.QuoteError);
@@ -43,6 +50,7 @@ test("cotización del cliente, PDF y guía de tres pesos respetan totales y perm
   await assert.rejects(()=>quotes.recordManualQuoteDelivery(owner,quoteId,{channel:"correo",recipient:"",reference:"Entregado manualmente"}),quotes.QuoteError);
   await quotes.recordManualQuoteDelivery(owner,quoteId,{channel:"correo",recipient:"compras@cliente.cl",reference:"Enviado fuera del sistema y confirmado"});
   assert.equal((await quotes.getQuote(viewer,quoteId)).quote.status,"enviada");
+  await assert.rejects(()=>quotes.updateQuoteLine(owner,quoteId,lines[1].id,{description:"Cambio tardío",quantity:"1",unit:"kg",unit_price_clp:"10",taxable:false}),quotes.QuoteError);
   await assert.rejects(()=>quotes.recordManualQuoteDelivery(owner,quoteId,{channel:"correo",recipient:"compras@cliente.cl",reference:"Enviado otra vez"}),quotes.QuoteError);
 
   const [service]=await db.query<{id:string}>(`INSERT INTO service_requests(submission_key,client_id,site_id,service_type,waste_type,origin,destination,created_by)

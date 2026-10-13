@@ -81,11 +81,39 @@ export async function addQuoteLine(actor:Actor,quoteId:string,input:unknown){
     if(!quote||quote.status!=="borrador")reject("Sólo el borrador admite nuevos conceptos.");
     const [count]=await tx.query<{count:string}>("SELECT count(*)::text AS count FROM client_quote_lines WHERE quote_id=$1",[id]);
     if(Number(count.count)>=100)reject("Esta cotización alcanzó 100 conceptos.");
+    const [position]=await tx.query<{next:number}>("SELECT COALESCE(max(position),0)+1 AS next FROM client_quote_lines WHERE quote_id=$1",[id]);
     const [line]=await tx.query<{id:string}>(`INSERT INTO client_quote_lines(quote_id,position,description,quantity,unit,unit_price_clp,taxable)
-      VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,[id,Number(count.count)+1,data.description,data.quantity,data.unit,data.unit_price_clp,data.taxable]);
+      VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,[id,position.next,data.description,data.quantity,data.unit,data.unit_price_clp,data.taxable]);
     await tx.query("INSERT INTO audit_events(actor_id,action,entity_type,entity_id,next_value) VALUES ($1,'add_line','client_quote',$2,$3)",
       [actor.id,id,JSON.stringify({line_id:line.id,description:data.description})]);
     return line.id;
+  });
+}
+export async function updateQuoteLine(actor:Actor,quoteId:string,lineId:string,input:unknown){
+  canEdit(actor);const id=uuid.parse(quoteId),line=uuid.parse(lineId),data=item.parse(input);
+  await transaction(async tx=>{
+    const [quote]=await tx.query<{status:string}>("SELECT status FROM client_quotes WHERE id=$1 FOR UPDATE",[id]);
+    if(quote?.status!=="borrador")reject("Sólo se pueden corregir conceptos de un borrador.");
+    const [previous]=await tx.query<QuoteLine>("SELECT * FROM client_quote_lines WHERE id=$1 AND quote_id=$2",[line,id]);
+    if(!previous)reject("El concepto no pertenece a esta cotización.");
+    await tx.query(`UPDATE client_quote_lines SET description=$3,quantity=$4,unit=$5,unit_price_clp=$6,taxable=$7
+      WHERE id=$1 AND quote_id=$2`,[line,id,data.description,data.quantity,data.unit,data.unit_price_clp,data.taxable]);
+    await tx.query("INSERT INTO audit_events(actor_id,action,entity_type,entity_id,previous_value,next_value) VALUES ($1,'update_line','client_quote',$2,$3,$4)",
+      [actor.id,id,JSON.stringify(previous),JSON.stringify({line_id:line,...data})]);
+  });
+}
+export async function removeQuoteLine(actor:Actor,quoteId:string,lineId:string){
+  canEdit(actor);const id=uuid.parse(quoteId),line=uuid.parse(lineId);
+  await transaction(async tx=>{
+    const [quote]=await tx.query<{status:string}>("SELECT status FROM client_quotes WHERE id=$1 FOR UPDATE",[id]);
+    if(quote?.status!=="borrador")reject("Sólo se pueden quitar conceptos de un borrador.");
+    const [previous]=await tx.query<QuoteLine>("SELECT * FROM client_quote_lines WHERE id=$1 AND quote_id=$2",[line,id]);
+    if(!previous)reject("El concepto no pertenece a esta cotización.");
+    const [count]=await tx.query<{count:string}>("SELECT count(*)::text AS count FROM client_quote_lines WHERE quote_id=$1",[id]);
+    if(Number(count.count)<=1)reject("La cotización debe conservar al menos un concepto.");
+    await tx.query("DELETE FROM client_quote_lines WHERE id=$1 AND quote_id=$2",[line,id]);
+    await tx.query("INSERT INTO audit_events(actor_id,action,entity_type,entity_id,previous_value) VALUES ($1,'remove_line','client_quote',$2,$3)",
+      [actor.id,id,JSON.stringify(previous)]);
   });
 }
 export async function recordQuoteDecision(actor:Actor,quoteId:string,decision:"aceptada"|"rechazada"){

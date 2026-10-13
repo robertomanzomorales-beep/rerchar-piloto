@@ -3,7 +3,7 @@ import {notFound} from "next/navigation";
 import {FileDown,Mail} from "lucide-react";
 import {requireActor} from "@/lib/auth";
 import {getQuote,QuoteError,issuers,quoteMailConfigured,quoteFolio} from "@/lib/quotes";
-import {addQuoteLineAction,sendQuoteAction,manualQuoteDeliveryAction,quoteDecisionAction,resolveQuoteSendingAction} from "@/app/quote-actions";
+import {addQuoteLineAction,updateQuoteLineAction,removeQuoteLineAction,sendQuoteAction,manualQuoteDeliveryAction,quoteDecisionAction,resolveQuoteSendingAction} from "@/app/quote-actions";
 import {Notice} from "@/components/UI";
 import {SubmitButton} from "@/components/Transition";
 
@@ -22,6 +22,19 @@ export default async function QuoteDetail({params,searchParams}:{params:Promise<
       <div className="quote-totals"><div><span>Neto</span><strong>{money(totals.net)}</strong></div><div><span>IVA ({Number(quote.vat_rate)*100}%)</span><strong>{money(totals.vat)}</strong></div><div><span>Total</span><strong>{money(totals.total)}</strong></div></div>
       {quote.notes&&<div className="note-block"><span>Observaciones</span><p>{quote.notes}</p></div>}
     </section>
+    {editable&&quote.status==="borrador"&&<section className="section-card"><h2>Corregir conceptos del borrador</h2><p className="helper-text">Puede cambiar material, cantidad, unidad y precio antes de entregar la cotización. El folio se conserva y el PDF reflejará los cambios.</p>
+      {lines.map(line=><details key={line.id} className="quote-line-editor"><summary><span>{line.description}</span><strong>Editar concepto</strong></summary>
+        <form action={updateQuoteLineAction} className="form-grid"><input type="hidden" name="quote_id" value={id}/><input type="hidden" name="line_id" value={line.id}/>
+          <label className="field-full">Material o servicio<input name="description" defaultValue={line.description} minLength={2} maxLength={240} required/></label>
+          <label>Cantidad<input name="quantity" type="number" min="0.001" step="0.001" defaultValue={line.quantity} required/></label>
+          <label>Unidad<input name="unit" defaultValue={line.unit} maxLength={30} required/></label>
+          <label>Precio unitario (CLP)<input name="unit_price_clp" type="number" min="0" step="0.01" defaultValue={line.unit_price_clp} required/></label>
+          <label className="check-row"><input name="taxable" type="checkbox" defaultChecked={line.taxable}/> Afecto a IVA</label>
+          <div className="field-full form-footer"><SubmitButton className="button button-primary">Guardar corrección</SubmitButton></div>
+        </form>
+        {lines.length>1&&<form action={removeQuoteLineAction} className="quote-line-remove"><input type="hidden" name="quote_id" value={id}/><input type="hidden" name="line_id" value={line.id}/><SubmitButton className="button button-outline">Quitar este concepto</SubmitButton></form>}
+      </details>)}
+    </section>}
     {editable&&quote.status==="borrador"&&<div className="supply-columns"><section className="section-card"><h2>Agregar producto o servicio</h2><form action={addQuoteLineAction} className="form-stack compact"><input type="hidden" name="quote_id" value={id}/><label>Concepto<input name="description" required maxLength={240}/></label><div className="two-fields"><label>Cantidad<input name="quantity" type="number" min="0.001" step="0.001" required/></label><label>Unidad<input name="unit" defaultValue="servicio" maxLength={30} required/></label></div><label>Precio unitario (CLP)<input name="unit_price_clp" type="number" min="0" step="0.01" required/></label><label className="check-row"><input name="taxable" type="checkbox" defaultChecked/> Afecto a IVA</label><SubmitButton className="button button-outline">Añadir a la cotización</SubmitButton></form></section>
       <section className="section-card"><h2><Mail size={18}/> Enviar al cliente</h2><p className="helper-text">El PDF se adjunta al correo registrado cuando el remitente SMTP de RERCHAR está configurado.</p><p><strong>Destinatario:</strong> {quote.client_email||"Registre el correo del cliente antes de emitir una nueva cotización."}</p><form action={sendQuoteAction}><input type="hidden" name="quote_id" value={id}/><SubmitButton className="button button-primary" disabled={!quote.client_email||!quoteMailConfigured()}>Enviar cotización en PDF</SubmitButton></form>{!quoteMailConfigured()&&<p className="helper-text">El envío automático queda disponible al configurar el correo SMTP. Puede descargar el PDF ahora.</p>}</section></div>}
     {editable&&quote.status==="borrador"&&<section className="section-card"><h2>Registrar entrega fuera del sistema</h2><p className="helper-text">Descargue el PDF y entréguelo por el medio acordado. Registre la entrega sólo después de realizarla; esta acción no envía un correo.</p><form action={manualQuoteDeliveryAction} className="form-grid"><input type="hidden" name="quote_id" value={id}/><label>Medio utilizado<select name="channel" defaultValue="correo"><option value="correo">Correo enviado manualmente</option><option value="presencial">Entrega presencial</option><option value="otro">Otro medio</option></select></label><label>Destinatario (si fue por correo)<input name="recipient" type="email" maxLength={254} defaultValue={quote.client_email??""}/></label><label className="field-full">Constancia de entrega (fecha, persona o referencia)<textarea name="reference" required minLength={10} maxLength={500} rows={2}/></label><div className="field-full form-footer"><SubmitButton className="button button-outline">Registrar entrega ya realizada</SubmitButton></div></form></section>}

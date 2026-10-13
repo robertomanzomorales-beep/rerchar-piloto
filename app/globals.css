@@ -413,6 +413,16 @@ input::placeholder,textarea::placeholder{color:#959e9d}
 @media screen and (prefers-reduced-motion:reduce){.nav-group-panel,.nav-group-toggle svg{transition:none}.command-overlay{backdrop-filter:none}}
 @media print{.edp-sheet{max-width:none;width:100%;margin:0;padding:8mm;border:0;box-shadow:none}.edp-sheet .data-table{font-size:9pt}.edp-sheet .data-table th,.edp-sheet .data-table td{padding:5pt 4pt}.edp-controls,.command-overlay{display:none!important}}
 
+@media screen{
+  .quote-line-editor{border-top:1px solid #e5e5e7;padding:10px 0}
+  .quote-line-editor summary{display:flex;justify-content:space-between;align-items:center;gap:12px;cursor:pointer;list-style:none;font-size:12px}
+  .quote-line-editor summary::-webkit-details-marker{display:none}
+  .quote-line-editor summary strong{flex:none;color:#a65724;font-size:11px}
+  .quote-line-editor[open] summary{margin-bottom:13px}
+  .quote-line-remove{display:flex;justify-content:flex-end;border-top:1px solid #ececed;margin-top:10px;padding-top:10px}
+  .quote-line-remove .button{color:#a24636;border-color:#ead0cc}
+}
+
 /* Densidad de escritorio: proporciones de la referencia a 80% de zoom, sin alterar el zoom del navegador. */
 @media screen and (min-width:861px){
   .app-shell{grid-template-columns:238px minmax(0,1fr)}

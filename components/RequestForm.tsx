@@ -23,7 +23,7 @@ export default function RequestForm({ clients, sites, clientId, submissionKey, q
     <label>Residuo o material<input name="waste_type" maxLength={120} required placeholder="Ej. chatarra metálica"/></label>
     <label>Origen<input name="origin" maxLength={250} required placeholder="Lugar de retiro"/></label>
     <label>Destino<input name="destination" maxLength={250} required placeholder="Lugar de entrega"/></label>
-    <label>Cantidad estimada (kg)<input name="estimated_kg" type="number" min="0.01" step="0.01" placeholder="Opcional"/></label>
+    {category!=="compra"&&<label>Cantidad estimada (kg)<input name="estimated_kg" type="number" min="0.01" step="0.01" placeholder="Opcional"/></label>}
     <label>Prioridad<select name="priority" defaultValue="normal"><option value="normal">Normal</option><option value="alta">Alta</option><option value="critica">Crítica</option></select></label>
     <label className="field-full">Observaciones<textarea name="notes" maxLength={2000} rows={4} placeholder="Indicaciones para la planificación, accesos u otras observaciones"/></label>
     <div className="field-full form-footer"><SubmitButton className="button button-primary">Registrar solicitud</SubmitButton></div>
