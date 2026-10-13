@@ -8,7 +8,7 @@ import {Notice} from "@/components/UI";
 import {SubmitButton} from "@/components/Transition";
 
 function today(){return new Intl.DateTimeFormat("sv-SE",{timeZone:"America/Santiago",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());}
-export default async function NewQuote({searchParams}:{searchParams:Promise<{cliente?:string;error?:string}>}){
+export default async function NewQuote({searchParams}:{searchParams:Promise<{cliente?:string;error?:string;empresa?:string}>}){
   const actor=await requireActor();if(actor.role==="conductor"||actor.role==="cliente")redirect("/cotizaciones");
   const [clients,query]=await Promise.all([db.query<{id:string;name:string;email:string|null}>("SELECT id,name,email FROM clients WHERE deleted_at IS NULL ORDER BY name"),searchParams]);
   const selected=clients.some(client=>client.id===query.cliente)?query.cliente:"";
@@ -16,7 +16,7 @@ export default async function NewQuote({searchParams}:{searchParams:Promise<{cli
   return <><Link href="/cotizaciones" className="back-link">← Cotizaciones</Link><div className="page-title-row"><div><div className="eyebrow">PROPUESTA COMERCIAL</div><h1>Nueva cotización</h1><p className="page-intro">Seleccione el cliente registrado y agregue los productos o servicios con sus cantidades y precios.</p></div></div>
     <Notice error={query.error}/><section className="section-card"><form action={createQuoteAction} className="form-grid"><input type="hidden" name="submission_key" value={randomUUID()}/>
       <label>Cliente<select name="client_id" defaultValue={selected} required><option value="">Seleccione un cliente</option>{clients.map(c=><option key={c.id} value={c.id}>{c.name}{c.email?` · ${c.email}`:""}</option>)}</select></label>
-      <label>Empresa emisora<select name="issuer" defaultValue="rerchar"><option value="rerchar">RERCHAR Chile SpA</option><option value="e_y_j">E y J Limitada</option></select></label>
+      <label>Empresa emisora<select name="issuer" defaultValue={query.empresa==="e_y_j"?"e_y_j":"rerchar"}><option value="rerchar">RERCHAR Chile SpA</option><option value="e_y_j">E y J Limitada</option></select></label>
       <label className="field-full">Título / alcance<input name="title" required minLength={3} maxLength={180} placeholder="Retiro y valorización de residuos"/></label>
       <label>Fecha de emisión<input name="issued_on" type="date" defaultValue={start} required/></label><label>Válida hasta<input name="valid_until" type="date" defaultValue={expires.toISOString().slice(0,10)} required/></label>
       <div className="form-section-title field-full">Primer concepto</div><label className="field-full">Producto o servicio<input name="description" required minLength={2} maxLength={240}/></label>
