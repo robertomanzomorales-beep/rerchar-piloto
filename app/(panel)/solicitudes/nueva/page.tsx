@@ -6,7 +6,7 @@ import RequestForm from "@/components/RequestForm";
 import { Breadcrumb, Notice } from "@/components/UI";
 import {getQuote,quoteFolio} from "@/lib/quotes";
 
-export default async function NewRequest({ searchParams }: { searchParams: Promise<{ error?: string; cotizacion?: string }> }) {
+export default async function NewRequest({ searchParams }: { searchParams: Promise<{ error?: string; cotizacion?: string; tipo?:string }> }) {
   const actor = await requireActor();
   if (actor.role === "conductor") redirect("/solicitudes");
   const [clients, sites] = await Promise.all([
@@ -24,5 +24,5 @@ export default async function NewRequest({ searchParams }: { searchParams: Promi
     }catch{/* El enlace inválido no determina cliente ni empresa. */}
   }
   return <><Breadcrumb label="Nueva solicitud"/><div className="page-title-row"><div><div className="eyebrow">NUEVO REGISTRO</div><h1>Nueva solicitud</h1><p className="page-intro">Registre los datos mínimos para que el equipo pueda planificar el servicio.</p></div></div>
-    <Notice error={params.error}/>{params.cotizacion&&!quote&&<p role="alert" className="notice notice-error">La cotización no está aceptada o no está disponible. La solicitud no se vinculará.</p>}<section className="section-card form-card">{clients.length && sites.length ? <RequestForm clients={clients} sites={sites} clientId={actor.role === "cliente" ? actor.client_id ?? undefined : undefined} submissionKey={randomUUID()} quote={quote}/> : <p>Antes de crear solicitudes, registre un cliente y su centro en Maestros.</p>}</section></>;
+    <Notice error={params.error}/>{params.cotizacion&&!quote&&<p role="alert" className="notice notice-error">La cotización no está aceptada o no está disponible. La solicitud no se vinculará.</p>}<section className="section-card form-card">{clients.length && sites.length ? <RequestForm clients={clients} sites={sites} clientId={actor.role === "cliente" ? actor.client_id ?? undefined : undefined} submissionKey={randomUUID()} quote={quote} initialCategory={params.tipo==="compra"?"compra":"servicios"}/> : <p>Antes de crear solicitudes, registre un cliente y su centro en Maestros.</p>}</section></>;
 }

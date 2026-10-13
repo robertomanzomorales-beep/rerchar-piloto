@@ -12,8 +12,8 @@ test("solicitud, permisos, planificación, checklist, evidencia y cierre", async
   process.env.STORAGE_DIR = uploadDir;
   try {
     const { db, transaction } = await import("../lib/db");
-    const { createClient, createSite, createAsset, createService, assignService, cancelService, reportFleetIncident, resolveFleetIncident, listFleet, reportServices, normalizeReportFilters, saveChecklist, startService, addEvidence, finishService, getService, listServices, listAgenda, PilotError } = await import("../lib/pilot");
-    for (const migration of ["001_piloto.sql", "002_flota_y_despacho.sql", "003_abastecimiento.sql", "004_mantenimiento_combustible.sql", "005_contenedores.sql", "006_acreditacion.sql", "007_finanzas.sql", "008_trazabilidad_ambiental.sql", "009_certificados.sql", "010_evidencia_persistente.sql", "011_operacion_real_2026.sql", "018_empresa_operadora.sql"]) {
+    const { createClient, createSite, createAsset, createService, assignService, cancelService, reportFleetIncident, resolveFleetIncident, listFleet, reportServices, normalizeReportFilters, saveChecklist, startService, addEvidence, handoffService, finishService, getService, listServices, listAgenda, PilotError } = await import("../lib/pilot");
+    for (const migration of ["001_piloto.sql", "002_flota_y_despacho.sql", "003_abastecimiento.sql", "004_mantenimiento_combustible.sql", "005_contenedores.sql", "006_acreditacion.sql", "007_finanzas.sql", "008_trazabilidad_ambiental.sql", "009_certificados.sql", "010_evidencia_persistente.sql", "011_operacion_real_2026.sql", "018_empresa_operadora.sql", "022_entrega_conductor.sql"]) {
       const sql = await readFile(resolve(process.cwd(), `db/${migration}`), "utf8");
       await transaction(async (tx) => {
         for (const statement of sql.split(/;\s*(?:\n|$)/).map((text) => text.trim()).filter(Boolean)) await tx.query(statement);
@@ -32,7 +32,8 @@ test("solicitud, permisos, planificación, checklist, evidencia y cierre", async
     const planner: Actor = { id: admin.id, name: "Administración", email: "admin@demo.cl", role: "admin", client_id: null };
     const operator: Actor = { id: driver.id, name: "Conductor", email: "chofer@demo.cl", role: "conductor", client_id: null };
     await assert.rejects(() => createClient(owner, { name: "Sin permiso" }), PilotError);
-    const addedClient = await createClient(planner, { name: "Cliente temporal", tax_id: "", contact_name: "" });
+    await assert.rejects(() => createClient(planner, { name: "Sin persona", contact_name: "" }), "el contacto es obligatorio");
+    const addedClient = await createClient(planner, { name: "Cliente temporal", tax_id: "", contact_name: "Encargado temporal" });
     const addedSite = await createSite(planner, { client_id: addedClient, name: "Centro temporal", address: "Calama" });
     const addedAsset = await createAsset(planner, { code: "CAM-02", label: "Segundo camión", kind: "camion", plate: "" });
     assert.ok(addedSite && addedAsset);
@@ -101,6 +102,25 @@ test("solicitud, permisos, planificación, checklist, evidencia y cierre", async
     const [count] = await db.query<{ total: string }>("SELECT count(*)::text AS total FROM service_events WHERE service_id=$1", [id]);
     assert.equal(Number(count.total), 7);
     assert.equal((await db.query("SELECT id FROM service_requests WHERE submission_key=$1", [submissionKey])).length, 1);
+
+    const purchase = await createService(planner,{...input,submission_key:randomUUID(),request_category:"compra",service_type:"compra",estimated_kg:""});
+    await assignService(planner,purchase,{asset_id:addedAsset,driver_id:otherDriver.id,scheduled_for:"2026-09-26T12:00"});
+    const secondOperator:Actor={...operator,id:otherDriver.id};
+    await saveChecklist(secondOperator,purchase,{vehicle_ok:true,documents_ok:true,containment_ok:true,ppe_ok:true,comment:"Listo"});
+    await startService(secondOperator,purchase);
+    const jpg=()=>new File([new Uint8Array([0xff,0xd8,0xff,0xd9])],"documento.jpg",{type:"image/jpeg"});
+    await assert.rejects(()=>handoffService(secondOperator,purchase),PilotError,"sin respaldos no hay entrega");
+    await assert.rejects(()=>addEvidence(secondOperator,purchase,"",jpg(),"factura"),PilotError,"conductor no carga facturas");
+    await addEvidence(secondOperator,purchase,"Material cargado",jpg(),"foto_material");
+    await addEvidence(secondOperator,purchase,"",jpg(),"guia_traslado");
+    await assert.rejects(()=>handoffService(secondOperator,purchase),PilotError,"la fotografía no sustituye la hoja");
+    await addEvidence(secondOperator,purchase,"",jpg(),"hoja_servicio");
+    await assert.rejects(()=>finishService(secondOperator,purchase,{gross_kg:100,tare_kg:10}),PilotError,"el conductor no ingresa el pesaje");
+    await handoffService(secondOperator,purchase);
+    assert.equal((await getService(planner,purchase)).status,"pendiente_revision");
+    await assert.rejects(()=>handoffService(secondOperator,purchase),PilotError,"la entrega no se duplica");
+    await finishService(planner,purchase,{gross_kg:100,tare_kg:10,guide_number:"G-002"});
+    assert.equal((await getService(planner,purchase)).status,"completada");
   } finally {
     await rm(uploadDir, { recursive: true, force: true });
   }

@@ -9,9 +9,9 @@ type Client = { id: string; name: string };
 type Site = { id: string; client_id: string; name: string };
 type AcceptedQuote = {id:string;client_id:string;issuer:"rerchar"|"e_y_j";folio:string;title:string;notes:string;
   lines:{description:string;quantity:string;unit:string}[]};
-export default function RequestForm({ clients, sites, clientId, submissionKey, quote }: { clients: Client[]; sites: Site[]; clientId?: string; submissionKey: string; quote?: AcceptedQuote }) {
+export default function RequestForm({ clients, sites, clientId, submissionKey, quote, initialCategory="servicios" }: { clients: Client[]; sites: Site[]; clientId?: string; submissionKey: string; quote?: AcceptedQuote; initialCategory?: "servicios"|"compra" }) {
   const [selected, setSelected] = useState(quote?.client_id ?? clientId ?? clients[0]?.id ?? "");
-  const [category, setCategory] = useState("servicios");
+  const [category, setCategory] = useState<string>(initialCategory);
   const available = sites.filter((site) => site.client_id === selected);
   const materialLines=quote?.lines.filter(line=>/^(kg|kilos?|kilogramos?)$/i.test(line.unit.trim()))??[];
   const materialNames=[...new Set(materialLines.map(line=>line.description))];

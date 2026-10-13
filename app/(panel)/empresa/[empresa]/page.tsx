@@ -9,7 +9,7 @@ import { listQuotes, quoteFolio } from "@/lib/quotes";
 import { ServiceTable, chileDate } from "@/components/UI";
 import {rercharMaterialDashboard,eyjPaymentDashboard} from "@/lib/company-dashboard";
 
-type ServiceMetrics = { total:string; requested:string; scheduled:string; in_route:string; completed:string; critical:string };
+type ServiceMetrics = { total:string; requested:string; scheduled:string; in_route:string; pending_review:string; completed:string; critical:string };
 type QuoteMetrics = { total:string; draft:string; sent:string; accepted:string; expired:string };
 type Month = { period:string; total:string };
 const value = (v:string|undefined) => Number(v ?? 0);
@@ -29,8 +29,9 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
       count(*) FILTER (WHERE status='solicitada')::text AS requested,
       count(*) FILTER (WHERE status='programada')::text AS scheduled,
       count(*) FILTER (WHERE status='en_ruta')::text AS in_route,
+      count(*) FILTER (WHERE status='pendiente_revision')::text AS pending_review,
       count(*) FILTER (WHERE status='completada')::text AS completed,
-      count(*) FILTER (WHERE priority='critica' AND status IN ('solicitada','programada','en_ruta'))::text AS critical
+      count(*) FILTER (WHERE priority='critica' AND status IN ('solicitada','programada','en_ruta','pendiente_revision'))::text AS critical
       FROM service_requests WHERE operating_company=$1 AND deleted_at IS NULL
       AND ($2::text <> 'cliente' OR client_id=$3::uuid)
       AND ($2::text <> 'conductor' OR driver_id=$4::uuid)`,[selected,actor.role,actor.client_id,actor.id]),
@@ -62,12 +63,14 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
     {label:"Solicitadas",count:value(s?.requested),color:"#d69c35"},
     {label:"Programadas",count:value(s?.scheduled),color:"#4b8fb2"},
     {label:"En ruta",count:value(s?.in_route),color:"#078c74"},
+    {label:"Revisión administrativa",count:value(s?.pending_review),color:"#b86b4d"},
     {label:"Completadas",count:value(s?.completed),color:"#368b58"},
   ];
   const maxStatus=Math.max(1,...serviceBars.map(b=>b.count));
   const alerts=[
     ...(showQuotes?[{label:"Cotizaciones enviadas con vigencia vencida",count:value(q?.expired),href:`/cotizaciones?empresa=${selected}`}]:[]),
     {label:"Servicios críticos aún abiertos",count:value(s?.critical),href:`/solicitudes?empresa=${selected}`},
+    ...(canManage(actor)?[{label:"Compras con documentos por validar",count:value(s?.pending_review),href:`/solicitudes?empresa=${selected}&estado=pendiente_revision`}]:[]),
     ...(canManage(actor)?[{label:"Guías valorizadas solicitadas y no recibidas",count:value(guideAlerts[0]?.total),href:`/seguimiento-guias?empresa=${selected}`}]:[]),
     ...(selected==="rerchar"&&canManage(actor)?[{label:"Ventas de material con pesaje, factura o pago pendientes",count:value(materials?.guides.pending),href:"/control-guias"}]:[]),
     ...(selected==="rerchar"&&canManage(actor)&&materials?.stock_ready?[{label:"Guías anteriores con salida de stock por conciliar",count:value(materials.guides.stock_pending),href:"/control-guias"}]:[]),

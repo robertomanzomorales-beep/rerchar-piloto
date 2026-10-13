@@ -6,7 +6,7 @@ import { ZodError } from "zod";
 import { requireActor, signIn, signOut } from "@/lib/auth";
 import {
   PilotError, addEvidence, assignService, cancelService, classifyServiceCompany, createAsset, createClient, createService, createSite, createUser,
-  finishService, reportFleetIncident, resolveFleetIncident, saveChecklist, startService,
+  finishService, handoffService, reportFleetIncident, resolveFleetIncident, saveChecklist, startService,
 } from "@/lib/pilot";
 import {updateAsset,updateClient,updateSite,MastersError} from "@/lib/masters";
 
@@ -88,6 +88,7 @@ export async function createServiceAction(form: FormData) {
   } catch (error) {
     const params=new URLSearchParams({error:message(error)});
     if(value(form,"quote_id"))params.set("cotizacion",value(form,"quote_id"));
+    if(value(form,"request_category")==="compra")params.set("tipo","compra");
     redirect(`/solicitudes/nueva?${params.toString()}`);
   }
   revalidatePath("/", "layout");
@@ -103,7 +104,7 @@ export async function assignServiceAction(form: FormData) {
   const actor = await requireActor(); const id = value(form,"id");
   await run(servicePath(id), () => assignService(actor, id, {
     asset_id: value(form,"asset_id"), ramp_asset_id: value(form,"ramp_asset_id"), driver_id: value(form,"driver_id"),
-    scheduled_for: value(form,"scheduled_for"), guide_number: value(form,"guide_number"),
+    scheduled_for: value(form,"scheduled_for"),
   }));
 }
 export async function cancelServiceAction(form: FormData) {
@@ -131,6 +132,10 @@ export async function saveChecklistAction(form: FormData) {
 export async function startServiceAction(form: FormData) {
   const actor = await requireActor(); const id = value(form,"id");
   await run(servicePath(id), () => startService(actor, id));
+}
+export async function handoffServiceAction(form:FormData){
+  const actor=await requireActor(),id=value(form,"id");
+  await run(servicePath(id),()=>handoffService(actor,id));
 }
 export async function finishServiceAction(form: FormData) {
   const actor = await requireActor(); const id = value(form,"id");

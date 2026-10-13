@@ -29,7 +29,7 @@ export async function listContainers(actor:Actor) {
     db.query<{id:string;client_id:string;client_name:string;name:string}>(`SELECT cs.id,cs.client_id,c.name AS client_name,cs.name FROM client_sites cs JOIN clients c ON c.id=cs.client_id
       WHERE cs.deleted_at IS NULL AND c.deleted_at IS NULL ORDER BY c.name,cs.name`),
     db.query<{id:string;folio:string;operating_company:Company|null;site_id:string;client_id:string}>(`SELECT id,folio,operating_company,site_id,client_id FROM service_requests
-      WHERE deleted_at IS NULL AND status IN ('solicitada','programada','en_ruta','completada') ORDER BY created_at DESC LIMIT 150`),
+      WHERE deleted_at IS NULL AND status IN ('solicitada','programada','en_ruta','pendiente_revision','completada') ORDER BY created_at DESC LIMIT 150`),
     db.query<ContainerMovement>(`SELECT m.*,c.code,s.folio AS service_folio,s.operating_company AS service_company,u.name AS actor_name FROM container_movements m
       JOIN containers c ON c.id=m.container_id LEFT JOIN service_requests s ON s.id=m.service_id JOIN users u ON u.id=m.actor_id
       ORDER BY m.created_at DESC,m.id DESC LIMIT 250`),

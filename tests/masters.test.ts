@@ -24,7 +24,8 @@ test("corrección de maestros conserva vínculos y registra los cambios",async()
     [randomUUID(),client.id,site.id,operator.id,asset.id]);
   const actor:Actor={id:operator.id,name:"Operaciones",email:"ops@demo.cl",role:"operaciones",client_id:null};
   const outside:Actor={id:portal.id,name:"Portal",email:"portal@demo.cl",role:"cliente",client_id:client.id};
-  await assert.rejects(()=>updateClient(outside,client.id,{name:"Otra razón social",tax_id:"",contact_name:""}),MastersError);
+  await assert.rejects(()=>updateClient(outside,client.id,{name:"Otra razón social",tax_id:"",contact_name:"Contacto"}),MastersError);
+  await assert.rejects(()=>updateClient(actor,client.id,{name:"Cliente inválido",contact_name:""}),"no se permite guardar sin persona de contacto");
   await updateClient(actor,client.id,{name:"Cliente corregido",tax_id:"456",contact_name:"Contacto nuevo"});
   await updateSite(actor,site.id,{name:"Faena corregida",address:"Puerto Seco"});
   await updateAsset(actor,asset.id,{label:"Camión corregido",plate:"xy-987"});

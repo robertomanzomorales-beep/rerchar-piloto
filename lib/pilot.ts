@@ -14,7 +14,7 @@ const required = (max = 180) => z.string().trim().min(2).max(max);
 const optional = (max = 1000) => z.string().trim().max(max).optional().default("");
 const positive = z.coerce.number().positive().max(100_000_000);
 const statusName: Record<string, string> = {
-  solicitada: "Solicitada", programada: "Programada", en_ruta: "En ruta", completada: "Completada", cancelada: "Cancelada",
+  solicitada: "Solicitada", programada: "Programada", en_ruta: "En ruta", pendiente_revision: "Revisión administrativa", completada: "Completada", cancelada: "Cancelada",
 };
 export { statusName };
 
@@ -34,7 +34,9 @@ export type ServiceRow = {
 };
 
 const serviceSelect = `SELECT s.*, c.name AS client_name, cs.name AS site_name,
-  a.label AS asset_label, r.label AS ramp_label, u.name AS driver_name
+  CASE WHEN a.plate IS NOT NULL AND trim(a.plate)<>'' THEN a.plate || ' · ' || a.label ELSE a.label END AS asset_label,
+  CASE WHEN r.plate IS NOT NULL AND trim(r.plate)<>'' THEN r.plate || ' · ' || r.label ELSE r.label END AS ramp_label,
+  u.name AS driver_name
   FROM service_requests s JOIN clients c ON c.id = s.client_id
   JOIN client_sites cs ON cs.id = s.site_id
   LEFT JOIN assets a ON a.id = s.assigned_asset_id
@@ -65,7 +67,8 @@ export async function listAgenda(actor: Actor, firstDay: string, dayAfterLast: s
   if (![firstDay, dayAfterLast].every((date) => /^\d{4}-\d{2}-\d{2}$/.test(date)) || firstDay >= dayAfterLast) reject("Rango de agenda inválido.");
   return db.query<AgendaService>(
     `SELECT s.id,s.folio,s.operating_company,c.name AS client_name,cs.name AS site_name,s.origin,s.destination,s.waste_type,
-      s.scheduled_for,a.label AS asset_label,u.name AS driver_name,s.status
+      s.scheduled_for,CASE WHEN a.plate IS NOT NULL AND trim(a.plate)<>'' THEN a.plate || ' · ' || a.label ELSE a.label END AS asset_label,
+      u.name AS driver_name,s.status
      FROM service_requests s JOIN clients c ON c.id=s.client_id JOIN client_sites cs ON cs.id=s.site_id
      LEFT JOIN assets a ON a.id=s.assigned_asset_id LEFT JOIN users u ON u.id=s.driver_id
      WHERE s.deleted_at IS NULL AND s.status IN ('programada','en_ruta')
@@ -141,10 +144,10 @@ async function event(tx: Db, serviceId: string, actor: Actor, kind: string, desc
 
 export async function createClient(actor: Actor, input: unknown) {
   needManage(actor);
-  const data = z.object({ name: required(), tax_id: optional(20), contact_name: optional(120), email:z.union([z.email(),z.literal("")]).default(""),address:optional(250) }).parse(input);
+  const data = z.object({ name: required(), tax_id: optional(20), contact_name: required(120), email:z.union([z.email(),z.literal("")]).default(""),address:optional(250) }).parse(input);
   return transaction(async (tx) => {
     const [row] = await tx.query<{ id: string }>(
-      "INSERT INTO clients (name,tax_id,contact_name,email,address) VALUES ($1,NULLIF($2,''),NULLIF($3,''),NULLIF($4,''),NULLIF($5,'')) RETURNING id",
+      "INSERT INTO clients (name,tax_id,contact_name,email,address) VALUES ($1,NULLIF($2,''),$3,NULLIF($4,''),NULLIF($5,'')) RETURNING id",
       [data.name,data.tax_id,data.contact_name,data.email,data.address],
     );
     await tx.query("INSERT INTO audit_events (actor_id, action, entity_type, entity_id, next_value) VALUES ($1,'create','client',$2,$3)", [actor.id, row.id, JSON.stringify({ name: data.name })]);
@@ -296,7 +299,7 @@ function parseChileDate(value: string) {
 
 export async function assignService(actor: Actor, id: string, input: unknown) {
   if (!canPlan(actor)) reject("No tiene permiso para planificar servicios.");
-  const data = z.object({ asset_id: uuid, ramp_asset_id: z.union([uuid,z.literal("")]).default(""), driver_id: uuid, scheduled_for: z.string(), guide_number: optional(50) }).parse(input);
+  const data = z.object({ asset_id: uuid, ramp_asset_id: z.union([uuid,z.literal("")]).default(""), driver_id: uuid, scheduled_for: z.string() }).parse(input);
   const date = parseChileDate(data.scheduled_for);
   return transaction(async (tx) => {
     const [service] = await tx.query<{ status: string; client_id:string; site_id:string; assigned_asset_id: string | null; ramp_asset_id: string | null; driver_id: string | null }>(
@@ -307,7 +310,7 @@ export async function assignService(actor: Actor, id: string, input: unknown) {
     const [asset] = await tx.query("SELECT id FROM assets WHERE id = $1 AND kind='camion' AND available = true AND deleted_at IS NULL FOR UPDATE", [data.asset_id]);
     const [ramp] = data.ramp_asset_id ? await tx.query("SELECT id FROM assets WHERE id=$1 AND kind='rampa' AND available=true AND deleted_at IS NULL FOR UPDATE", [data.ramp_asset_id]) : [];
     const [driver] = await tx.query("SELECT id FROM users WHERE id = $1 AND role = 'conductor' AND active = true FOR UPDATE", [data.driver_id]);
-    if (!asset || !driver || (data.ramp_asset_id && !ramp)) reject("Seleccione un camión, una rampa opcional disponible y un conductor activo.");
+    if (!asset || !driver || (data.ramp_asset_id && !ramp)) reject("Seleccione un camión, una rampla opcional disponible y un conductor activo.");
     const missing = await findMissingRequirements(tx,data.driver_id,service.client_id,service.site_id);
     if (missing.length) reject(`El conductor no cumple la acreditación de esta faena: ${missing.join(", ")}. Revise Personal.`);
     const [collision] = await tx.query(
@@ -316,11 +319,11 @@ export async function assignService(actor: Actor, id: string, input: unknown) {
        AND (assigned_asset_id = $3 OR driver_id = $4 OR ($5::text <> '' AND ramp_asset_id = NULLIF($5,'')::uuid)) LIMIT 1`,
       [id, date, data.asset_id, data.driver_id, data.ramp_asset_id],
     );
-    if (collision) reject("El camión, la rampa o el conductor ya tiene otra asignación cercana a este horario.");
+    if (collision) reject("El camión, la rampla o el conductor ya tiene otra asignación cercana a este horario.");
     await tx.query(
       `UPDATE service_requests SET assigned_asset_id=$2, driver_id=$3, scheduled_for=$4,
-       guide_number=NULLIF($5,''), ramp_asset_id=NULLIF($6,'')::uuid, status='programada', updated_at=now() WHERE id=$1`,
-      [id, data.asset_id, data.driver_id, date, data.guide_number, data.ramp_asset_id],
+       ramp_asset_id=NULLIF($5,'')::uuid, status='programada', updated_at=now() WHERE id=$1`,
+      [id, data.asset_id, data.driver_id, date, data.ramp_asset_id],
     );
     await event(tx, id, actor, "planificacion", "Recursos y fecha asignados", { status: service.status, asset_id: service.assigned_asset_id, ramp_asset_id: service.ramp_asset_id, driver_id: service.driver_id },
       { status: "programada", scheduled_for: date.toISOString(), asset_id: data.asset_id, ramp_asset_id: data.ramp_asset_id || null, driver_id: data.driver_id });
@@ -427,7 +430,7 @@ export async function startService(actor: Actor, id: string) {
        FROM service_requests s JOIN assets a ON a.id=s.assigned_asset_id
        LEFT JOIN assets r ON r.id=s.ramp_asset_id WHERE s.id=$1`, [id],
     );
-    if (!resources?.truck_available || !resources.ramp_available) reject("El camión o la rampa tiene una avería activa. Revise el despacho antes de iniciar la ruta.");
+    if (!resources?.truck_available || !resources.ramp_available) reject("El camión o la rampla tiene una avería activa. Revise el despacho antes de iniciar la ruta.");
     const [check] = await tx.query<{ vehicle_ok: boolean; documents_ok: boolean; containment_ok: boolean; ppe_ok: boolean }>(
       "SELECT vehicle_ok, documents_ok, containment_ok, ppe_ok FROM service_checklists WHERE service_id=$1", [id],
     );
@@ -439,24 +442,51 @@ export async function startService(actor: Actor, id: string) {
   });
 }
 
+export async function handoffService(actor: Actor, id: string) {
+  return transaction(async (tx) => {
+    const [service] = await tx.query<{ status: string; driver_id: string | null; request_category:string }>(
+      "SELECT status,driver_id,request_category FROM service_requests WHERE id=$1 AND deleted_at IS NULL FOR UPDATE", [id]);
+    if (!service || !canWorkService(actor, service)) reject("No tiene acceso a este servicio.");
+    if (service.status !== "en_ruta") reject("La operación debe estar en ruta para entregar sus documentos.");
+    if (service.request_category!=="compra") reject("Esta entrega documental corresponde a solicitudes de compra.");
+    const documents = await tx.query<{document_kind:string}>(
+      "SELECT DISTINCT document_kind FROM service_evidence WHERE service_id=$1 AND storage_key IS NOT NULL AND document_kind IN ('guia_traslado','hoja_servicio')",[id]);
+    const kinds = new Set(documents.map(document => document.document_kind));
+    if (!kinds.has("guia_traslado") || !kinds.has("hoja_servicio"))
+      reject("Adjunte Guía de Traslado y Hoja de Servicio antes de finalizar. El ticket es opcional.");
+    await tx.query("UPDATE service_requests SET status='pendiente_revision',updated_at=now() WHERE id=$1",[id]);
+    await event(tx,id,actor,"documentacion_entregada","Operación entregada a revisión administrativa",
+      {status:"en_ruta"},{status:"pendiente_revision",ticket_optional:true});
+  });
+}
+
 export async function finishService(actor: Actor, id: string, input: unknown) {
   const data = z.object({ gross_kg: positive, tare_kg: z.coerce.number().min(0), guide_number: optional(50) }).parse(input);
   if (data.gross_kg < data.tare_kg) reject("El peso bruto no puede ser inferior a la tara.");
   return transaction(async (tx) => {
-    const [service] = await tx.query<{ status: string; driver_id: string | null }>(
-      "SELECT status, driver_id FROM service_requests WHERE id=$1 AND deleted_at IS NULL FOR UPDATE", [id],
+    const [service] = await tx.query<{ status: string; driver_id: string | null; request_category:string }>(
+      "SELECT status,driver_id,request_category FROM service_requests WHERE id=$1 AND deleted_at IS NULL FOR UPDATE", [id],
     );
-    if (!service || !canWorkService(actor, service)) reject("No tiene acceso a este servicio.");
-    if (service.status !== "en_ruta") reject("Sólo se puede cerrar un servicio en ruta.");
-    const [evidence] = await tx.query("SELECT id FROM service_evidence WHERE service_id=$1 AND storage_key IS NOT NULL LIMIT 1", [id]);
-    if (!evidence) reject("Adjunte al menos una fotografía o documento antes de cerrar.");
+    if (!service || !canWorkService(actor,service)) reject("No tiene acceso a este servicio.");
+    const purchase=service.request_category==="compra";
+    if(purchase){
+      if(!canManage(actor)||service.status!=="pendiente_revision") reject("La compra debe ser entregada por el conductor y validada por administración.");
+      const documents=await tx.query<{document_kind:string}>(
+        "SELECT DISTINCT document_kind FROM service_evidence WHERE service_id=$1 AND storage_key IS NOT NULL AND document_kind IN ('guia_traslado','hoja_servicio')",[id]);
+      if(new Set(documents.map(document=>document.document_kind)).size!==2)
+        reject("Faltan la Guía de Traslado o la Hoja de Servicio.");
+    } else {
+      if(service.status!=="en_ruta") reject("Sólo se puede cerrar un servicio en ruta.");
+      const [evidence]=await tx.query("SELECT id FROM service_evidence WHERE service_id=$1 AND storage_key IS NOT NULL LIMIT 1",[id]);
+      if(!evidence)reject("Adjunte al menos una fotografía o documento antes de cerrar.");
+    }
     await tx.query(
       `UPDATE service_requests SET status='completada', gross_kg=$2, tare_kg=$3,
        guide_number=COALESCE(NULLIF($4,''),guide_number), closed_at=now(), updated_at=now() WHERE id=$1`,
       [id, data.gross_kg, data.tare_kg, data.guide_number],
     );
-    await event(tx, id, actor, "servicio_cerrado", "Servicio completado y pesaje registrado",
-      { status: "en_ruta" }, { status: "completada", gross_kg: data.gross_kg, tare_kg: data.tare_kg, net_kg: data.gross_kg - data.tare_kg });
+    await event(tx, id, actor, "servicio_cerrado", purchase?"Documentos revisados y pesaje validado por administración":"Servicio completado y pesaje registrado",
+      { status: service.status }, { status: "completada", gross_kg: data.gross_kg, tare_kg: data.tare_kg, net_kg: data.gross_kg - data.tare_kg });
   });
 }
 
@@ -469,8 +499,10 @@ function detectMime(bytes: Buffer) {
 }
 
 export async function addEvidence(actor: Actor, id: string, description: string, file: File, documentKind="evidencia") {
-  const descriptionSafe = required(500).parse(description);
-  const documentKindSafe=z.enum(["evidencia","guia_traslado","guia_valorizada","hoja_servicio","factura","certificado","resumen_retiros","otro"]).parse(documentKind);
+  const documentKindSafe=z.enum(["evidencia","guia_traslado","guia_valorizada","hoja_servicio","ticket_pesaje","foto_material","factura","certificado","resumen_retiros","otro"]).parse(documentKind);
+  if(actor.role==="conductor"&&!(["evidencia","guia_traslado","hoja_servicio","ticket_pesaje","foto_material"] as string[]).includes(documentKindSafe))
+    reject("El conductor sólo puede cargar documentos y fotografías de su operación.");
+  const descriptionSafe=z.string().trim().max(500).parse(description) || ({guia_traslado:"Guía de Traslado",hoja_servicio:"Hoja de Servicio",ticket_pesaje:"Ticket de pesaje",foto_material:"Fotografía del material"} as Record<string,string>)[documentKindSafe] || "Respaldo del servicio";
   const maxMb=process.env.VERCEL?4:5;
   if (!file || file.size < 1 || file.size > maxMb * 1024 * 1024) reject(`El archivo debe pesar entre 1 byte y ${maxMb} MB.`);
   const bytes = Buffer.from(await file.arrayBuffer());

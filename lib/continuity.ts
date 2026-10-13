@@ -250,7 +250,7 @@ export async function listFuel(actor: Actor) {
     listAssets(actor),
     db.query<{id:string;name:string}>("SELECT id,name FROM users WHERE role='conductor' AND active=true ORDER BY name"),
     db.query<{id:string;folio:string;operating_company:"rerchar"|"e_y_j"|null;asset_id:string}>(`SELECT id,folio,operating_company,assigned_asset_id AS asset_id FROM service_requests
-      WHERE assigned_asset_id IS NOT NULL AND status IN ('programada','en_ruta','completada') ORDER BY created_at DESC LIMIT 200`),
+      WHERE assigned_asset_id IS NOT NULL AND status IN ('programada','en_ruta','pendiente_revision','completada') ORDER BY created_at DESC LIMIT 200`),
     db.query<FuelEntry>(`SELECT f.*,a.label AS asset_label,a.code AS asset_code,u.name AS driver_name,s.folio AS service_folio,s.operating_company AS service_company
       FROM fuel_entries f JOIN assets a ON a.id=f.asset_id LEFT JOIN users u ON u.id=f.driver_id
       LEFT JOIN service_requests s ON s.id=f.service_id ORDER BY f.fuel_date DESC,f.created_at DESC LIMIT 300`),

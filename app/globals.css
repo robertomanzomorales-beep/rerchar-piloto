@@ -96,7 +96,9 @@ input::placeholder,textarea::placeholder{color:#9aaba4}textarea{resize:vertical;
 .title-icon{background:#e7f2ec}
 .badge-programada{background:#fff2bf;color:#745a00}
 .badge-en_ruta{background:#ddf2e9;color:#006d4e}
+.badge-pendiente_revision{background:#f9ede4;color:#864c2e}
 .badge-completada{background:#e5efe8;color:#236944}
+.document-card-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}.document-card{padding:14px;border:1px solid var(--line,#dce3e7);border-radius:8px;background:#fbfcfd}.document-card-title{display:flex;justify-content:space-between;align-items:center;gap:10px}.document-card-title strong{font-size:13px}.document-card-title span{font-size:11px;font-weight:700;white-space:nowrap}.document-done{color:#236944}.document-pending{color:#895d35}.document-card>small{display:block;margin-top:6px;color:#60717c}.document-card form{margin-top:12px}.document-checks{display:flex;flex-wrap:wrap;gap:10px;margin:14px 0}.document-checks span{padding:6px 10px;border-radius:5px;background:#edf3f4;font-size:12px;font-weight:700}
 input:not([type="checkbox"]):not([type="file"]),select,textarea{border-color:#cbd2cf;color:#273030}
 input::placeholder,textarea::placeholder{color:#959e9d}
 .check-row input{accent-color:#008e66}
