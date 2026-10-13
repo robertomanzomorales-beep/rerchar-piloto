@@ -2,6 +2,7 @@ import {z} from "zod";
 import type {Actor} from "./auth";
 import {canManage} from "./auth";
 import {db,transaction} from "./db";
+import {catalogName} from "./material-stock";
 
 const uuid=z.uuid();
 const optional=(max:number)=>z.string().trim().max(max).optional().default("");
@@ -21,9 +22,10 @@ export function materialAmounts(row:{supplier_kg:string|number|null;rerchar_kg:s
     total_clp:net==null||unitPrice==null?null:Math.round((source!-impurity)*unitPrice/10_000)};
 }
 export type MaterialReceipt={id:string;client_id:string;client_name:string;service_id:string|null;service_folio:string|null;
+  material_id:string|null;receipt_mode:"directa"|"programada"|null;
   kind:"ingreso"|"excedente";movement_on:Date|string;site_name:string;origin:string|null;destination:string|null;
   driver_name:string|null;driver_tax_id:string|null;truck_plate:string|null;trailer_plate:string|null;
-  weighing_ticket:string;material_name:string;supplier_kg:string|null;rerchar_kg:string|null;impurity_kg:string;
+  weighing_ticket:string|null;material_name:string;supplier_kg:string|null;rerchar_kg:string|null;impurity_kg:string;
   net_basis:"proveedor"|"rerchar";net_reported_kg:string|null;impurity_report:string|null;origin_guide:string|null;
   transfer_guide:string|null;entry_sheet:string|null;valued_guide:string|null;certificate_number:string|null;
   act_number:string|null;invoice_number:string|null;unit_price_clp:string|null;payment_status:string;paid_on:Date|string|null;
@@ -45,9 +47,10 @@ export async function getMaterialReceipt(actor:Actor,id:string){
 export async function createMaterialReceipt(actor:Actor,input:unknown){
   manage(actor);
   const data=z.object({client_id:uuid,service_id:z.union([uuid,z.literal("")]).default(""),kind:z.enum(["ingreso","excedente"]),
+    material_id:z.union([uuid,z.literal("")]).default(""),receipt_mode:z.enum(["directa","programada"]).default("programada"),
     movement_on:z.iso.date(),site_name:z.string().trim().min(2).max(180),origin:optional(180),destination:optional(180),
     driver_name:optional(120),driver_tax_id:optional(25),truck_plate:optional(20),trailer_plate:optional(30),
-    weighing_ticket:z.string().trim().min(1).max(80),material_name:z.string().trim().min(2).max(180),
+    weighing_ticket:optional(80),material_name:optional(180),
     supplier_kg:weight,rerchar_kg:weight,impurity_kg:weight,net_basis:z.enum(["proveedor","rerchar"]),
     net_reported_kg:weight,impurity_report:optional(80),origin_guide:optional(80),transfer_guide:optional(80),
     entry_sheet:optional(80),valued_guide:optional(80),certificate_number:optional(80),act_number:optional(80),
@@ -60,24 +63,36 @@ export async function createMaterialReceipt(actor:Actor,input:unknown){
   if(values.variance_kg!==null&&Math.abs(values.variance_kg)>0.01&&data.notes.length<10)
     reject("El neto anotado difiere del cálculo. Explique la diferencia en observaciones.");
   if(data.payment_status==="pagado"&&!data.paid_on)reject("Indique la fecha del pago.");
+  if(!data.material_id&&data.material_name.length<2)reject("Seleccione el material del catálogo o escriba su nombre.");
+  if(![data.weighing_ticket,data.origin_guide,data.transfer_guide,data.entry_sheet].some(Boolean))
+    reject("Indique al menos un ticket, guía de traslado o hoja de ingreso.");
+  if(data.receipt_mode==="directa"){
+    if(data.service_id)reject("La recepción directa no debe generar un despacho propio. Quite el servicio vinculado.");
+    if(!data.driver_name||!data.driver_tax_id||!data.truck_plate)reject("En recepción directa identifique conductor externo, RUT y patente del camión.");
+    if(!data.origin_guide&&!data.transfer_guide&&!data.entry_sheet)reject("La recepción directa requiere guía de traslado u hoja de ingreso; el ticket es opcional.");
+    if(data.rerchar_kg==="")reject("Indique el peso físico medido por RERCHAR para la recepción directa.");
+  }
   return transaction(async tx=>{
     const [client]=await tx.query("SELECT id FROM clients WHERE id=$1 AND deleted_at IS NULL",[data.client_id]);
     if(!client)reject("Seleccione un cliente activo.");
     if(data.service_id){const [service]=await tx.query("SELECT id FROM service_requests WHERE id=$1 AND client_id=$2 AND operating_company='rerchar' AND deleted_at IS NULL",[data.service_id,data.client_id]);
       if(!service)reject("La hoja de ingreso de RERCHAR requiere un servicio de RERCHAR del mismo cliente.");}
+    const materialName=data.material_id?await catalogName(tx,data.material_id):data.material_name;
     const [r]=await tx.query<{id:string}>(`INSERT INTO material_receipts(client_id,service_id,kind,movement_on,site_name,origin,destination,
       driver_name,driver_tax_id,truck_plate,trailer_plate,weighing_ticket,material_name,supplier_kg,rerchar_kg,impurity_kg,
       net_basis,net_reported_kg,impurity_report,origin_guide,transfer_guide,entry_sheet,valued_guide,certificate_number,
-      act_number,invoice_number,unit_price_clp,payment_status,paid_on,notes,recorded_by)
+      act_number,invoice_number,unit_price_clp,payment_status,paid_on,notes,recorded_by,material_id,receipt_mode)
       VALUES($1,NULLIF($2,'')::uuid,$3,$4,$5,NULLIF($6,''),NULLIF($7,''),NULLIF($8,''),NULLIF($9,''),NULLIF($10,''),
-        NULLIF($11,''),$12,$13,NULLIF($14::text,'')::numeric,NULLIF($15::text,'')::numeric,$16,$17,
+        NULLIF($11,''),NULLIF($12,''),$13,NULLIF($14::text,'')::numeric,NULLIF($15::text,'')::numeric,$16,$17,
         NULLIF($18::text,'')::numeric,NULLIF($19,''),NULLIF($20,''),NULLIF($21,''),NULLIF($22,''),NULLIF($23,''),
-        NULLIF($24,''),NULLIF($25,''),NULLIF($26,''),NULLIF($27::text,'')::numeric,$28,NULLIF($29,'')::date,NULLIF($30,''),$31)
+        NULLIF($24,''),NULLIF($25,''),NULLIF($26,''),NULLIF($27::text,'')::numeric,$28,NULLIF($29,'')::date,NULLIF($30,''),$31,
+        NULLIF($32,'')::uuid,$33)
       RETURNING id`,[data.client_id,data.service_id,data.kind,data.movement_on,data.site_name,data.origin,data.destination,
-      data.driver_name,data.driver_tax_id,data.truck_plate,data.trailer_plate,data.weighing_ticket,data.material_name,
+        data.driver_name,data.driver_tax_id,data.truck_plate,data.trailer_plate,data.weighing_ticket,materialName,
       data.supplier_kg,data.rerchar_kg,impurity,data.net_basis,data.net_reported_kg,data.impurity_report,
       data.origin_guide,data.transfer_guide,data.entry_sheet,data.valued_guide,data.certificate_number,
-      data.act_number,data.invoice_number,data.unit_price_clp,data.payment_status,data.paid_on,data.notes,actor.id]);
+        data.act_number,data.invoice_number,data.unit_price_clp,data.payment_status,data.paid_on,data.notes,actor.id,
+        data.material_id,data.receipt_mode]);
     await tx.query("INSERT INTO audit_events(actor_id,action,entity_type,entity_id,next_value) VALUES ($1,'create','material_receipt',$2,$3)",
       [actor.id,r.id,JSON.stringify({client_id:data.client_id,ticket:data.weighing_ticket,kind:data.kind,...values})]);
     return r.id;

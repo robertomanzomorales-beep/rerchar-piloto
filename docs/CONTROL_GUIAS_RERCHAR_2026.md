@@ -13,6 +13,19 @@ Fuente: `CONTROL GUIA RERCHAR CHILE AÑO 2026.xlsx`, hojas mensuales (en particu
 
 La columna O es el material devuelto según la cabecera de la planilla. El ticket y peso de retorno se conservan aparte; no se aplican como otra resta. El control es operativo e imprimible; no emite documentos tributarios ni reemplaza la guía oficial.
 
-Los controles anteriores asociados a servicios permanecen en sus fichas y se enlazan desde la vista general, sin duplicarse. La planilla histórica aún no está importada: sus filas con pesos ausentes, anulaciones y fórmulas requieren conciliación. `J` identifica material usado desde stock, pero no descuenta existencias ni afirma saldos hasta conciliar la bodega y los ingresos de material. Este límite también aparece en pantalla.
+Los controles anteriores asociados a servicios permanecen en sus fichas y se enlazan desde la vista general, sin duplicarse. La planilla histórica aún no está importada: sus filas con pesos ausentes, anulaciones y fórmulas requieren conciliación. Con la migración `020`, la columna `J` de **ventas nuevas** descuenta material del catálogo con saldo físico confirmado. La columna `I` (faena) sigue en tránsito y no se descuenta. Las guías creadas antes de `020` no generan un descuento retroactivo; se señalan cuando su salida desde stock requiere conciliación.
 
-Para publicar el módulo, aplicar `db/019_control_guias_material.sql` en la base de datos y registrar esa migración antes de desplegar el código.
+## Entrada de material y existencias
+
+Fuente: `ENTRADA MATERIAL - 2026 (3).xlsx`, hojas mensuales y `DATOS`. El catálogo combina los nombres de materiales de esta planilla y de `CONTROL GUIA RERCHAR CHILE AÑO 2026.xlsx`, sin importar saldos, precios ni personas. `CONTROL BODEGA 2.xlsx` corresponde a insumos y EPP y se gestiona en el inventario de suministros, por separado.
+
+| Entrada de material | Registro | Regla |
+| --- | --- | --- |
+| B–I: fecha, empresa/faena, conductor/RUT, camión/rampa, ticket, material | Ingreso directo de tercero o vinculado a servicio; catálogo con nombre alternativo | Directo exige conductor externo, RUT, patente, peso RERCHAR y guía de traslado/origen u hoja de ingreso; ticket opcional |
+| J–L: peso, impureza, neto | Peso proveedor y RERCHAR, base elegida, impureza, neto calculado | Diferencia con neto anotado exige observación; al confirmar stock se usa peso físico RERCHAR menos impureza |
+| M–R: informe, observaciones, guías y hoja de ingreso | Referencias y respaldo adjunto en PDF o imagen; hoja imprimible | Al menos ticket, guía o hoja documenta el ingreso; recepción directa requiere guía u hoja |
+| S–V: factura, estado, certificado y acta | Referencias, estado de pago y adjuntos | El registro operativo no emite factura tributaria |
+
+El alta de un ingreso **no suma stock automáticamente**. Administración u operaciones revisa la ficha y confirma que el material pasó a existencia comercial de RERCHAR. El asiento es idempotente y conserva el ingreso de origen. Administración puede cargar un único saldo inicial por material o ajustes con motivo y referencia. El saldo no se vuelve negativo y las correcciones de una guía generan movimientos inversos trazables. Un traslado o una compra registrados en CONTROL GUIA no aumentan por sí solos la existencia: se requiere recepción física confirmada.
+
+Para publicar las existencias y la recepción directa después del módulo de guías, aplicar `db/020_stock_materiales_y_recepcion_directa.sql` y registrar esa migración antes de desplegar el código actualizado. No hay saldo inicial inferido desde datos históricos: un responsable debe conciliarlo con respaldo físico.

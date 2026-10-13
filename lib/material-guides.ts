@@ -2,6 +2,7 @@ import {z} from "zod";
 import type {Actor} from "./auth";
 import {canManage} from "./auth";
 import {db,transaction,type Db} from "./db";
+import {catalogName,syncGuideStock} from "./material-stock";
 
 const uuid=z.uuid();
 const optional=(max:number)=>z.string().trim().max(max).default("");
@@ -24,7 +25,7 @@ const headerSchema=z.object({
 });
 const itemSchema=z.object({
   item_id:z.union([uuid,z.literal("")]).default(""),line_number:z.coerce.number().int().min(1).max(100),
-  material_name:z.string().trim().min(2).max(160),origin_ticket:optional(80),origin_kg:amount,stock_kg:amount,
+  material_id:z.union([uuid,z.literal("")]).default(""),material_name:optional(160),origin_ticket:optional(80),origin_kg:amount,stock_kg:amount,
   departure_ticket:optional(80),destination_ticket:optional(80),arrival_kg:amount,returned_kg:amount,
   return_ticket:optional(80),return_kg:amount,destination_impurity_kg:amount,invoice_kg:amount,
   agreed_price_clp:amount,invoice_price_clp:amount,invoice_number:optional(80),
@@ -37,9 +38,9 @@ export type MaterialGuide={id:string;guide_number:string;movement_on:Date|string
   movement_detail:string|null;counterparty_id:string;counterparty_name:string;origin:string;destination:string;driver_name:string|null;truck_plate:string|null;
   trailer_plate:string|null;freight_company:string|null;freight_cost_clp:string|null;freight_invoice_number:string|null;
   freight_guide_reference:string|null;freight_payment_required:string|null;freight_invoice_status:string|null;notes:string|null;
-  created_at:Date|string;line_count:string;departure_kg:string|null;missing_arrival:string;missing_invoice:string;missing_payment:string};
+  created_at:Date|string;line_count:string;departure_kg:string|null;missing_arrival:string;missing_invoice:string;missing_payment:string;unposted_stock:string};
 export type MaterialGuideItem={id:string;guide_id:string;line_number:number;material_name:string;
-  origin_ticket:string|null;origin_kg:string|null;stock_kg:string|null;departure_ticket:string|null;
+  material_id:string|null;origin_ticket:string|null;origin_kg:string|null;stock_kg:string|null;departure_ticket:string|null;
   destination_ticket:string|null;arrival_kg:string|null;returned_kg:string|null;return_ticket:string|null;
   return_kg:string|null;destination_impurity_kg:string|null;invoice_kg:string|null;agreed_price_clp:string|null;
   invoice_price_clp:string|null;invoice_number:string|null;invoice_issued_on:Date|string|null;
@@ -61,10 +62,15 @@ export function materialGuideTotals(item:Pick<MaterialGuideItem,"origin_kg"|"sto
 }
 
 function validateItem(item:Item,type:MaterialGuide["movement_type"]){
+  if(!item.material_id&&item.material_name.length<2)reject("Seleccione el material del catálogo o escriba su nombre.");
+  if(item.stock_kg!==""&&Math.abs(Number(item.stock_kg)*100-Math.round(Number(item.stock_kg)*100))>0.000001)
+    reject("Los kilos desde stock admiten hasta dos decimales.");
   const hasWeight=[item.origin_kg,item.stock_kg,item.arrival_kg,item.return_kg].some(v=>v!==""&&Number(v)>0);
   if(!hasWeight)reject("Registre al menos un peso mayor que cero para el material.");
   const departure=(Number(item.origin_kg||0)+Number(item.stock_kg||0));
   if(type==="venta"&&departure<=0)reject("La venta requiere peso de salida desde faena o stock.");
+  if(type==="venta"&&Number(item.stock_kg||0)>0&&!item.material_id)
+    reject("La salida desde stock requiere un material del catálogo y saldo disponible.");
   if(item.returned_kg!==""&&departure>0&&Number(item.returned_kg)>departure)
     reject("La devolución supera el peso de salida.");
   if(item.destination_impurity_kg!==""&&item.arrival_kg!==""&&Number(item.destination_impurity_kg)>Number(item.arrival_kg))
@@ -80,7 +86,9 @@ const base=`SELECT g.*,c.name AS counterparty_name,
   sum(COALESCE(i.origin_kg,0)+COALESCE(i.stock_kg,0)) FILTER (WHERE i.origin_kg IS NOT NULL OR i.stock_kg IS NOT NULL)::text AS departure_kg,
   count(i.id) FILTER (WHERE g.movement_type='venta' AND i.arrival_kg IS NULL)::text AS missing_arrival,
   count(i.id) FILTER (WHERE g.movement_type='venta' AND i.invoice_number IS NULL)::text AS missing_invoice,
-  count(i.id) FILTER (WHERE g.movement_type='venta' AND i.invoice_number IS NOT NULL AND i.invoice_status IS DISTINCT FROM 'pagada')::text AS missing_payment
+  count(i.id) FILTER (WHERE g.movement_type='venta' AND i.invoice_number IS NOT NULL AND i.invoice_status IS DISTINCT FROM 'pagada')::text AS missing_payment,
+  count(i.id) FILTER (WHERE g.movement_type='venta' AND i.stock_kg>0 AND
+    COALESCE((SELECT -sum(m.delta_kg) FROM material_stock_movements m WHERE m.guide_item_id=i.id),0)<i.stock_kg)::text AS unposted_stock
   FROM material_guides g JOIN clients c ON c.id=g.counterparty_id LEFT JOIN material_guide_items i ON i.guide_id=g.id`;
 
 export async function listMaterialGuides(actor:Actor,term="",type=""){
@@ -102,19 +110,22 @@ export async function getMaterialGuide(actor:Actor,id:string){
   return {guide,items};
 }
 
-async function insertItem(tx:Db,actor:Actor,guideId:string,item:Item,type:MaterialGuide["movement_type"]){
+async function insertItem(tx:Db,actor:Actor,guideId:string,item:Item,type:MaterialGuide["movement_type"],
+  guideNumber:string,movementOn:string){
   validateItem(item,type);
-  const columns=["guide_id","line_number","material_name","origin_ticket","origin_kg","stock_kg","departure_ticket",
+  const materialName=item.material_id?await catalogName(tx,item.material_id):item.material_name;
+  const columns=["guide_id","line_number","material_id","material_name","origin_ticket","origin_kg","stock_kg","departure_ticket",
     "destination_ticket","arrival_kg","returned_kg","return_ticket","return_kg","destination_impurity_kg","invoice_kg",
     "agreed_price_clp","invoice_price_clp","invoice_number","invoice_issued_on","invoice_status","payment_on",
     "valued_guide_number","notes","recorded_by"];
-  const vals=[guideId,item.line_number,item.material_name,item.origin_ticket,item.origin_kg,item.stock_kg,item.departure_ticket,
+  const vals=[guideId,item.line_number,item.material_id,materialName,item.origin_ticket,item.origin_kg,item.stock_kg,item.departure_ticket,
     item.destination_ticket,item.arrival_kg,item.returned_kg,item.return_ticket,item.return_kg,item.destination_impurity_kg,
     item.invoice_kg,item.agreed_price_clp,item.invoice_price_clp,item.invoice_number,item.invoice_issued_on,item.invoice_status,
     item.payment_on,item.valued_guide_number,item.notes,actor.id].map(v=>v===""?null:v);
   const [row]=await tx.query<{id:string}>(`INSERT INTO material_guide_items (${columns.join(",")})
     VALUES (${columns.map((_,n)=>`$${n+1}`).join(",")}) ON CONFLICT (guide_id,line_number) DO NOTHING RETURNING id`,vals);
   if(!row)reject("Ese número de ítem ya existe en la guía.");
+  await syncGuideStock(tx,actor,row.id,item.material_id||null,Number(item.stock_kg||0),guideNumber,movementOn,type);
   await tx.query("INSERT INTO audit_events(actor_id,action,entity_type,entity_id,next_value) VALUES ($1,'create','material_guide_item',$2,$3)",
     [actor.id,row.id,JSON.stringify({guide_id:guideId,...item})]);
   return row.id;
@@ -140,7 +151,7 @@ export async function createMaterialGuide(actor:Actor,input:unknown){
         header.origin,header.destination,...[header.driver_name,header.truck_plate,header.trailer_plate,header.freight_company].map(nullIfEmpty),
         nullIfEmpty(header.freight_cost_clp),...[header.freight_invoice_number,header.freight_guide_reference,
           header.freight_payment_required,header.freight_invoice_status,header.guide_notes].map(nullIfEmpty),actor.id]);
-    await insertItem(tx,actor,guide.id,item,header.movement_type);
+    await insertItem(tx,actor,guide.id,item,header.movement_type,header.guide_number,header.movement_on);
     await tx.query("INSERT INTO audit_events(actor_id,action,entity_type,entity_id,next_value) VALUES ($1,'create','material_guide',$2,$3)",
       [actor.id,guide.id,JSON.stringify(header)]);
     return guide.id;
@@ -151,18 +162,22 @@ export async function saveMaterialGuideItem(actor:Actor,guideId:string,input:unk
   manage(actor);if(!uuid.safeParse(guideId).success)reject("Guía inválida.");
   const item=itemSchema.parse(input);
   return transaction(async tx=>{
-    const [guide]=await tx.query<{movement_type:MaterialGuide["movement_type"]}>("SELECT movement_type FROM material_guides WHERE id=$1 FOR UPDATE",[guideId]);
+    const [guide]=await tx.query<{movement_type:MaterialGuide["movement_type"];guide_number:string;movement_on:Date|string}>(
+      "SELECT movement_type,guide_number,movement_on FROM material_guides WHERE id=$1 FOR UPDATE",[guideId]);
     if(!guide)reject("Guía no encontrada.");
     validateItem(item,guide.movement_type);
-    if(!item.item_id)return insertItem(tx,actor,guideId,item,guide.movement_type);
+    const movementOn=guide.movement_on instanceof Date?guide.movement_on.toISOString().slice(0,10):String(guide.movement_on).slice(0,10);
+    if(!item.item_id)return insertItem(tx,actor,guideId,item,guide.movement_type,guide.guide_number,movementOn);
     const [previous]=await tx.query<MaterialGuideItem>("SELECT * FROM material_guide_items WHERE id=$1 AND guide_id=$2 FOR UPDATE",[item.item_id,guideId]);
     if(!previous||previous.line_number!==item.line_number)reject("Ítem no encontrado; recargue la guía.");
-    const fields=["material_name","origin_ticket","origin_kg","stock_kg","departure_ticket","destination_ticket","arrival_kg",
+    const materialName=item.material_id?await catalogName(tx,item.material_id):item.material_name;
+    const fields=["material_id","material_name","origin_ticket","origin_kg","stock_kg","departure_ticket","destination_ticket","arrival_kg",
       "returned_kg","return_ticket","return_kg","destination_impurity_kg","invoice_kg","agreed_price_clp",
       "invoice_price_clp","invoice_number","invoice_issued_on","invoice_status","payment_on","valued_guide_number","notes"] as const;
-    const values=fields.map(f=>nullIfEmpty(item[f]));
+    const values=fields.map(f=>nullIfEmpty(f==="material_name"?materialName:item[f]));
     await tx.query(`UPDATE material_guide_items SET ${fields.map((f,n)=>`${f}=$${n+3}`).join(",")},recorded_by=$${fields.length+3},updated_at=now()
       WHERE id=$1 AND guide_id=$2`,[item.item_id,guideId,...values,actor.id]);
+    await syncGuideStock(tx,actor,item.item_id,item.material_id||null,Number(item.stock_kg||0),guide.guide_number,movementOn,guide.movement_type);
     await tx.query("INSERT INTO audit_events(actor_id,action,entity_type,entity_id,previous_value,next_value) VALUES ($1,'update','material_guide_item',$2,$3,$4)",
       [actor.id,item.item_id,JSON.stringify(previous),JSON.stringify(item)]);
     return item.item_id;

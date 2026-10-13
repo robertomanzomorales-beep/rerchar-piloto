@@ -5,13 +5,14 @@ import {revalidatePath} from "next/cache";
 import {ZodError} from "zod";
 import {requireActor} from "@/lib/auth";
 import {MaterialError,createMaterialReceipt,updateMaterialPayment,updateMaterialReferences} from "@/lib/materials";
+import {MaterialStockError} from "@/lib/material-stock";
 import {SupplierInvoiceError,createSupplierInvoice,registerSupplierPayment,updateSupplierInvoiceDueDate} from "@/lib/supplier-invoices";
 import {LedgerError,saveGuideFollowup,saveCommercialDetails} from "@/lib/service-ledger";
 import {OperationFileError,addOperationFile} from "@/lib/operation-files";
 
 const val=(form:FormData,key:string)=>String(form.get(key)??"");
 function message(error:unknown){
-  if(error instanceof MaterialError||error instanceof SupplierInvoiceError||error instanceof LedgerError||error instanceof OperationFileError)return error.message;
+  if(error instanceof MaterialError||error instanceof MaterialStockError||error instanceof SupplierInvoiceError||error instanceof LedgerError||error instanceof OperationFileError)return error.message;
   if(error instanceof ZodError)return "Revise fechas, montos y campos obligatorios.";
   if(typeof error==="object"&&error&&"code" in error&&error.code==="23505")return "El registro ya existe.";
   console.error("Registro operativo",error);
@@ -24,7 +25,7 @@ async function run(path:string,fn:()=>Promise<unknown>):Promise<never>{
 export async function createMaterialAction(form:FormData){
   const actor=await requireActor();let id:string;
   const fields=["client_id","service_id","kind","movement_on","site_name","origin","destination","driver_name",
-    "driver_tax_id","truck_plate","trailer_plate","weighing_ticket","material_name","supplier_kg","rerchar_kg",
+    "driver_tax_id","truck_plate","trailer_plate","weighing_ticket","material_id","material_name","receipt_mode","supplier_kg","rerchar_kg",
     "impurity_kg","net_basis","net_reported_kg","impurity_report","origin_guide","transfer_guide","entry_sheet",
     "valued_guide","certificate_number","act_number","invoice_number","unit_price_clp","payment_status","paid_on","notes"];
   try{id=await createMaterialReceipt(actor,Object.fromEntries(fields.map(field=>[field,val(form,field)])));}

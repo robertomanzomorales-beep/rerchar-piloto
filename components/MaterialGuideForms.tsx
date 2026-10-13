@@ -1,4 +1,5 @@
 import type {MaterialGuide,MaterialGuideItem} from "@/lib/material-guides";
+import type {CatalogMaterial} from "@/lib/material-stock";
 
 const iso=(value:Date|string|null|undefined)=>!value?"":value instanceof Date?value.toISOString().slice(0,10):String(value).slice(0,10);
 const weight=(name:string,label:string,value?:string|null)=><label key={name}>{label}<input type="number" name={name} min="0" step="0.01" defaultValue={value??""}/></label>;
@@ -27,11 +28,12 @@ export function GuideHeaderFields({guide,clients,today}:{guide?:MaterialGuide;cl
   </>;
 }
 
-export function GuideItemFields({item,lineNumber=1}:{item?:MaterialGuideItem;lineNumber?:number}){
+export function GuideItemFields({item,catalog,lineNumber=1}:{item?:MaterialGuideItem;catalog:CatalogMaterial[];lineNumber?:number}){
   return <>
     <div className="form-section-title field-full">Material y salida</div>
     <label>Número de ítem<input name="line_number" type="number" min="1" max="100" step="1" required readOnly={!!item} defaultValue={item?.line_number??lineNumber}/></label>
-    <label>Material<input name="material_name" required maxLength={160} defaultValue={item?.material_name??""}/></label>
+    <label>Material del catálogo<select name="material_id" defaultValue={item?.material_id??""}><option value="">Otro / pendiente de clasificar</option>{catalog.map(m=><option key={m.id} value={m.id}>{m.name} · {Number(m.quantity_kg).toLocaleString("es-CL")} kg disponibles</option>)}</select></label>
+    <label>Nombre si no figura en el catálogo<input name="material_name" maxLength={160} defaultValue={item?.material_id?"":item?.material_name??""} placeholder="Sólo para un material nuevo"/></label>
     <label>Ticket de faena<input name="origin_ticket" maxLength={80} defaultValue={item?.origin_ticket??""}/></label>
     {weight("origin_kg","Peso desde faena (kg)",item?.origin_kg)}
     {weight("stock_kg","Peso complementario desde stock (kg)",item?.stock_kg)}

@@ -28,7 +28,7 @@ export async function listOperationFiles(actor:Actor,target:"receipt"|"invoice",
 export async function addOperationFile(actor:Actor,target:"receipt"|"invoice",id:string,kind:string,file:File){
   if(!canManage(actor)||target==="invoice"&&actor.role!=="admin")reject("No tiene autorización para cargar el archivo.");
   uuid.parse(id);
-  const documentKind=z.enum(["guia","ticket","informe_impurezas","factura","comprobante","certificado","acta","otro"]).parse(kind);
+  const documentKind=z.enum(["guia","ticket","hoja_ingreso","informe_impurezas","factura","comprobante","certificado","acta","otro"]).parse(kind);
   const maxMb=process.env.VERCEL?4:5;
   if(!file||file.size<1||file.size>maxMb*1024*1024)reject(`Seleccione un archivo de hasta ${maxMb} MB.`);
   const bytes=Buffer.from(await file.arrayBuffer());
