@@ -6,7 +6,7 @@ import type { Actor } from "./auth";
 import { canManage, canPlan, canReadService, canWorkService } from "./auth";
 import { db, transaction, type Db } from "./db";
 import { hashPassword } from "./password";
-import { findMissingRequirements } from "./personnel";
+import { findMissingExternalRequirements, findMissingRequirements } from "./personnel";
 import type { Company } from "./companies";
 
 const uuid = z.uuid();
@@ -27,8 +27,9 @@ export type ServiceRow = {
   operating_company: Company | null; quote_id: string | null;
   request_category:string;service_type: string; waste_type: string; estimated_kg: string | null; origin: string; destination: string;
   priority: string; scheduled_for: Date | null; status: string; notes: string | null;
-  assigned_asset_id: string | null; ramp_asset_id: string | null; driver_id: string | null;
+  assigned_asset_id: string | null; ramp_asset_id: string | null; driver_id: string | null; external_driver_id: string | null;
   asset_label: string | null; ramp_label: string | null; driver_name: string | null;
+  external_driver_tax_id: string | null; external_driver_company: string | null;
   guide_number: string | null; gross_kg: string | null; tare_kg: string | null;
   created_at: Date; updated_at: Date;
 };
@@ -36,12 +37,13 @@ export type ServiceRow = {
 const serviceSelect = `SELECT s.*, c.name AS client_name, cs.name AS site_name,
   CASE WHEN a.plate IS NOT NULL AND trim(a.plate)<>'' THEN a.plate || ' · ' || a.label ELSE a.label END AS asset_label,
   CASE WHEN r.plate IS NOT NULL AND trim(r.plate)<>'' THEN r.plate || ' · ' || r.label ELSE r.label END AS ramp_label,
-  u.name AS driver_name
+  COALESCE(u.name,ed.name) AS driver_name,ed.tax_id AS external_driver_tax_id,ed.company_name AS external_driver_company
   FROM service_requests s JOIN clients c ON c.id = s.client_id
   JOIN client_sites cs ON cs.id = s.site_id
   LEFT JOIN assets a ON a.id = s.assigned_asset_id
   LEFT JOIN assets r ON r.id = s.ramp_asset_id
-  LEFT JOIN users u ON u.id = s.driver_id`;
+  LEFT JOIN users u ON u.id = s.driver_id
+  LEFT JOIN external_drivers ed ON ed.id = s.external_driver_id`;
 
 export async function listServices(actor: Actor, term = "", state = "", company = "") {
   const q = term.trim().slice(0, 100);
@@ -68,9 +70,10 @@ export async function listAgenda(actor: Actor, firstDay: string, dayAfterLast: s
   return db.query<AgendaService>(
     `SELECT s.id,s.folio,s.operating_company,c.name AS client_name,cs.name AS site_name,s.origin,s.destination,s.waste_type,
       s.scheduled_for,CASE WHEN a.plate IS NOT NULL AND trim(a.plate)<>'' THEN a.plate || ' · ' || a.label ELSE a.label END AS asset_label,
-      u.name AS driver_name,s.status
+      COALESCE(u.name,ed.name) AS driver_name,s.status
      FROM service_requests s JOIN clients c ON c.id=s.client_id JOIN client_sites cs ON cs.id=s.site_id
      LEFT JOIN assets a ON a.id=s.assigned_asset_id LEFT JOIN users u ON u.id=s.driver_id
+     LEFT JOIN external_drivers ed ON ed.id=s.external_driver_id
      WHERE s.deleted_at IS NULL AND s.status IN ('programada','en_ruta')
        AND (s.scheduled_for AT TIME ZONE 'America/Santiago')::date >= $1::date
        AND (s.scheduled_for AT TIME ZONE 'America/Santiago')::date < $2::date
@@ -107,10 +110,11 @@ export function normalizeReportFilters(input: Partial<Record<keyof ReportFilters
 export async function reportServices(actor: Actor, filters: ReportFilters) {
   return db.query<ReportService>(
     `SELECT s.id,s.folio,s.operating_company,c.name AS client_name,cs.name AS site_name,s.service_type,s.waste_type,
-       s.status,s.origin,s.destination,s.scheduled_for,s.created_at,a.label AS asset_label,u.name AS driver_name,
+       s.status,s.origin,s.destination,s.scheduled_for,s.created_at,a.label AS asset_label,COALESCE(u.name,ed.name) AS driver_name,
        s.estimated_kg,s.gross_kg,s.tare_kg
      FROM service_requests s JOIN clients c ON c.id=s.client_id JOIN client_sites cs ON cs.id=s.site_id
      LEFT JOIN assets a ON a.id=s.assigned_asset_id LEFT JOIN users u ON u.id=s.driver_id
+     LEFT JOIN external_drivers ed ON ed.id=s.external_driver_id
      WHERE s.deleted_at IS NULL
        AND ($1::text='' OR (s.created_at AT TIME ZONE 'America/Santiago')::date >= NULLIF($1,'')::date)
        AND ($2::text='' OR (s.created_at AT TIME ZONE 'America/Santiago')::date <= NULLIF($2,'')::date)
@@ -299,34 +303,42 @@ function parseChileDate(value: string) {
 
 export async function assignService(actor: Actor, id: string, input: unknown) {
   if (!canPlan(actor)) reject("No tiene permiso para planificar servicios.");
-  const data = z.object({ asset_id: uuid, ramp_asset_id: z.union([uuid,z.literal("")]).default(""), driver_id: uuid, scheduled_for: z.string() }).parse(input);
+  const data = z.object({ asset_id: uuid, ramp_asset_id: z.union([uuid,z.literal("")]).default(""),
+    driver_id: z.union([uuid,z.literal("")]).default(""), external_driver_id: z.union([uuid,z.literal("")]).default(""), scheduled_for: z.string() }).parse(input);
+  if(Boolean(data.driver_id)===Boolean(data.external_driver_id)) reject("Seleccione un solo conductor, de la empresa o tercero.");
   const date = parseChileDate(data.scheduled_for);
   return transaction(async (tx) => {
-    const [service] = await tx.query<{ status: string; client_id:string; site_id:string; assigned_asset_id: string | null; ramp_asset_id: string | null; driver_id: string | null }>(
-      "SELECT status, client_id, site_id, assigned_asset_id, ramp_asset_id, driver_id FROM service_requests WHERE id = $1 AND deleted_at IS NULL FOR UPDATE", [id],
+    const [service] = await tx.query<{ status: string; client_id:string; site_id:string; assigned_asset_id: string | null; ramp_asset_id: string | null; driver_id: string | null; external_driver_id:string|null }>(
+      "SELECT status, client_id, site_id, assigned_asset_id, ramp_asset_id, driver_id, external_driver_id FROM service_requests WHERE id = $1 AND deleted_at IS NULL FOR UPDATE", [id],
     );
     if (!service || !["solicitada", "programada"].includes(service.status)) reject("La solicitud no está disponible para planificación.");
     // Lock the shared resources before checking collisions so concurrent planners serialize.
     const [asset] = await tx.query("SELECT id FROM assets WHERE id = $1 AND kind='camion' AND available = true AND deleted_at IS NULL FOR UPDATE", [data.asset_id]);
     const [ramp] = data.ramp_asset_id ? await tx.query("SELECT id FROM assets WHERE id=$1 AND kind='rampa' AND available=true AND deleted_at IS NULL FOR UPDATE", [data.ramp_asset_id]) : [];
-    const [driver] = await tx.query("SELECT id FROM users WHERE id = $1 AND role = 'conductor' AND active = true FOR UPDATE", [data.driver_id]);
+    const [driver] = data.driver_id
+      ? await tx.query("SELECT id FROM users WHERE id = $1 AND role = 'conductor' AND active = true FOR UPDATE", [data.driver_id])
+      : await tx.query("SELECT id FROM external_drivers WHERE id = $1 AND active = true FOR UPDATE", [data.external_driver_id]);
     if (!asset || !driver || (data.ramp_asset_id && !ramp)) reject("Seleccione un camión, una rampla opcional disponible y un conductor activo.");
-    const missing = await findMissingRequirements(tx,data.driver_id,service.client_id,service.site_id);
+    const missing = data.driver_id
+      ? await findMissingRequirements(tx,data.driver_id,service.client_id,service.site_id)
+      : await findMissingExternalRequirements(tx,data.external_driver_id,service.client_id,service.site_id);
     if (missing.length) reject(`El conductor no cumple la acreditación de esta faena: ${missing.join(", ")}. Revise Personal.`);
     const [collision] = await tx.query(
       `SELECT id FROM service_requests WHERE id <> $1 AND deleted_at IS NULL AND status IN ('programada','en_ruta')
        AND scheduled_for BETWEEN $2::timestamptz - interval '4 hours' AND $2::timestamptz + interval '4 hours'
-       AND (assigned_asset_id = $3 OR driver_id = $4 OR ($5::text <> '' AND ramp_asset_id = NULLIF($5,'')::uuid)) LIMIT 1`,
-      [id, date, data.asset_id, data.driver_id, data.ramp_asset_id],
+       AND (assigned_asset_id = $3 OR ($4::text <> '' AND driver_id = NULLIF($4,'')::uuid)
+         OR ($6::text <> '' AND external_driver_id = NULLIF($6,'')::uuid)
+         OR ($5::text <> '' AND ramp_asset_id = NULLIF($5,'')::uuid)) LIMIT 1`,
+      [id, date, data.asset_id, data.driver_id, data.ramp_asset_id, data.external_driver_id],
     );
     if (collision) reject("El camión, la rampla o el conductor ya tiene otra asignación cercana a este horario.");
     await tx.query(
-      `UPDATE service_requests SET assigned_asset_id=$2, driver_id=$3, scheduled_for=$4,
-       ramp_asset_id=NULLIF($5,'')::uuid, status='programada', updated_at=now() WHERE id=$1`,
-      [id, data.asset_id, data.driver_id, date, data.ramp_asset_id],
+      `UPDATE service_requests SET assigned_asset_id=$2, driver_id=NULLIF($3,'')::uuid, scheduled_for=$4,
+       ramp_asset_id=NULLIF($5,'')::uuid, external_driver_id=NULLIF($6,'')::uuid, status='programada', updated_at=now() WHERE id=$1`,
+      [id, data.asset_id, data.driver_id, date, data.ramp_asset_id, data.external_driver_id],
     );
-    await event(tx, id, actor, "planificacion", "Recursos y fecha asignados", { status: service.status, asset_id: service.assigned_asset_id, ramp_asset_id: service.ramp_asset_id, driver_id: service.driver_id },
-      { status: "programada", scheduled_for: date.toISOString(), asset_id: data.asset_id, ramp_asset_id: data.ramp_asset_id || null, driver_id: data.driver_id });
+    await event(tx, id, actor, "planificacion", "Recursos y fecha asignados", { status: service.status, asset_id: service.assigned_asset_id, ramp_asset_id: service.ramp_asset_id, driver_id: service.driver_id, external_driver_id:service.external_driver_id },
+      { status: "programada", scheduled_for: date.toISOString(), asset_id: data.asset_id, ramp_asset_id: data.ramp_asset_id || null, driver_id: data.driver_id||null, external_driver_id:data.external_driver_id||null });
   });
 }
 
@@ -417,13 +429,15 @@ export async function saveChecklist(actor: Actor, id: string, input: unknown) {
 
 export async function startService(actor: Actor, id: string) {
   return transaction(async (tx) => {
-    const [service] = await tx.query<{ status: string; driver_id: string | null; client_id:string; site_id:string }>(
-      "SELECT status, driver_id, client_id, site_id FROM service_requests WHERE id=$1 AND deleted_at IS NULL FOR UPDATE", [id],
+    const [service] = await tx.query<{ status: string; driver_id: string | null; external_driver_id:string|null; client_id:string; site_id:string }>(
+      "SELECT status, driver_id, external_driver_id, client_id, site_id FROM service_requests WHERE id=$1 AND deleted_at IS NULL FOR UPDATE", [id],
     );
     if (!service || !canWorkService(actor, service)) reject("No tiene acceso a esta ruta.");
     if (service.status !== "programada") reject("Sólo se puede iniciar un servicio programado.");
-    if (!service.driver_id) reject("El servicio no tiene un conductor asignado.");
-    const missing=await findMissingRequirements(tx,service.driver_id,service.client_id,service.site_id);
+    if (!service.driver_id && !service.external_driver_id) reject("El servicio no tiene un conductor asignado.");
+    const missing=service.driver_id
+      ? await findMissingRequirements(tx,service.driver_id,service.client_id,service.site_id)
+      : await findMissingExternalRequirements(tx,service.external_driver_id!,service.client_id,service.site_id);
     if(missing.length) reject(`La acreditación del conductor venció o está pendiente: ${missing.join(", ")}. Revise Personal.`);
     const [resources] = await tx.query<{ truck_available: boolean; ramp_available: boolean }>(
       `SELECT a.available AS truck_available,COALESCE(r.available,true) AS ramp_available

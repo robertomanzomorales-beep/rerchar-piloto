@@ -9,11 +9,12 @@ import {
   finishService, handoffService, reportFleetIncident, resolveFleetIncident, saveChecklist, startService,
 } from "@/lib/pilot";
 import {updateAsset,updateClient,updateSite,MastersError} from "@/lib/masters";
+import {createExternalDriver,PersonnelError} from "@/lib/personnel";
 
 const value = (form: FormData, key: string) => String(form.get(key) ?? "");
 const servicePath = (id: string) => `/solicitudes/${encodeURIComponent(id)}`;
 function message(error: unknown) {
-  if (error instanceof PilotError || error instanceof MastersError) return error.message;
+  if (error instanceof PilotError || error instanceof MastersError || error instanceof PersonnelError) return error.message;
   if (error instanceof ZodError) return "Revise los campos obligatorios y sus valores.";
   if (typeof error === "object" && error && "code" in error && error.code === "23505") return "Ya existe un registro con este código o correo.";
   console.error("Error en el piloto", error);
@@ -74,6 +75,12 @@ export async function createDriverForServiceAction(form: FormData) {
     role: "conductor", client_id: "",
   }));
 }
+export async function createExternalDriverForServiceAction(form: FormData) {
+  const actor=await requireActor(),id=value(form,"id");
+  await run(servicePath(id),()=>createExternalDriver(actor,{
+    name:value(form,"name"),tax_id:value(form,"tax_id"),company_name:value(form,"company_name"),phone:value(form,"phone"),
+  }));
+}
 export async function createServiceAction(form: FormData) {
   const actor = await requireActor();
   let id: string;
@@ -102,8 +109,11 @@ export async function classifyServiceCompanyAction(form:FormData) {
 
 export async function assignServiceAction(form: FormData) {
   const actor = await requireActor(); const id = value(form,"id");
+  const selection=value(form,"driver_selection");
   await run(servicePath(id), () => assignService(actor, id, {
-    asset_id: value(form,"asset_id"), ramp_asset_id: value(form,"ramp_asset_id"), driver_id: value(form,"driver_id"),
+    asset_id: value(form,"asset_id"), ramp_asset_id: value(form,"ramp_asset_id"),
+    driver_id: selection.startsWith("cuenta:")?selection.slice(7):"",
+    external_driver_id:selection.startsWith("tercero:")?selection.slice(8):"",
     scheduled_for: value(form,"scheduled_for"),
   }));
 }

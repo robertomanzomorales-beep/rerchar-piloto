@@ -20,14 +20,45 @@ export async function findMissingRequirements(tx:Db,workerId:string,clientId:str
   return rows.map((row)=>row.name);
 }
 
+export async function findMissingExternalRequirements(tx:Db,driverId:string,clientId:string,siteId:string) {
+  const rows=await tx.query<{name:string}>(`SELECT r.name FROM site_requirements r
+    WHERE r.active=true AND r.client_id=$2 AND (r.site_id IS NULL OR r.site_id=$3)
+    AND NOT EXISTS (SELECT 1 FROM external_driver_credentials c WHERE c.requirement_id=r.id AND c.external_driver_id=$1 AND c.state='verificada'
+      AND c.issued_on <= (now() AT TIME ZONE 'America/Santiago')::date AND c.expires_on >= (now() AT TIME ZONE 'America/Santiago')::date)
+    ORDER BY r.name LIMIT 4`,[driverId,clientId,siteId]);
+  return rows.map((row)=>row.name);
+}
+
+export type ExternalDriver={id:string;name:string;tax_id:string;company_name:string;phone:string|null};
+export async function listExternalDrivers(actor:Actor) {
+  guard(actor);
+  return db.query<ExternalDriver>("SELECT id,name,tax_id,company_name,phone FROM external_drivers WHERE active=true ORDER BY name");
+}
+
+export async function createExternalDriver(actor:Actor,input:unknown) {
+  guard(actor);
+  const data=z.object({name:z.string().trim().min(2).max(120),tax_id:z.string().trim().min(8).max(20),
+    company_name:z.string().trim().min(2).max(160),phone:optional(40)}).parse(input);
+  const taxId=data.tax_id.replace(/[.\s]/g,"").toUpperCase();
+  if(!/^\d{6,8}-[0-9K]$/.test(taxId)) reject("Indique el RUT del conductor con guion y dígito verificador.");
+  return transaction(async tx=>{
+    const [row]=await tx.query<{id:string}>(`INSERT INTO external_drivers (name,tax_id,company_name,phone,created_by)
+      VALUES ($1,$2,$3,NULLIF($4,''),$5) RETURNING id`,[data.name,taxId,data.company_name,data.phone,actor.id]);
+    await tx.query("INSERT INTO audit_events (actor_id,action,entity_type,entity_id,next_value) VALUES ($1,'create','external_driver',$2,$3)",
+      [actor.id,row.id,JSON.stringify({name:data.name,tax_id:taxId,company_name:data.company_name})]);
+    return row.id;
+  });
+}
+
 export type Worker={id:string;name:string;email:string;role:string;national_id:string|null;position:string|null;shift:string|null;phone:string|null;employer:string|null};
 export type Requirement={id:string;client_id:string;site_id:string|null;client_name:string;site_name:string|null;name:string;kind:string;warning_days:number;created_at:Date};
 export type Credential={id:string;user_id:string;requirement_id:string;worker_name:string;requirement_name:string;client_name:string;site_name:string|null;
   reference:string;issued_on:Date|string;expires_on:Date|string;state:string;reviewed_by_name:string|null;review_note:string|null;created_at:Date};
+export type ExternalCredential=Omit<Credential,"user_id"> & {external_driver_id:string};
 
 export async function listPersonnel(actor:Actor) {
   guard(actor);
-  const [workers,clients,sites,requirements,credentials]=await Promise.all([
+  const [workers,clients,sites,requirements,credentials,externalDrivers,externalCredentials]=await Promise.all([
     db.query<Worker>(`SELECT u.id,u.name,u.email,u.role,p.national_id,p.position,p.shift,p.phone,p.employer FROM users u
       LEFT JOIN worker_profiles p ON p.user_id=u.id WHERE u.active=true AND u.role IN ('conductor','operaciones') ORDER BY u.name`),
     db.query<{id:string;name:string}>("SELECT id,name FROM clients WHERE deleted_at IS NULL ORDER BY name"),
@@ -41,8 +72,14 @@ export async function listPersonnel(actor:Actor) {
       FROM worker_credentials d JOIN users u ON u.id=d.user_id JOIN site_requirements r ON r.id=d.requirement_id
       JOIN clients c ON c.id=r.client_id LEFT JOIN client_sites s ON s.id=r.site_id LEFT JOIN users a ON a.id=d.reviewed_by
       ORDER BY CASE d.state WHEN 'pendiente' THEN 0 WHEN 'verificada' THEN 1 ELSE 2 END,d.created_at DESC LIMIT 400`),
+    listExternalDrivers(actor),
+    db.query<ExternalCredential>(`SELECT d.id,d.external_driver_id,d.requirement_id,d.reference,d.issued_on,d.expires_on,d.state,d.review_note,d.created_at,
+      e.name AS worker_name,r.name AS requirement_name,c.name AS client_name,s.name AS site_name,a.name AS reviewed_by_name
+      FROM external_driver_credentials d JOIN external_drivers e ON e.id=d.external_driver_id JOIN site_requirements r ON r.id=d.requirement_id
+      JOIN clients c ON c.id=r.client_id LEFT JOIN client_sites s ON s.id=r.site_id LEFT JOIN users a ON a.id=d.reviewed_by
+      ORDER BY CASE d.state WHEN 'pendiente' THEN 0 WHEN 'verificada' THEN 1 ELSE 2 END,d.created_at DESC LIMIT 400`),
   ]);
-  return {workers,clients,sites,requirements,credentials};
+  return {workers,clients,sites,requirements,credentials,externalDrivers,externalCredentials};
 }
 
 export async function saveWorkerProfile(actor:Actor,userId:string,input:unknown) {
@@ -124,6 +161,45 @@ export async function reviewCredential(actor:Actor,idInput:string,decision:"veri
     await tx.query("UPDATE worker_credentials SET state=$2,reviewed_by=$3,reviewed_at=now(),review_note=NULLIF($4,'') WHERE id=$1",
       [id,decision,actor.id,review]);
     await tx.query("INSERT INTO audit_events (actor_id,action,entity_type,entity_id,next_value) VALUES ($1,$2,'worker_credential',$3,$4)",
+      [actor.id,decision,id,JSON.stringify({reason:review})]);
+  });
+}
+
+export async function recordExternalCredential(actor:Actor,input:unknown) {
+  guard(actor);
+  const data=z.object({external_driver_id:uuid,requirement_id:uuid,reference:z.string().trim().min(2).max(160),
+    issued_on:z.iso.date(),expires_on:z.iso.date()}).parse(input);
+  if(data.expires_on<data.issued_on) reject("El vencimiento no puede anteceder a la emisión.");
+  return transaction(async tx=>{
+    const [driver]=await tx.query("SELECT id FROM external_drivers WHERE id=$1 AND active=true",[data.external_driver_id]);
+    const [requirement]=await tx.query("SELECT id FROM site_requirements WHERE id=$1 AND active=true",[data.requirement_id]);
+    if(!driver||!requirement) reject("Seleccione un conductor tercero y un requisito activo.");
+    const [credential]=await tx.query<{id:string}>(`INSERT INTO external_driver_credentials
+      (external_driver_id,requirement_id,reference,issued_on,expires_on,created_by)
+      VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+      [data.external_driver_id,data.requirement_id,data.reference,data.issued_on,data.expires_on,actor.id]);
+    await tx.query("INSERT INTO audit_events (actor_id,action,entity_type,entity_id,next_value) VALUES ($1,'register','external_driver_credential',$2,$3)",
+      [actor.id,credential.id,JSON.stringify(data)]);
+    return credential.id;
+  });
+}
+
+export async function reviewExternalCredential(actor:Actor,idInput:string,decision:"verificada"|"rechazada"|"revocada",reason:unknown) {
+  admin(actor);
+  const id=uuid.parse(idInput);
+  if(!["verificada","rechazada","revocada"].includes(decision)) reject("Decisión no permitida.");
+  const review=decision==="verificada"?optional(500).parse(reason):z.string().trim().min(5).max(500).parse(reason);
+  await transaction(async tx=>{
+    const [credential]=await tx.query<{state:string}>("SELECT state FROM external_driver_credentials WHERE id=$1 FOR UPDATE",[id]);
+    if(!credential || (decision==="revocada"?credential.state!=="verificada":credential.state!=="pendiente"))
+      reject("La credencial ya fue revisada o cambió de estado.");
+    if(decision==="verificada") {
+      const [current]=await tx.query("SELECT id FROM external_driver_credentials WHERE id=$1 AND expires_on >= (now() AT TIME ZONE 'America/Santiago')::date",[id]);
+      if(!current) reject("Este documento ya está vencido. Registre una renovación.");
+    }
+    await tx.query("UPDATE external_driver_credentials SET state=$2,reviewed_by=$3,reviewed_at=now(),review_note=NULLIF($4,'') WHERE id=$1",
+      [id,decision,actor.id,review]);
+    await tx.query("INSERT INTO audit_events (actor_id,action,entity_type,entity_id,next_value) VALUES ($1,$2,'external_driver_credential',$3,$4)",
       [actor.id,decision,id,JSON.stringify({reason:review})]);
   });
 }
