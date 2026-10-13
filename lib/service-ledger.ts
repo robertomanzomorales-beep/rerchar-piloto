@@ -22,7 +22,7 @@ export async function getServiceLedger(actor:Actor,serviceId:string){
     db.query<Commercial>("SELECT * FROM service_commercial_details WHERE service_id=$1",[serviceId])]);
   return {followup:followup[0]??null,commercial:commercial[0]??null};
 }
-export async function listGuideFollowups(actor:Actor){
+export async function listGuideFollowups(actor:Actor,company=""){
   if(!canManage(actor))reject("Acceso de operaciones requerido.");
   return db.query<{id:string;folio:string;operating_company:Company|null;client_name:string;site_name:string;scheduled_for:Date|null;status:string;
     requested_on:Date|string|null;received_on:Date|string|null;documents_sent_on:Date|string|null;notes:string|null}>(
@@ -30,7 +30,9 @@ export async function listGuideFollowups(actor:Actor){
       f.requested_on,f.received_on,f.documents_sent_on,f.notes FROM service_requests s
       JOIN clients c ON c.id=s.client_id JOIN client_sites cs ON cs.id=s.site_id
       LEFT JOIN valued_guide_followups f ON f.service_id=s.id
-      WHERE s.deleted_at IS NULL AND s.status<>'cancelada' ORDER BY COALESCE(f.requested_on,s.scheduled_for::date,s.created_at::date) DESC LIMIT 250`);
+      WHERE s.deleted_at IS NULL AND s.status<>'cancelada'
+        AND ($1::text='' OR s.operating_company=$1)
+      ORDER BY COALESCE(f.requested_on,s.scheduled_for::date,s.created_at::date) DESC LIMIT 250`,[company]);
 }
 export async function saveGuideFollowup(actor:Actor,serviceId:string,input:unknown){
   if(!canManage(actor))reject("Acceso de operaciones requerido.");

@@ -15,13 +15,14 @@ function weekStart(input?: string) {
   return addDays(safe, -((safe.getUTCDay() + 6) % 7));
 }
 
-export default async function Agenda({ searchParams }: { searchParams: Promise<{ inicio?: string }> }) {
+export default async function Agenda({ searchParams }: { searchParams: Promise<{ inicio?: string; empresa?:string }> }) {
   const actor = await requireActor();
-  const { inicio } = await searchParams;
+  const { inicio,empresa } = await searchParams;
+  const company=empresa==="rerchar"||empresa==="e_y_j"?empresa:"";
   const monday = weekStart(inicio);
   const days = Array.from({ length: 7 }, (_, offset) => addDays(monday, offset));
   const next = addDays(monday, 7);
-  const services = await listAgenda(actor, iso(monday), iso(next));
+  const services = await listAgenda(actor, iso(monday), iso(next),company);
   const byDay = new Map<string, AgendaService[]>();
   const localDay = new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Santiago", year: "numeric", month: "2-digit", day: "2-digit" });
   for (const service of services) {
@@ -30,7 +31,8 @@ export default async function Agenda({ searchParams }: { searchParams: Promise<{
   }
   return <>
     <div className="page-title-row"><div><div className="eyebrow">PLANIFICACIÓN</div><h1>Agenda de despacho</h1><p className="page-intro">Servicios programados y en ruta según el horario de Chile.</p></div><span className="title-icon"><CalendarDays size={24}/></span></div>
-    <div className="agenda-controls"><Link href={`/agenda?inicio=${iso(addDays(monday,-7))}`} aria-label="Semana anterior"><ChevronLeft size={18}/> Anterior</Link><strong>{new Intl.DateTimeFormat("es-CL", { timeZone: "UTC", day: "numeric", month: "long" }).format(monday)} – {new Intl.DateTimeFormat("es-CL", { timeZone: "UTC", day: "numeric", month: "long", year: "numeric" }).format(days[6])}</strong><Link href={`/agenda?inicio=${iso(next)}`} aria-label="Semana siguiente">Siguiente <ChevronRight size={18}/></Link></div>
+    <form action="/agenda" method="GET" className="filters"><input type="hidden" name="inicio" value={iso(monday)}/><label>Empresa<select name="empresa" defaultValue={company}><option value="">Ambas empresas</option><option value="rerchar">RERCHAR</option><option value="e_y_j">E y J</option></select></label><button className="button button-outline" type="submit">Filtrar</button></form>
+    <div className="agenda-controls"><Link href={`/agenda?inicio=${iso(addDays(monday,-7))}&empresa=${company}`} aria-label="Semana anterior"><ChevronLeft size={18}/> Anterior</Link><strong>{new Intl.DateTimeFormat("es-CL", { timeZone: "UTC", day: "numeric", month: "long" }).format(monday)} – {new Intl.DateTimeFormat("es-CL", { timeZone: "UTC", day: "numeric", month: "long", year: "numeric" }).format(days[6])}</strong><Link href={`/agenda?inicio=${iso(next)}&empresa=${company}`} aria-label="Semana siguiente">Siguiente <ChevronRight size={18}/></Link></div>
     <div className="agenda-grid">{days.map((day) => {
       const items = byDay.get(iso(day)) ?? [];
       return <section className="agenda-day" key={iso(day)}><header><span>{new Intl.DateTimeFormat("es-CL", { timeZone: "UTC", weekday: "long" }).format(day)}</span><strong>{new Intl.DateTimeFormat("es-CL", { timeZone: "UTC", day: "2-digit", month: "2-digit" }).format(day)}</strong></header>
