@@ -1,6 +1,7 @@
 import {z} from "zod";
 import type {Actor} from "./auth";
 import {db,transaction} from "./db";
+import type {Company} from "./companies";
 
 const uuid=z.uuid();
 const optional=(max:number)=>z.string().trim().max(max).optional().default("");
@@ -24,7 +25,7 @@ export type SupplierInvoice={id:string;issuer:"rerchar"|"e_y_j";supplier_tax_id:
   invoice_number:string;issued_on:Date|string;due_on:Date|string|null;description:string;net_clp:string|null;
   vat_clp:string|null;total_clp:string;cost_area:string|null;purchase_id:string|null;service_id:string|null;
   status:string;paid_clp:string;paid_on:Date|string|null;notes:string|null;created_at:Date};
-export type SupplierInvoiceDetail=SupplierInvoice&{purchase_folio:string|null;purchase_title:string|null;service_folio:string|null};
+export type SupplierInvoiceDetail=SupplierInvoice&{purchase_folio:string|null;purchase_title:string|null;service_folio:string|null;service_company:Company|null};
 export type SupplierPayment={id:string;amount_clp:string;paid_on:Date|string;reference:string;actor_name:string;created_at:Date};
 
 export async function listSupplierInvoices(actor:Actor){
@@ -34,7 +35,7 @@ export async function listSupplierInvoices(actor:Actor){
 export async function getSupplierInvoice(actor:Actor,id:string){
   admin(actor);if(!uuid.safeParse(id).success)reject("Factura no encontrada.");
   const [invoice]=await db.query<SupplierInvoiceDetail>(`SELECT i.*,p.folio::text AS purchase_folio,p.title AS purchase_title,
-    s.folio::text AS service_folio FROM supplier_invoices i
+    s.folio::text AS service_folio,s.operating_company AS service_company FROM supplier_invoices i
     LEFT JOIN purchase_requests p ON p.id=i.purchase_id
     LEFT JOIN service_requests s ON s.id=i.service_id WHERE i.id=$1`,[id]);
   if(!invoice)reject("Factura no encontrada.");
@@ -72,8 +73,10 @@ export async function createSupplierInvoice(actor:Actor,input:unknown){
   if(data.net_clp!==""&&data.vat_clp!==""&&Math.abs(invoiceReconciliation({net_clp:data.net_clp,vat_clp:data.vat_clp,total_clp:data.total_clp})??0)>0.01)
     reject("Neto más IVA no coincide con el total informado.");
   return transaction(async tx=>{
-    if(data.purchase_id){const [purchase]=await tx.query("SELECT id FROM purchase_requests WHERE id=$1",[data.purchase_id]);if(!purchase)reject("Compra no encontrada.");}
-    if(data.service_id){const [service]=await tx.query("SELECT id FROM service_requests WHERE id=$1 AND deleted_at IS NULL",[data.service_id]);if(!service)reject("Servicio no encontrado.");}
+    if(data.purchase_id){const [purchase]=await tx.query<{issuer:string}>("SELECT issuer FROM purchase_requests WHERE id=$1",[data.purchase_id]);
+      if(!purchase||purchase.issuer!==data.issuer)reject("La orden de compra debe corresponder a la empresa receptora.");}
+    if(data.service_id){const [service]=await tx.query<{operating_company:string|null}>("SELECT operating_company FROM service_requests WHERE id=$1 AND deleted_at IS NULL",[data.service_id]);
+      if(!service||service.operating_company!==data.issuer)reject("El servicio debe tener confirmada la misma empresa receptora.");}
     const [duplicate]=await tx.query("SELECT id FROM supplier_invoices WHERE issuer=$1 AND supplier_tax_id=$2 AND invoice_number=$3",
       [data.issuer,data.supplier_tax_id,data.invoice_number]);
     if(duplicate)reject("Esta factura del proveedor ya está registrada para la empresa emisora.");

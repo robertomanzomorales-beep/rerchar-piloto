@@ -13,7 +13,7 @@ test("certificado PDF/QR conserva versión, permisos y revocación de ficha obse
   const certificates=await import("../lib/certificates");
   const compliance=await import("../lib/compliance");
   const {renderCertificatePdf}=await import("../lib/certificate-pdf");
-  for(const name of ["001_piloto.sql","002_flota_y_despacho.sql","003_abastecimiento.sql","004_mantenimiento_combustible.sql","005_contenedores.sql","006_acreditacion.sql","007_finanzas.sql","008_trazabilidad_ambiental.sql","009_certificados.sql","010_evidencia_persistente.sql","011_operacion_real_2026.sql"]){
+  for(const name of ["001_piloto.sql","002_flota_y_despacho.sql","003_abastecimiento.sql","004_mantenimiento_combustible.sql","005_contenedores.sql","006_acreditacion.sql","007_finanzas.sql","008_trazabilidad_ambiental.sql","009_certificados.sql","010_evidencia_persistente.sql","011_operacion_real_2026.sql","018_empresa_operadora.sql"]){
     const sql=await readFile(resolve(process.cwd(),`db/${name}`),"utf8");
     await transaction(async tx=>{for(const part of sql.split(/;\s*(?:\n|$)/).map(s=>s.trim()).filter(Boolean))await tx.query(part);});
   }
@@ -28,8 +28,8 @@ test("certificado PDF/QR conserva versión, permisos y revocación de ficha obse
   const clientActor:Actor={id:customer.id,name:"Cliente",email:"cliente@demo.cl",role:"cliente",client_id:client.id};
   const outsider:Actor={id:otherCustomer.id,name:"Otro",email:"otro@demo.cl",role:"cliente",client_id:other.id};
   const [service]=await db.query<{id:string}>(`INSERT INTO service_requests
-    (submission_key,client_id,site_id,service_type,waste_type,origin,destination,status,gross_kg,tare_kg,created_by,closed_at)
-    VALUES ($1,$2,$3,'retiro','Metal','Planta','Receptor','completada',150,100,$4,now()) RETURNING id`,
+    (submission_key,client_id,site_id,operating_company,service_type,waste_type,origin,destination,status,gross_kg,tare_kg,created_by,closed_at)
+    VALUES ($1,$2,$3,'rerchar','retiro','Metal','Planta','Receptor','completada',150,100,$4,now()) RETURNING id`,
     [randomUUID(),client.id,site.id,owner.id]);
   await db.query(`INSERT INTO service_evidence (service_id,description,storage_key,created_by)
     VALUES ($1,'Guía de prueba','ficha-demo.jpg',$2)`,[service.id,owner.id]);

@@ -4,6 +4,8 @@ import {canManage} from "./auth";
 import {db,transaction} from "./db";
 import nodemailer from "nodemailer";
 import {renderQuotePdf} from "./quote-pdf";
+import {quoteFolio} from "./companies";
+export {quoteFolio} from "./companies";
 
 const uuid=z.uuid();
 const optional=(max:number)=>z.string().trim().max(max).optional().default("");
@@ -22,7 +24,7 @@ export class QuoteError extends Error {}
 function reject(message:string):never{throw new QuoteError(message);}
 function canEdit(actor:Actor){if(!canManage(actor))reject("Sólo operaciones puede preparar cotizaciones.");}
 export const issuers={rerchar:{name:"RERCHAR CHILE SPA",tax_id:"77.639.762-8"},e_y_j:{name:"EMPRESAS DE SERVICIOS INTEGRALES E Y J LIMITADA",tax_id:"76.347.909-9"}} as const;
-export type Quote={id:string;folio:string;submission_key:string;client_id:string;issuer:keyof typeof issuers;client_name:string;client_tax_id:string|null;
+export type Quote={id:string;folio:string;display_folio:string|null;submission_key:string;client_id:string;issuer:keyof typeof issuers;client_name:string;client_tax_id:string|null;
   client_email:string|null;client_address:string|null;title:string;notes:string|null;issued_on:Date|string;valid_until:Date|string;vat_rate:string;status:string;sent_at:Date|null;created_at:Date};
 export type QuoteLine={id:string;position:number;description:string;quantity:string;unit:string;unit_price_clp:string;taxable:boolean};
 export function quoteTotals(lines:Pick<QuoteLine,"quantity"|"unit_price_clp"|"taxable">[],vatRate=0.19){
@@ -33,11 +35,13 @@ export function quoteTotals(lines:Pick<QuoteLine,"quantity"|"unit_price_clp"|"ta
   return {net,vat,total:net+vat,lines:priced.map(line=>line.amount)};
 }
 
-export async function listQuotes(actor:Actor,clientId=""){
+export async function listQuotes(actor:Actor,clientId="",company=""){
   if(actor.role==="conductor")reject("Sin acceso a cotizaciones.");
   if(clientId && !uuid.safeParse(clientId).success)reject("Cliente inválido.");
+  if(company && !["rerchar","e_y_j"].includes(company))reject("Empresa inválida.");
   return db.query<Quote>(`SELECT q.* FROM client_quotes q WHERE ($1::text='' OR q.client_id=NULLIF($1,'')::uuid)
-    AND ($2::text<>'cliente' OR (q.client_id=$3::uuid AND q.status IN ('enviada','aceptada','rechazada'))) ORDER BY q.created_at DESC LIMIT 250`,[clientId,actor.role,actor.client_id]);
+    AND ($2::text<>'cliente' OR (q.client_id=$3::uuid AND q.status IN ('enviada','aceptada','rechazada')))
+    AND ($4::text='' OR q.issuer=$4) ORDER BY q.created_at DESC LIMIT 250`,[clientId,actor.role,actor.client_id,company]);
 }
 export async function getQuote(actor:Actor,quoteId:string){
   if(!uuid.safeParse(quoteId).success)reject("Cotización inexistente.");
@@ -56,11 +60,13 @@ export async function createQuote(actor:Actor,input:unknown){
     if(!client)reject("Seleccione un cliente registrado.");
     const [existing]=await tx.query<{id:string;created_by:string}>("SELECT id,created_by FROM client_quotes WHERE submission_key=$1",[data.submission_key]);
     if(existing){if(existing.created_by!==actor.id)reject("La clave de cotización pertenece a otro usuario.");return existing.id;}
-    const [quote]=await tx.query<{id:string}>(`INSERT INTO client_quotes
+    const [quote]=await tx.query<{id:string;folio:string}>(`INSERT INTO client_quotes
       (submission_key,client_id,issuer,client_name,client_tax_id,client_email,client_address,title,notes,issued_on,valid_until,vat_rate,created_by)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NULLIF($9,''),$10,$11,$12,$13) RETURNING id`,
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NULLIF($9,''),$10,$11,$12,$13) RETURNING id,folio`,
       [data.submission_key,data.client_id,data.issuer,client.name,client.tax_id,client.email,client.address,data.title,data.notes,
        data.issued_on,data.valid_until,data.vat_rate,actor.id]);
+    const displayFolio=`COT-${data.issuer==="rerchar"?"RER":"EYJ"}-${String(quote.folio).padStart(5,"0")}`;
+    await tx.query("UPDATE client_quotes SET display_folio=$2 WHERE id=$1",[quote.id,displayFolio]);
     await tx.query("INSERT INTO client_quote_lines(quote_id,position,description,quantity,unit,unit_price_clp,taxable) VALUES ($1,1,$2,$3,$4,$5,$6)",
       [quote.id,data.line.description,data.line.quantity,data.line.unit,data.line.unit_price_clp,data.line.taxable]);
     await tx.query("INSERT INTO audit_events(actor_id,action,entity_type,entity_id,next_value) VALUES ($1,'create','client_quote',$2,$3)",
@@ -138,9 +144,9 @@ export async function sendQuote(actor:Actor,quoteId:string){
     const transport=nodemailer.createTransport({host:process.env.SMTP_HOST,port,secure:port===465,
       auth:{user:process.env.SMTP_USER,pass:process.env.SMTP_PASSWORD}});
     await transport.sendMail({from:process.env.SMTP_FROM,to:quote.client_email,
-      subject:`Cotización COT-${String(quote.folio).padStart(5,"0")} · ${issuers[quote.issuer].name}`,
-      text:`Estimada empresa ${quote.client_name}:\n\nAdjuntamos la cotización COT-${String(quote.folio).padStart(5,"0")} por ${quote.title}.\n\nSaludos cordiales,\n${issuers[quote.issuer].name}`,
-      attachments:[{filename:`cotizacion-rerchar-${quote.folio}.pdf`,content:Buffer.from(pdf),contentType:"application/pdf"}]});
+      subject:`Cotización ${quoteFolio(quote)} · ${issuers[quote.issuer].name}`,
+      text:`Estimada empresa ${quote.client_name}:\n\nAdjuntamos la cotización ${quoteFolio(quote)} por ${quote.title}.\n\nSaludos cordiales,\n${issuers[quote.issuer].name}`,
+      attachments:[{filename:`cotizacion-${quoteFolio(quote).toLowerCase()}.pdf`,content:Buffer.from(pdf),contentType:"application/pdf"}]});
   }catch(error){
     console.error("Fallo de envío de cotización",error);
     // El servidor SMTP podría haber aceptado el mensaje antes de cortar la conexión: evite un segundo envío automático.

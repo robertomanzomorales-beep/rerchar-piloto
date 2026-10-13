@@ -8,6 +8,7 @@ import {saveGuideControlAction} from "@/app/guide-actions";
 import {Notice} from "@/components/UI";
 import {SubmitButton} from "@/components/Transition";
 import PrintButton from "@/components/PrintButton";
+import {companyName,serviceFolio} from "@/lib/companies";
 
 const showKg=(n:number|null|string)=>n==null?"Pendiente":`${Number(n).toLocaleString("es-CL",{maximumFractionDigits:2})} kg`;
 function day(value:Date|string){return new Intl.DateTimeFormat("es-CL",{timeZone:"UTC",dateStyle:"short"}).format(new Date(value));}
@@ -21,9 +22,10 @@ export default async function GuidePage({params,searchParams}:{params:Promise<{i
   const [guides,query]=await Promise.all([listGuideControls(actor,id),searchParams]);
   const editing=guides.find(g=>g.id===query.editar);
   return <>
-    <div className="order-actions print-hide"><Link href={`/solicitudes/${id}`} className="back-link"><ArrowLeft size={16}/> Volver al servicio</Link><PrintButton label="Imprimir control / guardar PDF"/></div>
+    <div className="order-actions print-hide"><Link href={`/solicitudes/${id}`} className="back-link"><ArrowLeft size={16}/> Volver al servicio</Link>{service.operating_company&&<PrintButton label="Imprimir control / guardar PDF"/>}</div>
+    {!service.operating_company&&<p role="alert" className="notice notice-error print-hide">Confirme la empresa operadora antes de imprimir este control.</p>}
     <div className="print-hide"><Notice error={query.error} ok={query.ok}/></div>
-    <article className="order-sheet"><header className="order-header"><div><div className="order-system">RERCHAR CHILE SPA</div><h1>Control de guías y pesajes</h1></div><div className="order-number"><small>SERVICIO</small><h1>RER-{String(service.folio).padStart(5,"0")}</h1></div></header>
+    <article className="order-sheet"><header className="order-header"><div><div className="order-system">{companyName(service.operating_company)}</div><h1>Control de guías y pesajes</h1></div><div className="order-number"><small>SERVICIO</small><h1>{serviceFolio(service)}</h1></div></header>
       <div className="order-section"><div className="order-grid"><div><small>Cliente / faena</small><strong>{service.client_name} · {service.site_name}</strong></div><div><small>Ruta</small><strong>{service.origin} → {service.destination}</strong></div><div><small>Material</small><strong>{service.waste_type}</strong></div><div><small>Camión / conductor</small><strong>{service.asset_label??"Pendiente"} · {service.driver_name??"Pendiente"}</strong></div></div></div>
       {guides.map(guide=>{const d=guideDifferences(guide),v=guideValues(guide);return <div className="order-section" key={guide.id}><h2>Guía {guide.guide_number} · ítem {guide.line_number} · {day(guide.movement_date)} · {guide.movement_type}</h2>
         <div className="order-grid"><div><small>Chofer / patente</small><strong>{guide.driver_name||"—"} / {guide.truck_plate||"—"}</strong></div><div><small>Material</small><strong>{guide.material_name||"—"}</strong></div><div><small>Ticket faena / origen</small><strong>{guide.origin_ticket||"Pendiente"}</strong></div><div><small>Ticket salida</small><strong>{guide.departure_ticket||"—"}</strong></div><div><small>Peso desde faena</small><strong>{showKg(guide.origin_kg)}</strong></div><div><small>Peso agregado desde stock</small><strong>{showKg(guide.complementary_kg)}</strong></div><div><small>Salida total (faena + stock)</small><strong>{showKg(d.departure_kg)}</strong></div>

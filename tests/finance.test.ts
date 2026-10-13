@@ -10,7 +10,7 @@ test("tarifa vigente, valorización, reemisión, pagos y margen conservan saldos
   const {db,transaction}=await import("../lib/db");
   const finance=await import("../lib/finance");
   const continuity=await import("../lib/continuity");
-  for(const name of ["001_piloto.sql","002_flota_y_despacho.sql","003_abastecimiento.sql","004_mantenimiento_combustible.sql","005_contenedores.sql","006_acreditacion.sql","007_finanzas.sql","008_trazabilidad_ambiental.sql","009_certificados.sql"]){
+  for(const name of ["001_piloto.sql","002_flota_y_despacho.sql","003_abastecimiento.sql","004_mantenimiento_combustible.sql","005_contenedores.sql","006_acreditacion.sql","007_finanzas.sql","008_trazabilidad_ambiental.sql","009_certificados.sql","010_evidencia_persistente.sql","011_operacion_real_2026.sql","018_empresa_operadora.sql"]){
     const sql=await readFile(resolve(process.cwd(),`db/${name}`),"utf8");
     await transaction(async tx=>{for(const part of sql.split(/;\s*(?:\n|$)/).map(s=>s.trim()).filter(Boolean)) await tx.query(part);});
   }
@@ -22,14 +22,17 @@ test("tarifa vigente, valorización, reemisión, pagos y margen conservan saldos
   const [site]=await db.query<{id:string}>("INSERT INTO client_sites (client_id,name) VALUES ($1,'Faena') RETURNING id",[client.id]);
   const [asset]=await db.query<{id:string}>("INSERT INTO assets (code,label,kind,reading_unit) VALUES ('CAM-F01','Camión finanzas','camion','km') RETURNING id");
   const [service]=await db.query<{id:string}>(`INSERT INTO service_requests
-    (submission_key,client_id,site_id,service_type,waste_type,origin,destination,status,gross_kg,tare_kg,assigned_asset_id,created_by,closed_at)
-    VALUES ($1,$2,$3,'retiro','Chatarra','Faena','Patio','completada',150,100,$4,$5,'2026-09-24T13:00:00Z') RETURNING id`,
+    (submission_key,client_id,site_id,operating_company,service_type,waste_type,origin,destination,status,gross_kg,tare_kg,assigned_asset_id,created_by,closed_at)
+    VALUES ($1,$2,$3,'rerchar','retiro','Chatarra','Faena','Patio','completada',150,100,$4,$5,'2026-09-24T13:00:00Z') RETURNING id`,
     [randomUUID(),client.id,site.id,asset.id,owner.id]);
   await assert.rejects(()=>finance.listFinance(ops),finance.FinanceError);
-  const contract=await finance.createContract(owner,{client_id:client.id,site_id:site.id,code:"CT-01",starts_on:"2026-01-01",ends_on:"",notes:""});
-  const wrong=await finance.createContract(owner,{client_id:other.id,site_id:"",code:"CT-OTRO",starts_on:"2026-01-01",ends_on:"",notes:""});
+  const contract=await finance.createContract(owner,{client_id:client.id,site_id:site.id,operating_company:"rerchar",code:"CT-01",starts_on:"2026-01-01",ends_on:"",notes:""});
+  const wrong=await finance.createContract(owner,{client_id:other.id,site_id:"",operating_company:"e_y_j",code:"CT-OTRO",starts_on:"2026-01-01",ends_on:"",notes:""});
   const wrongTariff=await finance.createTariff(owner,{contract_id:wrong,service_type:"retiro",waste_type:"",unit:"kg",unit_price_clp:"10",valid_from:"2026-01-01",valid_until:""});
   await assert.rejects(()=>finance.valueService(owner,service.id,{tariff_id:wrongTariff,client_order_reference:""}),finance.FinanceError);
+  const otherCompany=await finance.createContract(owner,{client_id:client.id,site_id:site.id,operating_company:"e_y_j",code:"CT-EYJ",starts_on:"2026-01-01",ends_on:"",notes:""});
+  const otherTariff=await finance.createTariff(owner,{contract_id:otherCompany,service_type:"retiro",waste_type:"",unit:"kg",unit_price_clp:"20",valid_from:"2026-01-01",valid_until:""});
+  await assert.rejects(()=>finance.valueService(owner,service.id,{tariff_id:otherTariff,client_order_reference:""}),finance.FinanceError);
   const tariff=await finance.createTariff(owner,{contract_id:contract,service_type:"retiro",waste_type:"",unit:"kg",unit_price_clp:"1000.00",valid_from:"2026-01-01",valid_until:""});
   await assert.rejects(()=>finance.createTariff(owner,{contract_id:contract,service_type:"retiro",waste_type:"",unit:"servicio",unit_price_clp:"200",valid_from:"2026-06-01",valid_until:""}),finance.FinanceError);
   await finance.valueService(owner,service.id,{tariff_id:tariff,client_order_reference:"OC-CLIENTE-1"});

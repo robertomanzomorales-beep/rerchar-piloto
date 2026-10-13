@@ -63,8 +63,8 @@ export async function createMaterialReceipt(actor:Actor,input:unknown){
   return transaction(async tx=>{
     const [client]=await tx.query("SELECT id FROM clients WHERE id=$1 AND deleted_at IS NULL",[data.client_id]);
     if(!client)reject("Seleccione un cliente activo.");
-    if(data.service_id){const [service]=await tx.query("SELECT id FROM service_requests WHERE id=$1 AND client_id=$2 AND deleted_at IS NULL",[data.service_id,data.client_id]);
-      if(!service)reject("El servicio seleccionado no pertenece al cliente.");}
+    if(data.service_id){const [service]=await tx.query("SELECT id FROM service_requests WHERE id=$1 AND client_id=$2 AND operating_company='rerchar' AND deleted_at IS NULL",[data.service_id,data.client_id]);
+      if(!service)reject("La hoja de ingreso de RERCHAR requiere un servicio de RERCHAR del mismo cliente.");}
     const [r]=await tx.query<{id:string}>(`INSERT INTO material_receipts(client_id,service_id,kind,movement_on,site_name,origin,destination,
       driver_name,driver_tax_id,truck_plate,trailer_plate,weighing_ticket,material_name,supplier_kg,rerchar_kg,impurity_kg,
       net_basis,net_reported_kg,impurity_report,origin_guide,transfer_guide,entry_sheet,valued_guide,certificate_number,

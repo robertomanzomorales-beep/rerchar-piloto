@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowUpRight, Clock3, ChevronRight } from "lucide-react";
 import { statusName, type ServiceRow } from "@/lib/pilot";
+import {companyName,serviceFolio} from "@/lib/companies";
 
 export function chileDate(value: Date | string | null, withTime = true) {
   if (!value) return "Sin fecha";
@@ -23,11 +24,11 @@ export function Empty({ title, detail }: { title: string; detail: string }) {
 export function ServiceTable({ services }: { services: ServiceRow[] }) {
   if (!services.length) return <Empty title="Sin solicitudes en esta vista" detail="Cree una solicitud o cambie los filtros para ver resultados."/>;
   return <div className="table-wrap"><table className="data-table"><thead><tr><th>Folio / cliente</th><th>Servicio</th><th>Planificación</th><th>Estado</th><th aria-label="Abrir"></th></tr></thead><tbody>{services.map((service) =>
-    <tr key={service.id}><td><Link className="table-main" href={`/solicitudes/${service.id}`}>RER-{String(service.folio).padStart(5,"0")}</Link><span className="table-sub">{service.client_name}</span></td>
+    <tr key={service.id}><td><Link className="table-main" href={`/solicitudes/${service.id}`}>{serviceFolio(service)}</Link><span className="table-sub">{service.client_name} · {companyName(service.operating_company)}</span></td>
       <td><strong>{service.waste_type}</strong><span className="table-sub">{service.site_name} · {service.service_type}</span></td>
       <td>{service.scheduled_for ? chileDate(service.scheduled_for) : <span className="muted">Por programar</span>}</td>
       <td><Badge status={service.status}/></td>
-      <td><Link href={`/solicitudes/${service.id}`} className="table-arrow" aria-label={`Abrir folio RER-${service.folio}`}><ArrowUpRight size={18}/></Link></td></tr>
+      <td><Link href={`/solicitudes/${service.id}`} className="table-arrow" aria-label={`Abrir folio ${serviceFolio(service)}`}><ArrowUpRight size={18}/></Link></td></tr>
   )}</tbody></table></div>;
 }
 export function Breadcrumb({ label }: { label: string }) {

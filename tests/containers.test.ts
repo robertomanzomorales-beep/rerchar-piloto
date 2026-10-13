@@ -10,7 +10,7 @@ test("tolva conserva una sola ubicación, historial, servicio y alerta de perman
   const {db,transaction}=await import("../lib/db");
   const {createService}=await import("../lib/pilot");
   const {createContainer,moveContainer,listContainers,recordContainerService,ContainerError}=await import("../lib/containers");
-  for (const name of ["001_piloto.sql","002_flota_y_despacho.sql","003_abastecimiento.sql","004_mantenimiento_combustible.sql","005_contenedores.sql","006_acreditacion.sql","007_finanzas.sql","008_trazabilidad_ambiental.sql","009_certificados.sql","010_evidencia_persistente.sql","011_operacion_real_2026.sql"]) {
+  for (const name of ["001_piloto.sql","002_flota_y_despacho.sql","003_abastecimiento.sql","004_mantenimiento_combustible.sql","005_contenedores.sql","006_acreditacion.sql","007_finanzas.sql","008_trazabilidad_ambiental.sql","009_certificados.sql","010_evidencia_persistente.sql","011_operacion_real_2026.sql","018_empresa_operadora.sql"]) {
     const sql=await readFile(resolve(process.cwd(),`db/${name}`),"utf8");
     await transaction(async tx=>{for(const part of sql.split(/;\s*(?:\n|$)/).map(s=>s.trim()).filter(Boolean)) await tx.query(part);});
   }
@@ -22,7 +22,7 @@ test("tolva conserva una sola ubicación, historial, servicio y alerta de perman
   const owner:Actor={id:admin.id,name:"Admin",email:"admin@demo.cl",role:"admin",client_id:null};
   const outsider:Actor={id:clientUser.id,name:"Cliente",email:"cliente@demo.cl",role:"cliente",client_id:clientA.id};
   await assert.rejects(()=>createContainer(outsider,{code:"TOL-01",kind:"tolva",capacity_m3:12,location_name:"Patio",max_stay_days:14}),ContainerError);
-  const serviceInput={submission_key:randomUUID(),client_id:clientA.id,site_id:siteA.id,service_type:"retiro",waste_type:"Chatarra",estimated_kg:"200",origin:"Faena",destination:"Patio",priority:"normal",notes:""};
+  const serviceInput={submission_key:randomUUID(),client_id:clientA.id,site_id:siteA.id,operating_company:"rerchar",service_type:"retiro",waste_type:"Chatarra",estimated_kg:"200",origin:"Faena",destination:"Patio",priority:"normal",notes:""};
   const serviceA=await createService(owner,serviceInput);
   const serviceB=await createService(owner,{...serviceInput,submission_key:randomUUID(),client_id:clientB.id,site_id:siteB.id});
   const id=await createContainer(owner,{code:"TOL-01",kind:"tolva",capacity_m3:12,location_name:"Patio principal",max_stay_days:14});

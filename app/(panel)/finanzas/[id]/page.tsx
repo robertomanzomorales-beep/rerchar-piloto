@@ -7,6 +7,7 @@ import {FinanceError,getFinancialService} from "@/lib/finance";
 import {addCostAction,registerInvoiceAction,registerPaymentAction,updateClientOrderReferenceAction,valueServiceAction,voidInvoiceAction} from "@/app/finance-actions";
 import {Notice,chileDate} from "@/components/UI";
 import {SubmitButton} from "@/components/Transition";
+import {companyName,serviceFolio} from "@/lib/companies";
 
 const money=(value:string|number)=>Number(value).toLocaleString("es-CL",{maximumFractionDigits:0});
 const dateString=(value:Date|string)=>value instanceof Date?value.toISOString().slice(0,10):String(value).slice(0,10);
@@ -22,9 +23,10 @@ export default async function FinancialDetail({params,searchParams}:{params:Prom
   const remaining=Number(service.invoice_total??0)-Number(service.paid_clp);
   const margin=Number(service.total_clp??0)-Number(service.manual_cost_clp)-Number(service.fuel_cost_clp);
   return <>
-    <Link className="back-link" href="/finanzas"><ArrowLeft size={16}/> Contratos y finanzas</Link>
-    <div className="page-title-row"><div><div className="eyebrow">ADMINISTRACIÓN DEL SERVICIO</div><h1>RER-{String(service.folio).padStart(5,"0")}</h1><p className="page-intro">{service.client_name} · {service.site_name} · {service.waste_type}</p></div><Link className="button button-outline" href={`/solicitudes/${id}`}>Ver operación</Link></div>
+    <Link className="back-link" href={`/finanzas?empresa=${service.operating_company??"pendiente"}`}><ArrowLeft size={16}/> Contratos y finanzas</Link>
+    <div className="page-title-row"><div><div className="eyebrow">ADMINISTRACIÓN · {companyName(service.operating_company)}</div><h1>{serviceFolio(service)}</h1><p className="page-intro">{service.client_name} · {service.site_name} · {service.waste_type}</p></div><Link className="button button-outline" href={`/solicitudes/${id}`}>Ver operación</Link></div>
     <Notice error={query.error} ok={query.ok}/>
+    {!service.operating_company&&<p role="alert" className="notice notice-error">Confirme la empresa del servicio en su ficha antes de valorizar o asociar una factura.</p>}
     <div className="supply-summary"><div><strong>{service.total_clp!==null?`$${money(service.total_clp)}`:"—"}</strong><span>Valor neto registrado</span></div><div><strong>{service.invoice_total!==null?`$${money(remaining)}`:"—"}</strong><span>Por cobrar</span></div><div><strong>{service.total_clp!==null?`$${money(margin)}`:"—"}</strong><span>Margen estimado</span></div></div>
     {service.status!=="completada"&&<p className="notice notice-error">Cierre el servicio antes de valorizarlo o registrar costos.</p>}
     <div className="supply-columns"><div>

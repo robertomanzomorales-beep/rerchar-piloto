@@ -2,6 +2,7 @@ import {z} from "zod";
 import type {Actor} from "./auth";
 import {canManage,canReadService} from "./auth";
 import {db,transaction} from "./db";
+import type {Company} from "./companies";
 
 const uuid=z.uuid();
 const date=z.union([z.iso.date(),z.literal("")]).default("");
@@ -23,9 +24,9 @@ export async function getServiceLedger(actor:Actor,serviceId:string){
 }
 export async function listGuideFollowups(actor:Actor){
   if(!canManage(actor))reject("Acceso de operaciones requerido.");
-  return db.query<{id:string;folio:string;client_name:string;site_name:string;scheduled_for:Date|null;status:string;
+  return db.query<{id:string;folio:string;operating_company:Company|null;client_name:string;site_name:string;scheduled_for:Date|null;status:string;
     requested_on:Date|string|null;received_on:Date|string|null;documents_sent_on:Date|string|null;notes:string|null}>(
-    `SELECT s.id,s.folio,c.name AS client_name,cs.name AS site_name,s.scheduled_for,s.status,
+    `SELECT s.id,s.folio,s.operating_company,c.name AS client_name,cs.name AS site_name,s.scheduled_for,s.status,
       f.requested_on,f.received_on,f.documents_sent_on,f.notes FROM service_requests s
       JOIN clients c ON c.id=s.client_id JOIN client_sites cs ON cs.id=s.site_id
       LEFT JOIN valued_guide_followups f ON f.service_id=s.id

@@ -8,6 +8,7 @@ import {registerSupplierPaymentAction,addOperationFileAction,updateSupplierInvoi
 import {Notice} from "@/components/UI";
 import {SubmitButton} from "@/components/Transition";
 import PrintButton from "@/components/PrintButton";
+import {companyName,serviceFolio} from "@/lib/companies";
 
 const date=(v:Date|string|null)=>!v?"—":v instanceof Date?v.toISOString().slice(0,10):String(v).slice(0,10);
 const money=(v:string|number|null)=>v==null?"—":`$${Number(v).toLocaleString("es-CL",{maximumFractionDigits:2})}`;
@@ -18,13 +19,13 @@ export default async function SupplierInvoiceDetail({params,searchParams}:{param
   const [files,query]=await Promise.all([listOperationFiles(actor,"invoice",id),searchParams]);
   const saldo=Number(r.total_clp)-Number(r.paid_clp);
   return <><div className="order-actions print-hide"><Link href="/facturas-recibidas" className="back-link">← Facturas recibidas</Link><PrintButton label="Imprimir ficha / guardar PDF"/></div><div className="print-hide"><Notice error={query.error} ok={query.ok}/></div>
-    <article className="order-sheet"><header className="order-header"><div><div className="order-system">{r.issuer==="rerchar"?"RERCHAR CHILE SPA":"E Y J LIMITADA"}</div><h1>Registro de factura recibida</h1></div><div className="order-number"><small>FACTURA</small><h1>{r.invoice_number}</h1></div></header><p className="order-muted">Esta ficha interna no sustituye al documento tributario del proveedor.</p>
+    <article className="order-sheet"><header className="order-header"><div><div className="order-system">{companyName(r.issuer)}</div><h1>Registro de factura recibida</h1></div><div className="order-number"><small>FACTURA</small><h1>{r.invoice_number}</h1></div></header><p className="order-muted">Esta ficha interna no sustituye al documento tributario del proveedor.</p>
       <div className="order-section"><div className="order-grid">{([[
         "Proveedor",`${r.supplier_name} · ${r.supplier_tax_id}`],["Emisión",date(r.issued_on)],["Vencimiento",date(r.due_on)],
         ["Descripción",r.description],["Neto",money(r.net_clp)],["IVA",money(r.vat_clp)],["Total",money(r.total_clp)],
         ["Pagado",money(r.paid_clp)],["Saldo",money(saldo)],["Estado",r.status],["Centro de costo",r.cost_area||"—"]] as [string,string][]).map(([key,value])=><div key={key}><small>{key}</small><strong>{value}</strong></div>)}
         {r.purchase_id&&r.purchase_folio&&<div><small>Orden de compra vinculada</small><strong><Link href={`/compras/${r.purchase_id}`}>OC-{r.purchase_folio.padStart(5,"0")} · {r.purchase_title}</Link></strong></div>}
-        {r.service_id&&r.service_folio&&<div><small>Servicio vinculado</small><strong><Link href={`/solicitudes/${r.service_id}`}>RER-{r.service_folio.padStart(5,"0")}</Link></strong></div>}
+        {r.service_id&&r.service_folio&&<div><small>Servicio vinculado</small><strong><Link href={`/solicitudes/${r.service_id}`}>{serviceFolio({folio:r.service_folio,operating_company:r.service_company})}</Link></strong></div>}
       </div>{r.notes&&<p>{r.notes}</p>}</div>
       <div className="order-section"><h2>Pagos</h2><ul className="record-list">{payments.map(p=><li key={p.id}><strong>{money(p.amount_clp)} · {date(p.paid_on)}</strong><small>{p.reference} · {p.actor_name}</small></li>)}{payments.length===0&&<li>Sin pagos registrados.</li>}</ul></div>
       <div className="order-section"><h2>Documentos</h2><ul className="record-list">{files.map(f=><li key={f.id}><a href={`/api/archivos-operacion/${f.id}`}>{f.kind} · {f.filename}</a></li>)}{files.length===0&&<li>Factura original pendiente de adjuntar.</li>}</ul></div>

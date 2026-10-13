@@ -26,8 +26,8 @@ test("ingresos, facturas y seguimiento conservan cálculos, permisos y respaldos
   const owner:Actor={id:admin.id,name:"Admin",email:"admin@demo.cl",role:"admin",client_id:null};
   const viewer:Actor={id:customer.id,name:"A",email:"a@demo.cl",role:"cliente",client_id:ca.id};
   const stranger:Actor={id:outsider.id,name:"B",email:"b@demo.cl",role:"cliente",client_id:cb.id};
-  const [service]=await db.query<{id:string}>(`INSERT INTO service_requests(submission_key,client_id,site_id,service_type,waste_type,origin,destination,created_by)
-    VALUES($1,$2,$3,'retiro','Cobre','Faena','Destino',$4) RETURNING id`,[randomUUID(),ca.id,site.id,owner.id]);
+  const [service]=await db.query<{id:string}>(`INSERT INTO service_requests(submission_key,client_id,site_id,operating_company,service_type,waste_type,origin,destination,created_by)
+    VALUES($1,$2,$3,'rerchar','retiro','Cobre','Faena','Destino',$4) RETURNING id`,[randomUUID(),ca.id,site.id,owner.id]);
   const receipt=await materials.createMaterialReceipt(owner,{client_id:ca.id,service_id:service.id,kind:"ingreso",
     movement_on:"2026-09-25",site_name:"Faena A",weighing_ticket:"TK-1",material_name:"Cobre",
     supplier_kg:"1200",rerchar_kg:"1180",impurity_kg:"80",net_basis:"rerchar",net_reported_kg:"1100",

@@ -2,6 +2,7 @@ import {z} from "zod";
 import {canManage,type Actor} from "./auth";
 import {db,transaction,type Db} from "./db";
 import {revokeActiveCertificate} from "./certificates";
+import type {Company} from "./companies";
 
 const uuid=z.uuid();
 const text=(max:number)=>z.string().trim().min(2).max(max);
@@ -18,10 +19,11 @@ async function event(tx:Db,actor:Actor,id:string,action:string,previous:unknown,
     VALUES ($1,$2,'waste_record',$3,$4,$5)`,[actor.id,action,id,previous?JSON.stringify(previous):null,JSON.stringify(next)]);
 }
 export type WasteRecord={id:string;service_id:string;folio:string;client_id:string;client_name:string;site_name:string;waste_type:string;
+  operating_company:Company|null;
   category:string;classification:string;generator_name:string;transporter_name:string;receiver_name:string;treatment:string;
   guide_number:string;quantity_kg:string;status:string;external_system:string|null;external_reference:string|null;
   reported_on:Date|string|null;review_note:string|null;updated_at:Date;created_at:Date;evidence_count:string};
-const select=`SELECT w.*,s.folio,s.client_id,c.name AS client_name,cs.name AS site_name,s.waste_type,
+const select=`SELECT w.*,s.folio,s.client_id,s.operating_company,c.name AS client_name,cs.name AS site_name,s.waste_type,
   (SELECT count(*)::text FROM service_evidence e WHERE e.service_id=s.id AND e.storage_key IS NOT NULL) AS evidence_count
   FROM waste_records w JOIN service_requests s ON s.id=w.service_id
   JOIN clients c ON c.id=s.client_id JOIN client_sites cs ON cs.id=s.site_id`;

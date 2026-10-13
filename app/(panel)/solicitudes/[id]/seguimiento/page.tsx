@@ -7,6 +7,7 @@ import {saveGuideFollowupAction,saveCommercialAction} from "@/app/operation-acti
 import {Notice} from "@/components/UI";
 import {SubmitButton} from "@/components/Transition";
 import PrintButton from "@/components/PrintButton";
+import {companyName,serviceFolio} from "@/lib/companies";
 
 const date=(v:Date|string|null|undefined)=>!v?"":v instanceof Date?v.toISOString().slice(0,10):String(v).slice(0,10);
 export default async function ServiceFollowup({params,searchParams}:{params:Promise<{id:string}>;searchParams:Promise<{error?:string;ok?:string}>}){
@@ -14,8 +15,9 @@ export default async function ServiceFollowup({params,searchParams}:{params:Prom
   let s;try{s=await getService(actor,id);}catch(e){if(e instanceof PilotError)notFound();throw e;}
   let ledger;try{ledger=await getServiceLedger(actor,id);}catch(e){if(e instanceof LedgerError)notFound();throw e;}
   const {followup:f,commercial:c}=ledger,query=await searchParams;
-  return <><div className="order-actions print-hide"><Link href={`/solicitudes/${id}`} className="back-link">← Servicio</Link><PrintButton label="Imprimir ficha comercial / PDF"/></div><div className="print-hide"><Notice error={query.error} ok={query.ok}/></div>
-    <article className="order-sheet"><header className="order-header"><div><div className="order-system">RERCHAR CHILE SPA</div><h1>Seguimiento del servicio y guías</h1></div><div className="order-number"><small>SERVICIO</small><h1>RER-{String(s.folio).padStart(5,"0")}</h1></div></header>
+  return <><div className="order-actions print-hide"><Link href={`/solicitudes/${id}`} className="back-link">← Servicio</Link>{s.operating_company&&<PrintButton label="Imprimir ficha comercial / PDF"/>}</div><div className="print-hide"><Notice error={query.error} ok={query.ok}/></div>
+    {!s.operating_company&&<p role="alert" className="notice notice-error print-hide">Confirme la empresa operadora antes de imprimir esta ficha.</p>}
+    <article className="order-sheet"><header className="order-header"><div><div className="order-system">{companyName(s.operating_company)}</div><h1>Seguimiento del servicio y guías</h1></div><div className="order-number"><small>SERVICIO</small><h1>{serviceFolio(s)}</h1></div></header>
       <div className="order-section"><div className="order-grid">{([
         ["Cliente / faena",`${s.client_name} · ${s.site_name}`],["Ruta",`${s.origin} → ${s.destination}`],
         ["Cotización",c?.quote_reference||"—"],["Orden de compra cliente",c?.order_reference||"—"],

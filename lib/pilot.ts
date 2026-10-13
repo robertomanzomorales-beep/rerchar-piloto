@@ -7,6 +7,7 @@ import { canManage, canPlan, canReadService, canWorkService } from "./auth";
 import { db, transaction, type Db } from "./db";
 import { hashPassword } from "./password";
 import { findMissingRequirements } from "./personnel";
+import type { Company } from "./companies";
 
 const uuid = z.uuid();
 const required = (max = 180) => z.string().trim().min(2).max(max);
@@ -23,6 +24,7 @@ function needManage(actor: Actor) { if (!canManage(actor)) reject("No tiene perm
 
 export type ServiceRow = {
   id: string; folio: string; client_id: string; site_id: string; client_name: string; site_name: string;
+  operating_company: Company | null; quote_id: string | null;
   request_category:string;service_type: string; waste_type: string; estimated_kg: string | null; origin: string; destination: string;
   priority: string; scheduled_for: Date | null; status: string; notes: string | null;
   assigned_asset_id: string | null; ramp_asset_id: string | null; driver_id: string | null;
@@ -39,7 +41,7 @@ const serviceSelect = `SELECT s.*, c.name AS client_name, cs.name AS site_name,
   LEFT JOIN assets r ON r.id = s.ramp_asset_id
   LEFT JOIN users u ON u.id = s.driver_id`;
 
-export async function listServices(actor: Actor, term = "", state = "") {
+export async function listServices(actor: Actor, term = "", state = "", company = "") {
   const q = term.trim().slice(0, 100);
   return db.query<ServiceRow>(
     `${serviceSelect} WHERE s.deleted_at IS NULL
@@ -47,20 +49,22 @@ export async function listServices(actor: Actor, term = "", state = "") {
      AND ($2::text = '' OR s.status = $2)
      AND ($3::text <> 'cliente' OR s.client_id = $4::uuid)
      AND ($3::text <> 'conductor' OR s.driver_id = $5::uuid)
+     AND ($6::text = '' OR ($6 = 'pendiente' AND s.operating_company IS NULL) OR s.operating_company = $6)
      ORDER BY s.created_at DESC, s.folio DESC LIMIT 100`,
-    [q, state, actor.role, actor.client_id, actor.id],
+    [q, state, actor.role, actor.client_id, actor.id, company],
   );
 }
 
 export type AgendaService = {
   id: string; folio: string; client_name: string; site_name: string; origin: string; destination: string;
+  operating_company:Company|null;
   waste_type: string; scheduled_for: Date; asset_label: string | null; driver_name: string | null; status: string;
 };
 
 export async function listAgenda(actor: Actor, firstDay: string, dayAfterLast: string) {
   if (![firstDay, dayAfterLast].every((date) => /^\d{4}-\d{2}-\d{2}$/.test(date)) || firstDay >= dayAfterLast) reject("Rango de agenda inválido.");
   return db.query<AgendaService>(
-    `SELECT s.id,s.folio,c.name AS client_name,cs.name AS site_name,s.origin,s.destination,s.waste_type,
+    `SELECT s.id,s.folio,s.operating_company,c.name AS client_name,cs.name AS site_name,s.origin,s.destination,s.waste_type,
       s.scheduled_for,a.label AS asset_label,u.name AS driver_name,s.status
      FROM service_requests s JOIN clients c ON c.id=s.client_id JOIN client_sites cs ON cs.id=s.site_id
      LEFT JOIN assets a ON a.id=s.assigned_asset_id LEFT JOIN users u ON u.id=s.driver_id
@@ -74,9 +78,10 @@ export async function listAgenda(actor: Actor, firstDay: string, dayAfterLast: s
   );
 }
 
-export type ReportFilters = { from: string; to: string; status: string; client_id: string };
+export type ReportFilters = { from: string; to: string; status: string; client_id: string; company: string };
 export type ReportService = {
   id: string; folio: string; client_name: string; site_name: string; service_type: string; waste_type: string;
+  operating_company: Company | null;
   status: string; origin: string; destination: string; scheduled_for: Date | null; created_at: Date;
   asset_label: string | null; driver_name: string | null; estimated_kg: string | null; gross_kg: string | null; tare_kg: string | null;
 };
@@ -91,12 +96,13 @@ export function normalizeReportFilters(input: Partial<Record<keyof ReportFilters
     from: date(input.from), to: date(input.to),
     status: input.status && Object.hasOwn(statusName,input.status) ? input.status : "",
     client_id: uuid.safeParse(input.client_id).success ? input.client_id! : "",
+    company: ["rerchar", "e_y_j", "pendiente"].includes(input.company ?? "") ? input.company! : "",
   };
 }
 
 export async function reportServices(actor: Actor, filters: ReportFilters) {
   return db.query<ReportService>(
-    `SELECT s.id,s.folio,c.name AS client_name,cs.name AS site_name,s.service_type,s.waste_type,
+    `SELECT s.id,s.folio,s.operating_company,c.name AS client_name,cs.name AS site_name,s.service_type,s.waste_type,
        s.status,s.origin,s.destination,s.scheduled_for,s.created_at,a.label AS asset_label,u.name AS driver_name,
        s.estimated_kg,s.gross_kg,s.tare_kg
      FROM service_requests s JOIN clients c ON c.id=s.client_id JOIN client_sites cs ON cs.id=s.site_id
@@ -108,8 +114,9 @@ export async function reportServices(actor: Actor, filters: ReportFilters) {
        AND ($4::text<>'cliente' OR s.client_id=$5::uuid)
        AND ($4::text<>'conductor' OR s.driver_id=$6::uuid)
        AND ($7::text='' OR s.client_id=NULLIF($7,'')::uuid)
+       AND ($8::text='' OR ($8='pendiente' AND s.operating_company IS NULL) OR s.operating_company=$8)
      ORDER BY s.created_at DESC,s.folio DESC LIMIT 1001`,
-    [filters.from,filters.to,filters.status,actor.role,actor.client_id,actor.id,filters.client_id],
+    [filters.from,filters.to,filters.status,actor.role,actor.client_id,actor.id,filters.client_id,filters.company],
   );
 }
 
@@ -201,6 +208,7 @@ export async function createUser(actor: Actor, input: unknown) {
 
 const createSchema = z.object({
   submission_key: uuid, client_id: uuid, site_id: uuid,
+  operating_company: z.enum(["rerchar", "e_y_j"]), quote_id: z.union([uuid,z.literal("")]).default(""),
   request_category: z.enum(["servicios", "compra", "venta", "otro"]).optional(),
   service_type: z.enum(["retiro", "traslado", "compra", "venta", "otro"]),
   waste_type: required(120), estimated_kg: z.union([positive, z.literal("")]).optional(),
@@ -218,22 +226,51 @@ export async function createService(actor: Actor, input: unknown) {
   return transaction(async (tx) => {
     const [site] = await tx.query("SELECT id FROM client_sites WHERE id = $1 AND client_id = $2 AND deleted_at IS NULL", [data.site_id, data.client_id]);
     if (!site) reject("El centro no pertenece al cliente seleccionado.");
+    if (data.quote_id) {
+      const [quote] = await tx.query<{issuer:Company;client_id:string;status:string}>(
+        "SELECT issuer,client_id,status FROM client_quotes WHERE id=$1", [data.quote_id]);
+      if (!quote || quote.status !== "aceptada" || quote.client_id !== data.client_id || quote.issuer !== data.operating_company)
+        reject("La cotización debe estar aceptada y corresponder al mismo cliente y empresa.");
+    }
     const [created] = await tx.query<{ id: string }>(
       `INSERT INTO service_requests
-       (submission_key, client_id, site_id, request_category, service_type, waste_type, estimated_kg, origin, destination, priority, notes, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NULLIF($11,''),$12)
+       (submission_key, client_id, site_id, operating_company, quote_id, request_category, service_type, waste_type, estimated_kg, origin, destination, priority, notes, created_by)
+       VALUES ($1,$2,$3,$4,NULLIF($5,'')::uuid,$6,$7,$8,$9,$10,$11,$12,NULLIF($13,''),$14)
        ON CONFLICT (submission_key) DO NOTHING RETURNING id`,
-      [data.submission_key, data.client_id, data.site_id, category, data.service_type, data.waste_type,
+      [data.submission_key, data.client_id, data.site_id, data.operating_company, data.quote_id, category, data.service_type, data.waste_type,
         data.estimated_kg === "" || data.estimated_kg === undefined ? null : data.estimated_kg,
         data.origin, data.destination, data.priority, data.notes, actor.id],
     );
     if (!created) {
-      const [original] = await tx.query<{ id: string; created_by: string }>("SELECT id, created_by FROM service_requests WHERE submission_key = $1", [data.submission_key]);
-      if (original?.created_by !== actor.id) reject("Esta solicitud pertenece a otro usuario.");
+      const [original] = await tx.query<{ id: string; created_by: string; operating_company:Company|null; quote_id:string|null }>("SELECT id, created_by, operating_company, quote_id FROM service_requests WHERE submission_key = $1", [data.submission_key]);
+      if (original?.created_by !== actor.id || original.operating_company !== data.operating_company || original.quote_id !== (data.quote_id || null))
+        reject("Esta clave ya corresponde a otra solicitud.");
       return original.id;
     }
-    await event(tx, created.id, actor, "solicitud_creada", "Solicitud registrada", null, { status: "solicitada" });
+    await event(tx, created.id, actor, "solicitud_creada", "Solicitud registrada", null, { status: "solicitada", operating_company:data.operating_company, quote_id:data.quote_id || null });
     return created.id;
+  });
+}
+
+export async function classifyServiceCompany(actor:Actor,id:string,input:unknown) {
+  if(actor.role!=="admin")reject("Sólo administración puede clasificar servicios anteriores.");
+  const company=z.enum(["rerchar","e_y_j"]).parse(input);
+  if(!uuid.safeParse(id).success)reject("Servicio inválido.");
+  await transaction(async tx=>{
+    const [service]=await tx.query<{operating_company:Company|null;quote_id:string|null}>(
+      "SELECT operating_company,quote_id FROM service_requests WHERE id=$1 AND deleted_at IS NULL FOR UPDATE",[id]);
+    if(!service)reject("Servicio no encontrado.");
+    if(service.operating_company)reject("La empresa ya está asignada. Una rectificación requiere revisar los documentos emitidos.");
+    const [mismatch]=await tx.query(`SELECT 1 FROM supplier_invoices WHERE service_id=$1 AND issuer<>$2
+      UNION ALL SELECT 1 FROM client_quotes q WHERE q.id=$3::uuid AND q.issuer<>$2
+      UNION ALL SELECT 1 FROM material_receipts WHERE service_id=$1 AND $2<>'rerchar'
+      UNION ALL SELECT 1 FROM service_certificates WHERE service_id=$1 AND $2<>'rerchar'
+      UNION ALL SELECT 1 FROM service_valuations v JOIN service_tariffs t ON t.id=v.tariff_id
+        JOIN client_contracts c ON c.id=t.contract_id WHERE v.service_id=$1 AND c.operating_company IS NOT NULL
+        AND c.operating_company<>$2 LIMIT 1`,[id,company,service.quote_id]);
+    if(mismatch)reject("Los documentos vinculados contradicen la empresa seleccionada. Revise el historial antes de clasificar.");
+    await tx.query("UPDATE service_requests SET operating_company=$2,updated_at=now() WHERE id=$1",[id,company]);
+    await event(tx,id,actor,"empresa_asignada","Empresa operadora validada",null,{operating_company:company});
   });
 }
 

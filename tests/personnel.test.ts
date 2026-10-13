@@ -10,7 +10,7 @@ test("despacho exige acreditación verificada y vigente para la faena configurad
   const {db,transaction}=await import("../lib/db");
   const pilot=await import("../lib/pilot");
   const personnel=await import("../lib/personnel");
-  for(const name of ["001_piloto.sql","002_flota_y_despacho.sql","003_abastecimiento.sql","004_mantenimiento_combustible.sql","005_contenedores.sql","006_acreditacion.sql","007_finanzas.sql","008_trazabilidad_ambiental.sql","009_certificados.sql","010_evidencia_persistente.sql","011_operacion_real_2026.sql"]) {
+  for(const name of ["001_piloto.sql","002_flota_y_despacho.sql","003_abastecimiento.sql","004_mantenimiento_combustible.sql","005_contenedores.sql","006_acreditacion.sql","007_finanzas.sql","008_trazabilidad_ambiental.sql","009_certificados.sql","010_evidencia_persistente.sql","011_operacion_real_2026.sql","018_empresa_operadora.sql"]) {
     const sql=await readFile(resolve(process.cwd(),`db/${name}`),"utf8");
     await transaction(async tx=>{for(const part of sql.split(/;\s*(?:\n|$)/).map(s=>s.trim()).filter(Boolean)) await tx.query(part);});
   }
@@ -22,7 +22,7 @@ test("despacho exige acreditación verificada y vigente para la faena configurad
   const owner:Actor={id:admin.id,name:"Admin",email:"admin@demo.cl",role:"admin",client_id:null};
   const ops:Actor={id:operator.id,name:"Operador",email:"ops@demo.cl",role:"operaciones",client_id:null};
   const asset=await pilot.createAsset(owner,{code:"CAM-01",label:"Camión uno",kind:"camion",plate:""});
-  const service=await pilot.createService(owner,{submission_key:randomUUID(),client_id:client.id,site_id:site.id,
+  const service=await pilot.createService(owner,{submission_key:randomUUID(),client_id:client.id,site_id:site.id,operating_company:"rerchar",
     service_type:"retiro",waste_type:"Chatarra",estimated_kg:"100",origin:"Faena norte",destination:"Patio",
     priority:"normal",notes:""});
   const req=await personnel.createRequirement(owner,{client_id:client.id,site_id:site.id,name:"Licencia clase A5",kind:"licencia",warning_days:30});

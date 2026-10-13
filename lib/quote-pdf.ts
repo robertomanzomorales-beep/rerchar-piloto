@@ -2,7 +2,7 @@ import {readFile} from "node:fs/promises";
 import {resolve} from "node:path";
 import fontkit from "@pdf-lib/fontkit";
 import {PDFDocument,rgb,type PDFFont,type PDFPage} from "pdf-lib";
-import {issuers,type Quote,type QuoteLine,quoteTotals} from "./quotes";
+import {issuers,quoteFolio,type Quote,type QuoteLine,quoteTotals} from "./quotes";
 
 export async function renderQuotePdf(quote:Quote,lines:QuoteLine[]){
   const doc=await PDFDocument.create();doc.registerFontkit(fontkit);
@@ -45,7 +45,7 @@ export async function renderQuotePdf(quote:Quote,lines:QuoteLine[]){
     else write("E Y J LIMITADA",45,785,17,bold,green);
     write(issuer.name,45,736,9,bold);write(`RUT ${issuer.tax_id}`,45,721,8,regular,gray);
     write(continuation?"COTIZACIÓN · CONTINUACIÓN":"COTIZACIÓN COMERCIAL",350,791,10,bold,green);
-    write(`COT-${String(quote.folio).padStart(5,"0")}`,350,763,19,bold);
+    write(quoteFolio(quote),350,763,19,bold);
     page.drawLine({start:{x:45,y:700},end:{x:550,y:700},thickness:1,color:rule});
   }
   header();
@@ -88,10 +88,10 @@ export async function renderQuotePdf(quote:Quote,lines:QuoteLine[]){
   }
   for(const [i,p] of pages.entries()){
     p.drawLine({start:{x:45,y:45},end:{x:550,y:45},thickness:1,color:rule});
-    p.drawText(safe(`COT-${String(quote.folio).padStart(5,"0")} · ${issuer.name} · Página ${i+1} de ${pages.length}`),
+    p.drawText(safe(`${quoteFolio(quote)} · ${issuer.name} · Página ${i+1} de ${pages.length}`),
       {x:45,y:30,size:7,font:regular,color:gray});
   }
-  doc.setTitle(`Cotización COT-${String(quote.folio).padStart(5,"0")} - ${quote.client_name}`);
+  doc.setTitle(`Cotización ${quoteFolio(quote)} - ${quote.client_name}`);
   doc.setCreator("RERCHAR Industrial Waste Management System");
   return doc.save();
 }

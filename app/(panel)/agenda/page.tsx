@@ -3,6 +3,7 @@ import { CalendarDays, ChevronLeft, ChevronRight, MapPin, Truck } from "lucide-r
 import { requireActor } from "@/lib/auth";
 import { listAgenda, type AgendaService } from "@/lib/pilot";
 import { Badge, chileDate } from "@/components/UI";
+import {companyName,serviceFolio} from "@/lib/companies";
 
 function iso(date: Date) { return date.toISOString().slice(0, 10); }
 function addDays(date: Date, days: number) { const next = new Date(date); next.setUTCDate(next.getUTCDate() + days); return next; }
@@ -33,7 +34,7 @@ export default async function Agenda({ searchParams }: { searchParams: Promise<{
     <div className="agenda-grid">{days.map((day) => {
       const items = byDay.get(iso(day)) ?? [];
       return <section className="agenda-day" key={iso(day)}><header><span>{new Intl.DateTimeFormat("es-CL", { timeZone: "UTC", weekday: "long" }).format(day)}</span><strong>{new Intl.DateTimeFormat("es-CL", { timeZone: "UTC", day: "2-digit", month: "2-digit" }).format(day)}</strong></header>
-        {items.length ? <ul>{items.map((service) => <li key={service.id}><Link href={`/solicitudes/${service.id}`}><span className="agenda-item-head"><strong>RER-{String(service.folio).padStart(5,"0")}</strong><Badge status={service.status}/></span><span className="agenda-time">{chileDate(service.scheduled_for)}</span><b>{service.client_name}</b><span>{service.waste_type} · {service.site_name}</span><span className="agenda-detail"><MapPin size={13}/>{service.origin} → {service.destination}</span><span className="agenda-detail"><Truck size={13}/>{service.asset_label ?? "Camión pendiente"} · {service.driver_name ?? "Conductor pendiente"}</span></Link></li>)}</ul> : <p>Sin servicios programados.</p>}</section>;
+        {items.length ? <ul>{items.map((service) => <li key={service.id}><Link href={`/solicitudes/${service.id}`}><span className="agenda-item-head"><strong>{serviceFolio(service)}</strong><Badge status={service.status}/></span><span className="agenda-time">{chileDate(service.scheduled_for)} · {companyName(service.operating_company)}</span><b>{service.client_name}</b><span>{service.waste_type} · {service.site_name}</span><span className="agenda-detail"><MapPin size={13}/>{service.origin} → {service.destination}</span><span className="agenda-detail"><Truck size={13}/>{service.asset_label ?? "Camión pendiente"} · {service.driver_name ?? "Conductor pendiente"}</span></Link></li>)}</ul> : <p>Sin servicios programados.</p>}</section>;
     })}</div>
   </>;
 }

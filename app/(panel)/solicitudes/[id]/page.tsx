@@ -4,7 +4,8 @@ import { ArrowLeft, CalendarDays, CheckCircle2, ClipboardCheck, FileText, MapPin
 import { requireActor, canManage, canPlan, canWorkService } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getService, PilotError } from "@/lib/pilot";
-import { addEvidenceAction, assignServiceAction, cancelServiceAction, createDriverForServiceAction, finishServiceAction, saveChecklistAction, startServiceAction } from "@/app/actions";
+import { addEvidenceAction, assignServiceAction, cancelServiceAction, classifyServiceCompanyAction, createDriverForServiceAction, finishServiceAction, saveChecklistAction, startServiceAction } from "@/app/actions";
+import {companyName,serviceFolio} from "@/lib/companies";
 import { Badge, Breadcrumb, chileDate, Notice } from "@/components/UI";
 import { SubmitButton } from "@/components/Transition";
 
@@ -45,9 +46,10 @@ export default async function ServiceDetail({ params, searchParams }: { params: 
   const canAssign = canPlan(actor) && ["solicitada", "programada"].includes(service.status);
   const certificateReady=["revisado","declarado"].includes(wasteRecord[0]?.status??"");
   return <>
-    <Breadcrumb label={`RER-${String(service.folio).padStart(5,"0")}`}/>
-    <div className="page-title-row detail-heading"><div><div className="eyebrow">SOLICITUD · {service.request_category}</div><h1>RER-{String(service.folio).padStart(5,"0")}</h1><p className="page-intro"><Link href={`/clientes/${service.client_id}`}>{service.client_name}</Link> · {service.site_name}</p></div><Badge status={service.status}/></div>
+    <Breadcrumb label={serviceFolio(service)}/>
+    <div className="page-title-row detail-heading"><div><div className="eyebrow">SOLICITUD · {service.request_category} · {companyName(service.operating_company)}</div><h1>{serviceFolio(service)}</h1><p className="page-intro"><Link href={`/clientes/${service.client_id}`}>{service.client_name}</Link> · {service.site_name}</p></div><Badge status={service.status}/></div>
     <Notice error={paramsQuery.error} ok={paramsQuery.ok}/>
+    {!service.operating_company&&<section className="section-card"><p role="alert">Este registro anterior necesita confirmar la empresa operadora antes de emitir documentos o vincular facturas.</p>{actor.role==="admin"&&<form action={classifyServiceCompanyAction} className="form-grid"><input type="hidden" name="id" value={id}/><label>Empresa según respaldo de la operación<select name="operating_company" required defaultValue=""><option value="">Seleccione después de revisar</option><option value="rerchar">RERCHAR Chile SpA</option><option value="e_y_j">E y J Limitada</option></select></label><div className="form-footer"><SubmitButton className="button button-outline">Confirmar empresa</SubmitButton></div></form>}</section>}
     <div className="detail-grid">
       <div className="detail-main">
         <section className="section-card"><div className="section-heading"><div><div className="eyebrow">DATOS PRINCIPALES</div><h2>Servicio solicitado</h2></div><span className={`priority priority-${service.priority}`}>{service.priority === "critica" ? "Prioridad crítica" : service.priority === "alta" ? "Prioridad alta" : "Prioridad normal"}</span></div>

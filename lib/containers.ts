@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { Actor } from "./auth";
 import { canManage } from "./auth";
 import { db,transaction } from "./db";
+import type {Company} from "./companies";
 
 const uuid=z.uuid();
 const optionalId=z.union([uuid,z.literal("")]).default("");
@@ -14,7 +15,7 @@ export type ContainerRow={ id:string;code:string;kind:string;capacity_m3:string;
   client_name:string|null;site_name:string|null;location_name:string;waste_type:string|null;installed_at:Date|null;
   max_stay_days:number;stay_days:number;created_at:Date };
 export type ContainerMovement={id:string;container_id:string;code:string;kind:string;previous_status:string|null;previous_location:string|null;
-  previous_waste_type:string|null;next_status:string;next_location:string;next_waste_type:string|null;service_id:string|null;service_folio:string|null;
+  previous_waste_type:string|null;next_status:string;next_location:string;next_waste_type:string|null;service_id:string|null;service_folio:string|null;service_company:Company|null;
   note:string;actor_name:string;created_at:Date};
 export type ContainerServiceRecord={id:string;container_id:string;code:string;kind:string;record_date:Date|string;kilometers:string|null;description:string;cost_clp:string|null;service_id:string|null;service_folio:string|null;actor_name:string};
 
@@ -27,9 +28,9 @@ export async function listContainers(actor:Actor) {
       ORDER BY CASE WHEN c.status='instalada' THEN 0 ELSE 1 END,c.updated_at DESC LIMIT 400`),
     db.query<{id:string;client_id:string;client_name:string;name:string}>(`SELECT cs.id,cs.client_id,c.name AS client_name,cs.name FROM client_sites cs JOIN clients c ON c.id=cs.client_id
       WHERE cs.deleted_at IS NULL AND c.deleted_at IS NULL ORDER BY c.name,cs.name`),
-    db.query<{id:string;folio:string;site_id:string;client_id:string}>(`SELECT id,folio,site_id,client_id FROM service_requests
+    db.query<{id:string;folio:string;operating_company:Company|null;site_id:string;client_id:string}>(`SELECT id,folio,operating_company,site_id,client_id FROM service_requests
       WHERE deleted_at IS NULL AND status IN ('solicitada','programada','en_ruta','completada') ORDER BY created_at DESC LIMIT 150`),
-    db.query<ContainerMovement>(`SELECT m.*,c.code,s.folio AS service_folio,u.name AS actor_name FROM container_movements m
+    db.query<ContainerMovement>(`SELECT m.*,c.code,s.folio AS service_folio,s.operating_company AS service_company,u.name AS actor_name FROM container_movements m
       JOIN containers c ON c.id=m.container_id LEFT JOIN service_requests s ON s.id=m.service_id JOIN users u ON u.id=m.actor_id
       ORDER BY m.created_at DESC,m.id DESC LIMIT 250`),
     db.query<ContainerServiceRecord>(`SELECT r.*,c.code,s.folio AS service_folio,u.name AS actor_name FROM container_service_records r

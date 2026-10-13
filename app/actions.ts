@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { ZodError } from "zod";
 import { requireActor, signIn, signOut } from "@/lib/auth";
 import {
-  PilotError, addEvidence, assignService, cancelService, createAsset, createClient, createService, createSite, createUser,
+  PilotError, addEvidence, assignService, cancelService, classifyServiceCompany, createAsset, createClient, createService, createSite, createUser,
   finishService, reportFleetIncident, resolveFleetIncident, saveChecklist, startService,
 } from "@/lib/pilot";
 import {updateAsset,updateClient,updateSite,MastersError} from "@/lib/masters";
@@ -80,6 +80,7 @@ export async function createServiceAction(form: FormData) {
   try {
     id = await createService(actor, {
       submission_key: value(form,"submission_key"), client_id: value(form,"client_id"), site_id: value(form,"site_id"),
+      operating_company:value(form,"operating_company"),quote_id:value(form,"quote_id"),
       request_category:value(form,"request_category"),service_type: value(form,"service_type"), waste_type: value(form,"waste_type"),
       estimated_kg: value(form,"estimated_kg"), origin: value(form,"origin"), destination: value(form,"destination"),
       priority: value(form,"priority"), notes: value(form,"notes"),
@@ -87,6 +88,11 @@ export async function createServiceAction(form: FormData) {
   } catch (error) { redirect(`/solicitudes/nueva?error=${encodeURIComponent(message(error))}`); }
   revalidatePath("/", "layout");
   redirect(`${servicePath(id)}?ok=1`);
+}
+
+export async function classifyServiceCompanyAction(form:FormData) {
+  const actor=await requireActor(),id=value(form,"id");
+  await run(servicePath(id),()=>classifyServiceCompany(actor,id,value(form,"operating_company")));
 }
 
 export async function assignServiceAction(form: FormData) {

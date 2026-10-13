@@ -13,7 +13,7 @@ test("solicitud, permisos, planificación, checklist, evidencia y cierre", async
   try {
     const { db, transaction } = await import("../lib/db");
     const { createClient, createSite, createAsset, createService, assignService, cancelService, reportFleetIncident, resolveFleetIncident, listFleet, reportServices, normalizeReportFilters, saveChecklist, startService, addEvidence, finishService, getService, listServices, listAgenda, PilotError } = await import("../lib/pilot");
-    for (const migration of ["001_piloto.sql", "002_flota_y_despacho.sql", "003_abastecimiento.sql", "004_mantenimiento_combustible.sql", "005_contenedores.sql", "006_acreditacion.sql", "007_finanzas.sql", "008_trazabilidad_ambiental.sql", "009_certificados.sql", "010_evidencia_persistente.sql", "011_operacion_real_2026.sql"]) {
+    for (const migration of ["001_piloto.sql", "002_flota_y_despacho.sql", "003_abastecimiento.sql", "004_mantenimiento_combustible.sql", "005_contenedores.sql", "006_acreditacion.sql", "007_finanzas.sql", "008_trazabilidad_ambiental.sql", "009_certificados.sql", "010_evidencia_persistente.sql", "011_operacion_real_2026.sql", "018_empresa_operadora.sql"]) {
       const sql = await readFile(resolve(process.cwd(), `db/${migration}`), "utf8");
       await transaction(async (tx) => {
         for (const statement of sql.split(/;\s*(?:\n|$)/).map((text) => text.trim()).filter(Boolean)) await tx.query(statement);
@@ -41,12 +41,14 @@ test("solicitud, permisos, planificación, checklist, evidencia y cierre", async
     const ramp = await createAsset(planner, { code: "RAM-01", label: "Rampa de prueba", kind: "rampa", plate: "" });
     const [otherDriver] = await db.query<{ id: string }>("INSERT INTO users (email,name,password_hash,role) VALUES ('otro-conductor@demo.cl','Segundo conductor','hash','conductor') RETURNING id");
     const submissionKey = randomUUID();
-    const input = { submission_key: submissionKey, client_id: a.id, site_id: siteA.id, service_type: "retiro", waste_type: "Chatarra metálica", estimated_kg: "850", origin: "Faena A", destination: "Puerto Seco", priority: "alta", notes: "Prueba" };
+    const input = { submission_key: submissionKey, client_id: a.id, site_id: siteA.id, operating_company:"rerchar", service_type: "retiro", waste_type: "Chatarra metálica", estimated_kg: "850", origin: "Faena A", destination: "Puerto Seco", priority: "alta", notes: "Prueba" };
     await assert.rejects(() => createService(outsider, input), PilotError);
     await assert.rejects(() => createService(owner, { ...input, site_id: siteB.id }), PilotError);
     const id = await createService(owner, input);
     assert.equal(await createService(owner, input), id, "la repetición con la misma clave no duplica la solicitud");
     assert.equal((await listServices(owner)).length, 1);
+    assert.equal((await listServices(planner,"","","rerchar")).length,1);
+    assert.equal((await listServices(planner,"","","e_y_j")).length,0);
     assert.equal((await listServices(outsider)).length, 0);
     await assert.rejects(() => getService(outsider, id), PilotError);
     await assert.rejects(() => assignService(operator, id, { asset_id: asset.id, driver_id: driver.id, scheduled_for: "2026-09-25T09:00" }), PilotError);

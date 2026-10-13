@@ -6,14 +6,17 @@ import { SubmitButton } from "@/components/Transition";
 
 type Client = { id: string; name: string };
 type Site = { id: string; client_id: string; name: string };
-export default function RequestForm({ clients, sites, clientId, submissionKey }: { clients: Client[]; sites: Site[]; clientId?: string; submissionKey: string }) {
-  const [selected, setSelected] = useState(clientId ?? clients[0]?.id ?? "");
+export default function RequestForm({ clients, sites, clientId, submissionKey, quote }: { clients: Client[]; sites: Site[]; clientId?: string; submissionKey: string; quote?: {id:string;client_id:string;issuer:"rerchar"|"e_y_j";folio:string} }) {
+  const [selected, setSelected] = useState(quote?.client_id ?? clientId ?? clients[0]?.id ?? "");
   const [category, setCategory] = useState("servicios");
   const available = sites.filter((site) => site.client_id === selected);
   return <form action={createServiceAction} className="form-grid">
     <input type="hidden" name="submission_key" value={submissionKey}/>
+    <input type="hidden" name="quote_id" value={quote?.id??""}/>
     <div className="form-section-title">Datos del servicio</div>
-    <label>Cliente<select name="client_id" value={selected} onChange={(event) => setSelected(event.target.value)} required disabled={Boolean(clientId)}><option value="">Seleccione un cliente</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select>{clientId && <input type="hidden" name="client_id" value={clientId}/>}</label>
+    <label>Cliente<select name="client_id" value={selected} onChange={(event) => setSelected(event.target.value)} required disabled={Boolean(clientId||quote)}><option value="">Seleccione un cliente</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select>{(clientId||quote) && <input type="hidden" name="client_id" value={selected}/>}</label>
+    <label>Empresa que presta el servicio<select name="operating_company" defaultValue={quote?.issuer??""} required disabled={Boolean(quote)}><option value="">Seleccione la empresa</option><option value="rerchar">RERCHAR Chile SpA</option><option value="e_y_j">E y J Limitada</option></select>{quote&&<input type="hidden" name="operating_company" value={quote.issuer}/>}</label>
+    {quote&&<p className="field-full helper-text">Esta solicitud proviene de la cotización {quote.folio}. Cliente y empresa se toman de la propuesta aceptada.</p>}
     <label>Centro o faena<select name="site_id" key={selected} required defaultValue=""><option value="">Seleccione un centro</option>{available.map((site) => <option key={site.id} value={site.id}>{site.name}</option>)}</select></label>
     <label>Tipo de solicitud<select name="request_category" value={category} onChange={(event)=>setCategory(event.target.value)} required><option value="servicios">Servicios</option><option value="compra">Compra</option><option value="venta">Venta</option><option value="otro">Otro</option></select></label>
     {category==="servicios"?<label>Operación<select name="service_type" defaultValue="retiro" required><option value="retiro">Retiro</option><option value="traslado">Traslado</option></select></label>:<input type="hidden" name="service_type" value={category}/>}

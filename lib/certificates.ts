@@ -39,7 +39,7 @@ export async function listCertificatePreparation(actor:Actor):Promise<Certificat
     FROM service_requests s
     JOIN clients c ON c.id=s.client_id JOIN client_sites cs ON cs.id=s.site_id
     LEFT JOIN waste_records w ON w.service_id=s.id
-    WHERE s.status='completada' AND s.deleted_at IS NULL
+    WHERE s.status='completada' AND s.operating_company='rerchar' AND s.deleted_at IS NULL
       AND NOT EXISTS (SELECT 1 FROM service_certificates x WHERE x.service_id=s.id AND x.status='vigente')
     ORDER BY s.closed_at DESC LIMIT 100`);
   return services.map(s=>{
@@ -88,12 +88,13 @@ export async function issueCertificate(actor:Actor,serviceId:string){
   admin(actor);uuid.parse(serviceId);
   verificationBaseUrl();
   return transaction(async(tx)=>{
-    const [service]=await tx.query<{id:string;folio:string;status:string;client_name:string;site_name:string;
+    const [service]=await tx.query<{id:string;folio:string;status:string;operating_company:string|null;client_name:string;site_name:string;
       service_type:string;waste_type:string;gross_kg:string;tare_kg:string;closed_at:Date}>(`
-      SELECT s.id,s.folio,s.status,c.name AS client_name,cs.name AS site_name,s.service_type,s.waste_type,
+      SELECT s.id,s.folio,s.status,s.operating_company,c.name AS client_name,cs.name AS site_name,s.service_type,s.waste_type,
       s.gross_kg,s.tare_kg,s.closed_at FROM service_requests s JOIN clients c ON c.id=s.client_id
       JOIN client_sites cs ON cs.id=s.site_id WHERE s.id=$1 AND s.deleted_at IS NULL FOR UPDATE OF s`,[serviceId]);
     if(!service||service.status!=="completada"||!service.closed_at)reject("Sólo se certifican servicios cerrados.");
+    if(service.operating_company!=="rerchar")reject("Este formato de certificado pertenece a RERCHAR. Confirme la empresa o valide un formato para E y J.");
     const [active]=await tx.query<{id:string}>("SELECT id FROM service_certificates WHERE service_id=$1 AND status='vigente'",[serviceId]);
     if(active)return active.id;
     const [record]=await tx.query<{status:string;category:string;classification:string;quantity_kg:string;guide_number:string;

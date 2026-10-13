@@ -7,6 +7,7 @@ import {listMaterialReceipts,materialAmounts} from "@/lib/materials";
 import {createMaterialAction} from "@/app/operation-actions";
 import {Notice} from "@/components/UI";
 import {SubmitButton} from "@/components/Transition";
+import {serviceFolio} from "@/lib/companies";
 
 const date=(v:Date|string)=>v instanceof Date?v.toISOString().slice(0,10):String(v).slice(0,10);
 
@@ -14,8 +15,8 @@ export default async function MaterialReceipts({searchParams}:{searchParams:Prom
   const actor=await requireActor();if(actor.role==="conductor")redirect("/");
   const [query,rows,clients,services]=await Promise.all([searchParams,listMaterialReceipts(actor),
     canManage(actor)?db.query<{id:string;name:string}>("SELECT id,name FROM clients WHERE deleted_at IS NULL ORDER BY name"):Promise.resolve([]),
-    canManage(actor)?db.query<{id:string;folio:string;client_name:string}>(`SELECT s.id,s.folio,c.name AS client_name FROM service_requests s
-      JOIN clients c ON c.id=s.client_id WHERE s.deleted_at IS NULL ORDER BY s.created_at DESC LIMIT 300`):Promise.resolve([])]);
+    canManage(actor)?db.query<{id:string;folio:string;operating_company:"rerchar";client_name:string}>(`SELECT s.id,s.folio,s.operating_company,c.name AS client_name FROM service_requests s
+      JOIN clients c ON c.id=s.client_id WHERE s.operating_company='rerchar' AND s.deleted_at IS NULL ORDER BY s.created_at DESC LIMIT 300`):Promise.resolve([])]);
   return <><div className="page-title-row"><div><div className="eyebrow">ENTRADAS Y EXCEDENTES 2026</div><h1>Ingresos de material</h1><p className="page-intro">Tickets, pesos de origen y llegada, impurezas, guías, facturas y respaldo por cliente.</p></div><span className="title-icon"><PackageCheck size={24}/></span></div><Notice error={query.error} ok={query.ok}/>
     {canManage(actor)&&<section className="section-card"><div className="section-heading"><div><div className="eyebrow">NUEVO REGISTRO</div><h2>Entrada o excedente</h2></div></div>
       <p className="helper-text">Indique la base del peso neto: en las planillas de entrada varía entre peso de proveedor y peso RERCHAR; en excedentes se calcula sobre RERCHAR. Una diferencia con el neto anotado requiere explicación.</p>
@@ -23,7 +24,7 @@ export default async function MaterialReceipts({searchParams}:{searchParams:Prom
         <label>Tipo<select name="kind" defaultValue="ingreso"><option value="ingreso">Entrada de material</option><option value="excedente">Excedente RESITER / SPENCE</option></select></label>
         <label>Fecha de movimiento<input name="movement_on" type="date" required/></label>
         <label>Cliente registrado<select name="client_id" required defaultValue=""><option value="">Seleccione</option>{clients.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
-        <label>Servicio vinculado (opcional)<select name="service_id" defaultValue=""><option value="">Sin vincular</option>{services.map(s=><option key={s.id} value={s.id}>RER-{String(s.folio).padStart(5,"0")} · {s.client_name}</option>)}</select></label>
+        <label>Servicio RERCHAR vinculado (opcional)<select name="service_id" defaultValue=""><option value="">Sin vincular</option>{services.map(s=><option key={s.id} value={s.id}>{serviceFolio(s)} · {s.client_name}</option>)}</select></label>
         <label>Faena / lugar<input name="site_name" required maxLength={180}/></label><label>Origen<input name="origin" maxLength={180}/></label><label>Destino<input name="destination" maxLength={180}/></label>
         <div className="form-section-title field-full">Transporte y carga</div><label>Conductor<input name="driver_name" maxLength={120}/></label><label>RUT conductor<input name="driver_tax_id" maxLength={25}/></label><label>Camión<input name="truck_plate" maxLength={20}/></label><label>Rampa<input name="trailer_plate" maxLength={30}/></label><label>Ticket de pesaje<input name="weighing_ticket" required maxLength={80}/></label><label>Material<input name="material_name" required maxLength={180}/></label>
         <div className="form-section-title field-full">Pesos de la planilla (kg)</div>
