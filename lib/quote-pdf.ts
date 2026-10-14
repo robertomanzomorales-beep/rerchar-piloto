@@ -57,7 +57,7 @@ export async function renderQuotePdf(quote:Quote,lines:QuoteLine[],warning="",ro
   write("EMISIÓN",360,679,8,bold,gray);write(fmt(quote.issued_on),360,660,9);
   write("VÁLIDA HASTA",360,640,8,bold,gray);write(fmt(quote.valid_until),360,623,9);
   const pending=quote.commercial_kind==="compra_material"&&quote.tax_review_status==="pendiente";
-  if(warning||pending){page.drawRectangle({x:45,y:603,width:505,height:17,color:rgb(0.99,0.92,0.89)});write(fit(warning||"BORRADOR · IVA PENDIENTE DE CONFIRMACIÓN · NO ENVIAR",bold,8,490),52,608,8,bold,rgb(0.65,0.18,0.12));}
+  if(warning){page.drawRectangle({x:45,y:603,width:505,height:17,color:rgb(0.99,0.92,0.89)});write(fit(warning,bold,8,490),52,608,8,bold,rgb(0.65,0.18,0.12));}
   page.drawRectangle({x:45,y:545,width:505,height:62,color:pale});
   write("PROPUESTA",59,584,8,bold,green);
   for(const [i,line] of wrap(quote.title,bold,12,470).slice(0,2).entries())write(line,59,564-i*15,12,bold);
@@ -85,10 +85,11 @@ export async function renderQuotePdf(quote:Quote,lines:QuoteLine[],warning="",ro
   page.drawLine({start:{x:45,y:y+3},end:{x:550,y:y+3},thickness:1,color:rule});
   const taxable=lines.some(line=>line.taxable);
   write("NETO",398,y-18,9,bold);right(money(totals.net),544,y-18,9,bold);
-  write(pending?"IVA pendiente":`IVA (${Number(quote.vat_rate)*100}%)`,398,y-38,9);right(pending?"—":money(totals.vat),544,y-38,9);
+  write(`IVA (${Number(quote.vat_rate)*100}%)`,398,y-38,9);right(money(totals.vat),544,y-38,9);
   page.drawRectangle({x:388,y:y-73,width:162,height:26,color:green});
   write("TOTAL",398,y-64,10,bold,rgb(1,1,1));right(money(totals.total),544,y-64,10,bold,rgb(1,1,1));
-  if(!taxable&&!pending)write("IVA aplicado: 0% según revisión registrada.",45,y-48,8,regular,gray);
+  if(pending)write("Valores netos según planilla; tratamiento tributario por revisar.",45,y-48,7,regular,gray);
+  else if(!taxable)write("IVA aplicado: 0% según revisión registrada.",45,y-48,8,regular,gray);
   let footerY=y-103;
   if(route){
     const details=[`Origen: ${route.origin}`,`Retiro: ${route.pickup}`,`Destino final: ${route.destination}`,

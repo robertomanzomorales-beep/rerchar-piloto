@@ -146,6 +146,7 @@ export async function saveChecklistAction(form: FormData) {
   await run(servicePath(id), () => saveChecklist(actor, id, {
     vehicle_ok: form.get("vehicle_ok") === "on", documents_ok: form.get("documents_ok") === "on",
     containment_ok: form.get("containment_ok") === "on", ppe_ok: form.get("ppe_ok") === "on",
+    vehicle_failure: form.get("vehicle_failure") === "on",
     comment: value(form,"comment"),
   }));
 }

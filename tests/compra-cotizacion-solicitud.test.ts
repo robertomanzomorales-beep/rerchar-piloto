@@ -45,13 +45,12 @@ test("compra de Carol conserva materiales, observaciones e IVA confirmado hasta 
     [iron.id,iron.name,"Separar impurezas"],[aluminum.id,aluminum.name,"Sin pintura"]]);
   assert.equal(detail.quote.tax_review_status,"pendiente");
   assert.equal(detail.totals.vat,0,"el borrador no supone el tratamiento tributario");
-  assert.match((await quotes.quoteDeliveryIssues(detail.quote,detail.lines))[0],/Johana/);
-  await assert.rejects(()=>quotes.recordManualQuoteDelivery(actor,quoteId,{channel:"correo",recipient:"cliente@example.cl",reference:"Entrega antes de confirmar IVA"}),quotes.QuoteError);
-  await assert.rejects(()=>quotes.confirmPurchaseTax(viewer,quoteId,{treatment:"sin_iva",reference:"Johana confirmó por correo el 14/10"}),quotes.QuoteError);
-  await quotes.confirmPurchaseTax(actor,quoteId,{treatment:"con_iva",reference:"Johana confirmó IVA según correo 14/10"});
+  assert.equal((await quotes.quoteDeliveryIssues(detail.quote,detail.lines)).length,0,"la revisión tributaria no impide validar el flujo documentado");
+  await assert.rejects(()=>quotes.confirmPurchaseTax(viewer,quoteId,{treatment:"sin_iva",reference:"Revisión comercial registrada el 14/10"}),quotes.QuoteError);
+  await quotes.confirmPurchaseTax(actor,quoteId,{treatment:"con_iva",reference:"Revisión comercial registrada el 14/10"});
   detail=await quotes.getQuote(actor,quoteId);
   assert.equal(detail.totals.vat,Math.round(detail.totals.net*0.19));
-  await quotes.confirmPurchaseTax(actor,quoteId,{treatment:"sin_iva",reference:"Johana rectificó la propuesta por correo 14/10"});
+  await quotes.confirmPurchaseTax(actor,quoteId,{treatment:"sin_iva",reference:"Equipo comercial rectificó el 14/10"});
   detail=await quotes.getQuote(actor,quoteId);
   assert.equal(detail.totals.vat,0);
   assert.equal((await quotes.quoteDeliveryIssues(detail.quote,detail.lines)).length,0);
@@ -85,6 +84,9 @@ test("compra de Carol conserva materiales, observaciones e IVA confirmado hasta 
     assert.equal(Number(purchase.quote.vat_rate),0);
     assert.equal(purchase.lines[0].description,iron.name);
     assert.ok((await renderQuotePdf(purchase.quote,purchase.lines)).length>7000);
+    assert.equal((await quotes.quoteDeliveryIssues(purchase.quote,purchase.lines)).length,0);
+    await quotes.recordManualQuoteDelivery(actor,purchaseId,{channel:"correo",recipient:"cliente@example.cl",reference:"Entrega manual del piloto según planilla"});
+    assert.equal((await quotes.getQuote(actor,purchaseId)).quote.status,"enviada");
 
     const generalId=await quotes.createQuote(actor,{...input,submission_key:randomUUID(),issuer,vat_rate:"0.19",title:`Servicio ${issuer}`,
       line:{description:"Arriendo de equipo",material_id:"",line_note:"Incluye operador",principal:"arriendo",segment:"arriendo_equipo",quantity:"2",unit:"día",unit_price_clp:"150000",taxable:true}});

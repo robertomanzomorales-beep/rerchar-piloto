@@ -486,14 +486,17 @@ export async function resolveFleetIncident(actor: Actor, id: string, resolution:
 
 export async function saveChecklist(actor: Actor, id: string, input: unknown) {
   const data = z.object({
-    vehicle_ok: z.boolean(), documents_ok: z.boolean(), containment_ok: z.boolean(), ppe_ok: z.boolean(), comment: optional(1000),
+    vehicle_ok: z.boolean(), documents_ok: z.boolean(), containment_ok: z.boolean(), ppe_ok: z.boolean(),
+    vehicle_failure:z.boolean().optional().default(false),comment: optional(1000),
   }).parse(input);
   return transaction(async (tx) => {
-    const [service] = await tx.query<{ status: string; driver_id: string | null }>(
-      "SELECT status, driver_id FROM service_requests WHERE id=$1 AND deleted_at IS NULL FOR UPDATE", [id],
+    const [service] = await tx.query<{ status: string; driver_id: string | null; assigned_asset_id:string|null }>(
+      "SELECT status, driver_id, assigned_asset_id FROM service_requests WHERE id=$1 AND deleted_at IS NULL FOR UPDATE", [id],
     );
     if (!service || !canWorkService(actor, service)) reject("No tiene acceso a este checklist.");
     if (service.status !== "programada") reject("El checklist se registra antes de iniciar la ruta.");
+    if (data.vehicle_failure && data.vehicle_ok) reject("Desmarque Vehículo inspeccionado al reportar una falla.");
+    if (data.vehicle_failure && data.comment.length < 5) reject("Describa la falla del vehículo en las observaciones del checklist.");
     const [previous] = await tx.query("SELECT vehicle_ok, documents_ok, containment_ok, ppe_ok, comment FROM service_checklists WHERE service_id=$1", [id]);
     await tx.query(
       `INSERT INTO service_checklists (service_id, vehicle_ok, documents_ok, containment_ok, ppe_ok, comment, completed_by)
@@ -503,6 +506,20 @@ export async function saveChecklist(actor: Actor, id: string, input: unknown) {
       [id, data.vehicle_ok, data.documents_ok, data.containment_ok, data.ppe_ok, data.comment, actor.id],
     );
     await event(tx, id, actor, "checklist", "Checklist previo actualizado", previous ?? null, data);
+    if (data.vehicle_failure) {
+      if (!service.assigned_asset_id) reject("El servicio debe tener un camión asignado para informar la avería.");
+      const [existing] = await tx.query<{id:string}>(`SELECT id FROM fleet_incidents
+        WHERE source_service_id=$1 AND asset_id=$2 AND status='abierta' FOR UPDATE`,[id,service.assigned_asset_id]);
+      if (!existing) {
+        const [incident]=await tx.query<{id:string}>(`INSERT INTO fleet_incidents
+          (asset_id,source_service_id,description,severity,reported_by) VALUES ($1,$2,$3,'alta',$4) RETURNING id`,
+          [service.assigned_asset_id,id,`Checklist previo: ${data.comment}`,actor.id]);
+        await tx.query("UPDATE assets SET available=false WHERE id=$1",[service.assigned_asset_id]);
+        await event(tx,id,actor,"averia_reportada","Avería del checklist enviada a mantenimiento",null,{incident_id:incident.id,asset_id:service.assigned_asset_id});
+        await tx.query("INSERT INTO audit_events(actor_id,action,entity_type,entity_id,next_value) VALUES($1,'incident_from_checklist','fleet_incident',$2,$3)",
+          [actor.id,incident.id,JSON.stringify({source_service_id:id,asset_id:service.assigned_asset_id,description:data.comment})]);
+      }
+    }
   });
 }
 

@@ -77,7 +77,6 @@ export async function quoteDeliveryIssues(quote:Pick<Quote,"valid_until"> & Part
   const validUntil=quote.valid_until instanceof Date?quote.valid_until.toISOString().slice(0,10):String(quote.valid_until).slice(0,10);
   const issues:string[]=[];
   if(quote.commercial_kind==="compra_material"){
-    if(quote.tax_review_status==="pendiente")issues.push("Compra de material: registre la confirmación del tratamiento de IVA con Johana antes de entregar.");
     if(lines.some(line=>!line.material_id||line.principal!=="compra"||line.unit!=="kg"))issues.push("Complete el material del catálogo y kg de cada concepto de compra.");
   }
   for(const line of lines){

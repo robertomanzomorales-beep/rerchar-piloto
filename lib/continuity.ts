@@ -61,7 +61,7 @@ export async function recordAssetReading(actor: Actor, assetId: string, input: u
 export type MaintenancePlan = { id: string; asset_id: string; asset_label: string; asset_code: string; title: string; frequency_kind: string;
   interval_days: number | null; interval_reading: string | null; next_due_date: Date | string | null; next_due_reading: string | null;
   lead_days: number; lead_reading: string; current_reading: string; reading_unit: string; warning: boolean };
-export type WorkOrder = { id: string; folio: string; asset_id: string; asset_label: string; asset_code: string; plan_id: string | null; incident_id: string | null;
+export type WorkOrder = { id: string; folio: string; asset_id: string; asset_label: string; asset_code: string; plan_id: string | null; incident_id: string | null; source_service_id:string|null;
   kind: string; title: string; description: string | null; status: string; blocks_asset: boolean; scheduled_for: Date | string | null; started_at: Date | null;
   closed_at: Date | null; reading_at_close: string | null; labor_cost: string; parts_cost: string; supplier: string | null;
   resolution: string | null; created_at: Date; created_by_name: string; closed_by_name: string | null };
@@ -76,10 +76,10 @@ export async function listMaintenance(actor: Actor) {
       (CASE WHEN p.frequency_kind='fecha' THEN p.next_due_date <= (now() AT TIME ZONE 'America/Santiago')::date + p.lead_days
        ELSE a.current_reading + p.lead_reading >= p.next_due_reading END) AS warning
       FROM maintenance_plans p JOIN assets a ON a.id=p.asset_id WHERE p.active=true AND a.deleted_at IS NULL ORDER BY warning DESC,p.created_at DESC LIMIT 200`),
-    db.query<WorkOrder>(`SELECT w.*,a.label AS asset_label,a.code AS asset_code,u.name AS created_by_name,c.name AS closed_by_name
-      FROM work_orders w JOIN assets a ON a.id=w.asset_id JOIN users u ON u.id=w.created_by LEFT JOIN users c ON c.id=w.closed_by
+    db.query<WorkOrder>(`SELECT w.*,i.source_service_id,a.label AS asset_label,a.code AS asset_code,u.name AS created_by_name,c.name AS closed_by_name
+      FROM work_orders w JOIN assets a ON a.id=w.asset_id LEFT JOIN fleet_incidents i ON i.id=w.incident_id JOIN users u ON u.id=w.created_by LEFT JOIN users c ON c.id=w.closed_by
       ORDER BY CASE w.status WHEN 'en_trabajo' THEN 0 WHEN 'abierta' THEN 1 ELSE 2 END,w.created_at DESC LIMIT 150`),
-    db.query<{ id: string; asset_id: string; description: string; asset_label: string }>(`SELECT i.id,i.asset_id,i.description,a.label AS asset_label
+    db.query<{ id: string; asset_id: string; source_service_id:string|null; description: string; asset_label: string }>(`SELECT i.id,i.asset_id,i.source_service_id,i.description,a.label AS asset_label
       FROM fleet_incidents i JOIN assets a ON a.id=i.asset_id
       WHERE i.status='abierta' AND NOT EXISTS (SELECT 1 FROM work_orders w WHERE w.incident_id=i.id AND w.status IN ('abierta','en_trabajo'))
       ORDER BY i.reported_at DESC LIMIT 100`),
@@ -138,8 +138,8 @@ export async function createWorkOrder(actor: Actor, input: unknown) {
 export async function getWorkOrder(actor: Actor, id: string) {
   guard(actor);
   if (!uuid.safeParse(id).success) reject("Orden de trabajo inválida.");
-  const [order] = await db.query<WorkOrder>(`SELECT w.*,a.label AS asset_label,a.code AS asset_code,u.name AS created_by_name,c.name AS closed_by_name
-    FROM work_orders w JOIN assets a ON a.id=w.asset_id JOIN users u ON u.id=w.created_by LEFT JOIN users c ON c.id=w.closed_by WHERE w.id=$1`,[id]);
+  const [order] = await db.query<WorkOrder>(`SELECT w.*,i.source_service_id,a.label AS asset_label,a.code AS asset_code,u.name AS created_by_name,c.name AS closed_by_name
+    FROM work_orders w JOIN assets a ON a.id=w.asset_id LEFT JOIN fleet_incidents i ON i.id=w.incident_id JOIN users u ON u.id=w.created_by LEFT JOIN users c ON c.id=w.closed_by WHERE w.id=$1`,[id]);
   if (!order) reject("Orden de trabajo no encontrada.");
   const [reservations, history] = await Promise.all([
     db.query<{id:string;quantity:string;status:string;item_name:string;unit:string;warehouse_name:string}>(`SELECT r.id,r.quantity,r.status,i.name AS item_name,i.unit,w.name AS warehouse_name
