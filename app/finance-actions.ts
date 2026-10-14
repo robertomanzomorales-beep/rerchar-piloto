@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { ZodError } from "zod";
 import { requireActor } from "@/lib/auth";
-import { addServiceCost, classifyContractCompany, createContract, createTariff, FinanceError, registerInvoice, registerPayment, updateClientOrderReference, valueService, voidInvoice } from "@/lib/finance";
+import { addServiceCost, classifyContractCompany, confirmServiceInvoiceTotal, createContract, createTariff, FinanceError, registerInvoice, registerPayment, updateClientOrderReference, valueService, voidInvoice } from "@/lib/finance";
 
 const value=(form:FormData,key:string)=>String(form.get(key)??"");
 const detail=(id:string)=>`/finanzas/${encodeURIComponent(id)}`;
@@ -33,7 +33,9 @@ export async function valueServiceAction(form:FormData){const actor=await requir
 export async function updateClientOrderReferenceAction(form:FormData){const actor=await requireActor();const id=value(form,"service_id");await run(detail(id),()=>updateClientOrderReference(actor,id,{
   client_order_reference:value(form,"client_order_reference"),reason:value(form,"reason")}));}
 export async function registerInvoiceAction(form:FormData){const actor=await requireActor();const id=value(form,"service_id");await run(detail(id),()=>registerInvoice(actor,id,{
-  invoice_number:value(form,"invoice_number"),issued_on:value(form,"issued_on"),due_on:value(form,"due_on")}));}
+  invoice_number:value(form,"invoice_number"),issued_on:value(form,"issued_on"),due_on:value(form,"due_on"),total_clp:value(form,"total_clp")}));}
+export async function confirmServiceInvoiceTotalAction(form:FormData){const actor=await requireActor();const id=value(form,"service_id");await run(detail(id),()=>confirmServiceInvoiceTotal(actor,value(form,"invoice_id"),{
+  total_clp:value(form,"total_clp"),reason:value(form,"reason")}));}
 export async function voidInvoiceAction(form:FormData){const actor=await requireActor();const id=value(form,"service_id");await run(detail(id),()=>voidInvoice(actor,value(form,"invoice_id"),value(form,"reason")));}
 export async function registerPaymentAction(form:FormData){const actor=await requireActor();const id=value(form,"service_id");await run(detail(id),()=>registerPayment(actor,value(form,"invoice_id"),{
   submission_key:value(form,"submission_key"),amount_clp:value(form,"amount_clp"),paid_on:value(form,"paid_on"),

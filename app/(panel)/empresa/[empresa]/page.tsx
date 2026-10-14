@@ -10,6 +10,7 @@ import { ServiceTable, chileDate } from "@/components/UI";
 import {rercharMaterialDashboard,rercharReceiptGuideDashboard,rercharReceiptClosureDashboard,eyjPaymentDashboard} from "@/lib/company-dashboard";
 import {eyjBillingCalendarDashboard} from "@/lib/payment-calendar";
 import {pendingExtraChargeCount} from "@/lib/extra-charges";
+import {receivablesOverview} from "@/lib/receivables";
 
 type ServiceMetrics = { total:string; requested:string; scheduled:string; in_route:string; pending_review:string; completed:string; critical:string };
 type QuoteMetrics = { total:string; draft:string; sent:string; accepted:string; expired:string };
@@ -24,7 +25,7 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
   const company = companies[selected];
   const showQuotes = actor.role !== "conductor";
   const today = new Intl.DateTimeFormat("sv-SE",{timeZone:"America/Santiago",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
-  const [quotes,services,serviceStats,quoteStats,months,guideAlerts,invoiceAlerts,unclassified,materials,payments,receiptGuides,receiptClosure,billingCalendar,checklistFaults,dayIssues,extraChargePending] = await Promise.all([
+  const [quotes,services,serviceStats,quoteStats,months,guideAlerts,invoiceAlerts,unclassified,materials,payments,receiptGuides,receiptClosure,billingCalendar,checklistFaults,dayIssues,extraChargePending,receivables] = await Promise.all([
     showQuotes ? listQuotes(actor,"",selected) : Promise.resolve([]),
     listServices(actor,"","",selected),
     db.query<ServiceMetrics>(`SELECT count(*)::text AS total,
@@ -69,6 +70,7 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
     WHERE s.operating_company=$1 AND s.deleted_at IS NULL AND s.status IN ('programada','en_ruta','pendiente_revision')
       AND d.outcome IN ('incompleto','suspendido')`,[selected]):Promise.resolve([]),
     canManage(actor)?pendingExtraChargeCount(actor,selected):Promise.resolve(0),
+    actor.role==="admin"?receivablesOverview(actor,selected,today):Promise.resolve(null),
   ]);
   const s=serviceStats[0],q=quoteStats[0];
   const maxMonth=Math.max(1,...months.map(m=>value(m.total)));
@@ -87,6 +89,9 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
     ...(canManage(actor)?[{label:"Averías del checklist abiertas",count:value(checklistFaults[0]?.total),href:"/mantenimiento"}]:[]),
     ...(canManage(actor)?[{label:"Viajes incompletos o suspendidos pendientes",count:value(dayIssues[0]?.total),href:`/agenda?empresa=${selected}`}]:[]),
     ...(canManage(actor)?[{label:"Fletes falsos y sobreestadías por decidir",count:extraChargePending,href:`/cobros-extraordinarios?empresa=${selected}`}]:[]),
+    ...(receivables?[{label:"Facturas de clientes vencidas con saldo",count:Number(receivables.overdue),href:`/cobranzas?empresa=${selected}&estado=vencidas`},
+      {label:"Facturas de clientes que vencen en 7 días",count:Number(receivables.upcoming),href:`/cobranzas?empresa=${selected}&estado=proximas`},
+      {label:"Facturas anteriores por conciliar",count:Number(receivables.legacy),href:`/cobranzas?empresa=${selected}`}]:[]),
     ...(canManage(actor)?[{label:"Guías valorizadas solicitadas y no recibidas",count:value(guideAlerts[0]?.total),href:`/seguimiento-guias?empresa=${selected}`}]:[]),
     ...(selected==="rerchar"&&canManage(actor)?[{label:"Ventas de material con pesaje, factura o pago pendientes",count:value(materials?.guides.pending),href:"/control-guias"}]:[]),
     ...(selected==="rerchar"&&canManage(actor)&&receiptGuides?.ready?[{label:"Ingresos esperando guía valorizada",count:value(receiptGuides.pending),href:"/ingresos"}]:[]),

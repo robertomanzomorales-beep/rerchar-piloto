@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import {randomUUID} from "node:crypto";
-import {readFile} from "node:fs/promises";
+import {readdir,readFile} from "node:fs/promises";
 import {resolve} from "node:path";
 import test from "node:test";
 import type {Actor} from "../lib/auth";
@@ -9,8 +9,10 @@ test("tarifa vigente, valorización, reemisión, pagos y margen conservan saldos
   process.env.PGLITE_DATA_DIR="memory://";
   const {db,transaction}=await import("../lib/db");
   const finance=await import("../lib/finance");
+  const charges=await import("../lib/extra-charges");
+  const receivables=await import("../lib/receivables");
   const continuity=await import("../lib/continuity");
-  for(const name of ["001_piloto.sql","002_flota_y_despacho.sql","003_abastecimiento.sql","004_mantenimiento_combustible.sql","005_contenedores.sql","006_acreditacion.sql","007_finanzas.sql","008_trazabilidad_ambiental.sql","009_certificados.sql","010_evidencia_persistente.sql","011_operacion_real_2026.sql","018_empresa_operadora.sql","023_conductores_terceros.sql","027_solicitudes_arriendo.sql"]){
+  for(const name of (await readdir(resolve(process.cwd(),"db"))).filter(n=>/^\d+.*\.sql$/.test(n)).sort()){
     const sql=await readFile(resolve(process.cwd(),`db/${name}`),"utf8");
     await transaction(async tx=>{for(const part of sql.split(/;\s*(?:\n|$)/).map(s=>s.trim()).filter(Boolean)) await tx.query(part);});
   }
@@ -50,9 +52,9 @@ test("tarifa vigente, valorización, reemisión, pagos y margen conservan saldos
     "SELECT action,previous_value,next_value FROM audit_events WHERE entity_type='service_valuation' AND action='update_reference'");
   assert.equal(correction.previous_value.client_order_reference,"OC-CLIENTE-1");
   assert.equal(correction.next_value.reason,"Referencia de proveedor ingresada por error");
-  const firstInvoice=await finance.registerInvoice(owner,service.id,{invoice_number:"F-ANULADA",issued_on:"2026-09-24",due_on:"2026-10-01"});
+  const firstInvoice=await finance.registerInvoice(owner,service.id,{invoice_number:"F-ANULADA",issued_on:"2026-09-24",due_on:"2026-10-01",total_clp:"50000"});
   await finance.voidInvoice(owner,firstInvoice,"Error de folio externo");
-  const activeInvoice=await finance.registerInvoice(owner,service.id,{invoice_number:"F-001",issued_on:"2026-09-24",due_on:"2026-10-01"});
+  const activeInvoice=await finance.registerInvoice(owner,service.id,{invoice_number:"F-001",issued_on:"2026-09-24",due_on:"2026-10-01",total_clp:"50000"});
   const payment={submission_key:randomUUID(),amount_clp:"20000",paid_on:"2026-09-24",method:"transferencia",reference:"Transferencia A"};
   const paymentId=await finance.registerPayment(owner,activeInvoice,payment);
   assert.equal(await finance.registerPayment(owner,activeInvoice,payment),paymentId);
@@ -72,4 +74,20 @@ test("tarifa vigente, valorización, reemisión, pagos y margen conservan saldos
   assert.equal(Number(detail.total_clp)-Number(detail.manual_cost_clp)-Number(detail.fuel_cost_clp),38000);
   assert.equal((await finance.getFinancialService(owner,service.id)).voidedInvoices.length,1);
   assert.equal((await finance.getFinancialService(owner,service.id)).payments.length,2);
+  await db.query("UPDATE service_invoices SET total_verified=false,total_clp=42000 WHERE id=$1",[activeInvoice]);
+  assert.equal((await receivables.listReceivables(owner,"rerchar")).length,0,"factura previa sin total confirmado no es cuenta por cobrar");
+  assert.equal((await receivables.receivablesOverview(owner,"rerchar","2026-10-14")).legacy,"1");
+  await assert.rejects(()=>finance.registerPayment(owner,activeInvoice,{...payment,submission_key:randomUUID(),amount_clp:"100",reference:"Sin confirmar"}),/Confirme/);
+  await assert.rejects(()=>finance.confirmServiceInvoiceTotal(owner,activeInvoice,{total_clp:"48000",reason:"Revisado contra DTE"}),/menor/);
+  await finance.confirmServiceInvoiceTotal(owner,activeInvoice,{total_clp:"50000",reason:"Revisado contra DTE"});
+  await db.query(`INSERT INTO service_day_reports(service_id,day,asset_id,outcome,observation,recorded_by)
+    VALUES($1,'2026-09-24',$2,'completado','Servicio con cargo adicional',$3)`,[service.id,asset.id,owner.id]);
+  const extra=await charges.proposeExtraCharge(owner,service.id,{submission_key:randomUUID(),service_day:"2026-09-24",kind:"sobrestadia",
+    reason:"Espera en faena según parte",amount_clp:"10000",quote_reference:"",client_order_reference:""});
+  await charges.decideExtraCharge(owner,extra,{status:"aprobado",decision_note:"Cliente aprobó espera",amount_clp:"10000"});
+  await charges.invoiceExtraCharge(owner,extra,{invoice_number:"F-001",invoiced_on:"2026-09-24",due_on:"2026-10-01",total_clp:"50000"});
+  assert.equal((await receivables.listReceivables(owner,"rerchar")).length,1,"la factura principal y el cargo vinculado cuentan una vez");
+  assert.equal((await receivables.listReceivables(owner,"rerchar"))[0].extra_count,"1");
+  assert.equal(Number((await receivables.receivablesOverview(owner,"rerchar","2026-10-14")).outstanding),0);
+  await assert.rejects(()=>charges.invoiceExtraCharge(owner,extra,{invoice_number:"F-OTRA",invoiced_on:"2026-09-24",due_on:"2026-10-01",total_clp:"50000"}),/conciliada/);
 });

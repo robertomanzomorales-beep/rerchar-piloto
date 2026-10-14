@@ -29,13 +29,13 @@ export type FinancialService={id:string;folio:string;client_id:string;site_id:st
   operating_company:Company|null;
   gross_kg:string|null;tare_kg:string|null;status:string;closed_at:Date|null;valuation_id:string|null;quantity:string|null;unit_price_clp:string|null;
   total_clp:string|null;tariff_id:string|null;tariff_unit:string|null;client_order_reference:string|null;invoice_id:string|null;invoice_number:string|null;
-  invoice_status:string|null;invoice_total:string|null;paid_clp:string;manual_cost_clp:string;fuel_cost_clp:string};
+  invoice_status:string|null;invoice_total:string|null;invoice_total_verified:boolean|null;paid_clp:string;manual_cost_clp:string;fuel_cost_clp:string};
 export type InvoicePayment={id:string;amount_clp:string;paid_on:Date|string;method:string;reference:string;created_at:Date;actor_name:string};
 export type ServiceCost={id:string;category:string;amount_clp:string;description:string;created_at:Date;actor_name:string};
 
 const serviceSelect=`SELECT s.id,s.folio,s.client_id,s.site_id,s.operating_company,c.name AS client_name,cs.name AS site_name,s.service_type,s.waste_type,s.gross_kg,s.tare_kg,s.status,s.closed_at,
  v.id AS valuation_id,v.quantity,v.unit_price_clp,v.total_clp,v.tariff_id,t.unit AS tariff_unit,v.client_order_reference,
- f.id AS invoice_id,f.invoice_number,f.status AS invoice_status,f.total_clp AS invoice_total,
+ f.id AS invoice_id,f.invoice_number,f.status AS invoice_status,f.total_clp AS invoice_total,f.total_verified AS invoice_total_verified,
  COALESCE((SELECT sum(p.amount_clp) FROM invoice_payments p WHERE p.invoice_id=f.id),0)::text AS paid_clp,
  COALESCE((SELECT sum(x.amount_clp) FROM service_costs x WHERE x.service_id=s.id),0)::text AS manual_cost_clp,
  COALESCE((SELECT sum(x.cost_clp) FROM fuel_entries x WHERE x.service_id=s.id),0)::text AS fuel_cost_clp
@@ -208,17 +208,34 @@ export async function updateClientOrderReference(actor:Actor,serviceId:string,in
 export async function registerInvoice(actor:Actor,serviceId:string,input:unknown){
   admin(actor);
   const id=uuid.parse(serviceId);
-  const data=z.object({invoice_number:z.string().trim().min(2).max(80),issued_on:z.iso.date(),due_on:z.iso.date()}).parse(input);
+  const data=z.object({invoice_number:z.string().trim().min(2).max(80),issued_on:z.iso.date(),due_on:z.iso.date(),total_clp:positiveMoney}).parse(input);
   if(data.due_on<data.issued_on)reject("El vencimiento de la factura no puede ser anterior a su emisión.");
   return transaction(async(tx)=>{
     const [valuation]=await tx.query<{id:string;total_clp:string;operating_company:Company|null}>(`SELECT v.id,v.total_clp,s.operating_company
       FROM service_valuations v JOIN service_requests s ON s.id=v.service_id WHERE v.service_id=$1 FOR UPDATE OF v`,[id]);
     if(!valuation)reject("Valorice el servicio antes de asociar una factura.");
     if(!valuation.operating_company)reject("Confirme la empresa del servicio antes de asociar la factura.");
-    const [invoice]=await tx.query<{id:string}>(`INSERT INTO service_invoices (valuation_id,invoice_number,issued_on,due_on,total_clp,created_by)
-      VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,[valuation.id,data.invoice_number,data.issued_on,data.due_on,valuation.total_clp,actor.id]);
-    await audit(tx,actor,"invoice","service_invoice",invoice.id,{service_id:id,operating_company:valuation.operating_company,...data,total_clp:valuation.total_clp});
+    const [extra]=await tx.query("SELECT id FROM extra_receivable_invoices WHERE invoice_number=$1 AND status='emitida' LIMIT 1",[data.invoice_number]);
+    if(extra)reject("Ese folio ya está registrado como factura de cobro extraordinario. Asócielo desde allí.");
+    const [invoice]=await tx.query<{id:string}>(`INSERT INTO service_invoices (valuation_id,invoice_number,issued_on,due_on,total_clp,created_by,total_verified)
+      VALUES ($1,$2,$3,$4,$5,$6,true) RETURNING id`,[valuation.id,data.invoice_number,data.issued_on,data.due_on,data.total_clp,actor.id]);
+    await audit(tx,actor,"invoice","service_invoice",invoice.id,{service_id:id,operating_company:valuation.operating_company,...data});
     return invoice.id;
+  });
+}
+
+export async function confirmServiceInvoiceTotal(actor:Actor,invoiceId:string,input:unknown){
+  admin(actor);uuid.parse(invoiceId);
+  const data=z.object({total_clp:positiveMoney,reason:z.string().trim().min(5).max(500)}).parse(input);
+  await transaction(async tx=>{
+    const [invoice]=await tx.query<{status:string;total_verified:boolean;total_clp:string}>(
+      "SELECT status,total_verified,total_clp FROM service_invoices WHERE id=$1 FOR UPDATE",[invoiceId]);
+    if(!invoice||invoice.status!=="emitida"||invoice.total_verified)reject("La factura no requiere esta conciliación.");
+    const [paid]=await tx.query<{total:string}>("SELECT COALESCE(sum(amount_clp),0)::text AS total FROM invoice_payments WHERE invoice_id=$1",[invoiceId]);
+    if(Number(data.total_clp)<Number(paid.total))reject("El total del documento no puede ser menor que los abonos registrados.");
+    await tx.query("UPDATE service_invoices SET total_clp=$2,total_verified=true WHERE id=$1",[invoiceId,data.total_clp]);
+    await tx.query("INSERT INTO audit_events(actor_id,action,entity_type,entity_id,previous_value,next_value) VALUES($1,'confirm_invoice_total','service_invoice',$2,$3,$4)",
+      [actor.id,invoiceId,JSON.stringify({total_clp:invoice.total_clp,total_verified:false}),JSON.stringify(data)]);
   });
 }
 
@@ -231,6 +248,10 @@ export async function voidInvoice(actor:Actor,invoiceId:string,reason:unknown){
     if(!invoice||invoice.status!=="emitida")reject("La factura interna no está vigente.");
     const [payment]=await tx.query("SELECT id FROM invoice_payments WHERE invoice_id=$1 LIMIT 1",[id]);
     if(payment)reject("No anule una factura que registra pagos; requiere revisión administrativa.");
+    const charges=await tx.query<{id:string}>("SELECT id FROM service_extra_charges WHERE linked_service_invoice_id=$1 FOR UPDATE",[id]);
+    await tx.query(`UPDATE service_extra_charges SET status='aprobado',invoice_number=NULL,invoiced_on=NULL,
+      linked_service_invoice_id=NULL WHERE linked_service_invoice_id=$1`,[id]);
+    for(const charge of charges)await audit(tx,actor,"unlink_void_invoice","service_extra_charge",charge.id,{invoice_id:id,reason:explanation});
     await tx.query("UPDATE service_invoices SET status='anulada' WHERE id=$1",[id]);
     await audit(tx,actor,"void","service_invoice",id,{reason:explanation});
   });
@@ -242,11 +263,12 @@ export async function registerPayment(actor:Actor,invoiceId:string,input:unknown
   const data=z.object({submission_key:uuid,amount_clp:positiveMoney,paid_on:z.iso.date(),
     method:z.enum(["transferencia","efectivo","tarjeta","otro"]),reference:z.string().trim().min(2).max(120)}).parse(input);
   return transaction(async(tx)=>{
-    const [invoice]=await tx.query<{status:string;total_clp:string}>("SELECT status,total_clp FROM service_invoices WHERE id=$1 FOR UPDATE",[id]);
+    const [invoice]=await tx.query<{status:string;total_clp:string;total_verified:boolean}>("SELECT status,total_clp,total_verified FROM service_invoices WHERE id=$1 FOR UPDATE",[id]);
     if(!invoice)reject("Factura no encontrada.");
     const [previous]=await tx.query<{id:string;invoice_id:string}>("SELECT id,invoice_id FROM invoice_payments WHERE submission_key=$1",[data.submission_key]);
     if(previous){if(previous.invoice_id!==id)reject("Clave de pago asignada a otra factura.");return previous.id;}
     if(invoice.status!=="emitida")reject("La factura está anulada.");
+    if(!invoice.total_verified)reject("Confirme el total real de la factura antes de registrar nuevos pagos.");
     const [balance]=await tx.query<{allowed:boolean}>(`SELECT ($2::numeric+COALESCE((SELECT sum(amount_clp) FROM invoice_payments WHERE invoice_id=$1),0))<=total_clp AS allowed
       FROM service_invoices WHERE id=$1`,[id,data.amount_clp]);
     if(!balance?.allowed)reject("El pago supera el saldo pendiente de la factura.");

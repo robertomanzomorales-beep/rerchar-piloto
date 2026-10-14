@@ -36,6 +36,6 @@ export async function decideExtraChargeAction(form:FormData){
 export async function invoiceExtraChargeAction(form:FormData){
   const actor=await requireActor();
   await run(boardPath(value(form,"company")),()=>invoiceExtraCharge(actor,value(form,"id"),{
-    invoice_number:value(form,"invoice_number"),invoiced_on:value(form,"invoiced_on"),
+    invoice_number:value(form,"invoice_number"),invoiced_on:value(form,"invoiced_on"),due_on:value(form,"due_on"),total_clp:value(form,"total_clp"),
   }));
 }
