@@ -25,7 +25,7 @@ export default function Shell({ actor, children }: { actor: Actor; children: Rea
     else {const saved=localStorage.getItem("rerchar-selected-company");setSelectedCompany(saved==="rerchar"||saved==="e_y_j"?saved:null);}
   },[pathname]);
   const selectedName=selectedCompany==="e_y_j"?"E y J":selectedCompany==="rerchar"?"RERCHAR":null;
-  const companyHref=(href:string)=>selectedCompany&&["/cotizaciones","/solicitudes","/agenda","/seguimiento-guias","/facturas-recibidas","/finanzas","/cobros-extraordinarios","/cobranzas"].includes(href)?`${href}?empresa=${selectedCompany}`:selectedCompany&&href==="/reportes"?`${href}?company=${selectedCompany}`:href;
+  const companyHref=(href:string)=>selectedCompany&&["/cotizaciones","/solicitudes","/agenda","/seguimiento-guias","/facturas-recibidas","/transferencias","/transacciones","/finanzas","/cobros-extraordinarios","/cobranzas"].includes(href)?`${href}?empresa=${selectedCompany}`:selectedCompany&&href==="/reportes"?`${href}?company=${selectedCompany}`:href;
   const links = [
     { group:"Comercial", href: "/cotizaciones", text: "Cotizaciones", icon: FileText, visible: actor.role !== "conductor" },
     { group:"Comercial", href: "/clientes", text: "Clientes y documentos", icon: Building2, visible: actor.role !== "conductor" },
@@ -44,6 +44,8 @@ export default function Shell({ actor, children }: { actor: Actor; children: Rea
     { group:"Cierre y control", href: "/cumplimiento", text: "Registro ambiental", icon: FileCheck2, visible: actor.role === "admin" || actor.role === "operaciones" },
     { group:"Cierre y control", href: "/reportes", text: "Reportes", icon: FileBarChart2, visible: true },
     { group:"Abastecimiento", href: "/facturas-recibidas", text: "Facturas recibidas", icon: FileText, visible: actor.role === "admin" },
+    { group:"Abastecimiento", href: "/transferencias", text: "Solicitudes de transferencia", icon: Banknote, visible: actor.role === "admin" },
+    { group:"Cierre y control", href: "/transacciones", text: "Registro de transacciones", icon: ScrollText, visible: actor.role === "admin" },
     { group:"Recursos compartidos", href: "/compras", text: "Órdenes de compra", icon: ShoppingCart, visible: actor.role === "admin" || actor.role === "operaciones" },
     { group:"Recursos compartidos", href: "/inventario", text: "Inventario", icon: Warehouse, visible: actor.role === "admin" || actor.role === "operaciones" },
     { group:"Recursos compartidos", href: "/contenedores", text: "Tolvas y contenedores", icon: Container, visible: actor.role === "admin" || actor.role === "operaciones" },

@@ -2,6 +2,7 @@ import {z} from "zod";
 import type {Actor} from "./auth";
 import {db,transaction} from "./db";
 import type {Company} from "./companies";
+import {moduleReady} from "./schema-readiness";
 import {chileCsvDay} from "./chile-csv";
 
 const uuid=z.uuid();
@@ -125,11 +126,14 @@ export async function registerSupplierPayment(actor:Actor,id:string,input:unknow
   admin(actor);uuid.parse(id);
   const data=z.object({submission_key:uuid,amount_clp:amount,paid_on:z.iso.date(),reference:z.string().trim().min(2).max(160)}).parse(input);
   if(Number(data.amount_clp)<=0)reject("El pago debe ser mayor que cero.");
+  const transfersReady=await moduleReady("supplier_transfers");
   return transaction(async tx=>{
     const [invoice]=await tx.query<{total_clp:string;paid_clp:string;status:string}>("SELECT total_clp,paid_clp,status FROM supplier_invoices WHERE id=$1 FOR UPDATE",[id]);
     if(!invoice)reject("Factura no encontrada.");
     const [existing]=await tx.query<{id:string;invoice_id:string}>("SELECT id,invoice_id FROM supplier_invoice_payments WHERE submission_key=$1",[data.submission_key]);
     if(existing){if(existing.invoice_id!==id)reject("Este pago corresponde a otra factura.");return existing.id;}
+    if(transfersReady){const [active]=await tx.query("SELECT id FROM supplier_transfer_requests WHERE invoice_id=$1 AND status IN ('solicitada','aprobada','ejecutada') LIMIT 1",[id]);
+      if(active)reject("Hay transferencias pendientes para esta factura. Resuélvalas antes de registrar un pago manual.");}
     const total=cents(invoice.total_clp),paid=cents(invoice.paid_clp)+cents(data.amount_clp);
     if(paid>total)reject("El pago supera el saldo pendiente.");
     const [payment]=await tx.query<{id:string}>(`INSERT INTO supplier_invoice_payments(submission_key,invoice_id,amount_clp,paid_on,reference,recorded_by)

@@ -12,6 +12,8 @@ import {eyjBillingCalendarDashboard} from "@/lib/payment-calendar";
 import {pendingExtraChargeCount} from "@/lib/extra-charges";
 import {receivablesOverview} from "@/lib/receivables";
 import {supplierInvoiceOverview} from "@/lib/supplier-invoices";
+import {supplierTransferOverview} from "@/lib/supplier-transfers";
+import {moduleReady} from "@/lib/schema-readiness";
 
 type ServiceMetrics = { total:string; requested:string; scheduled:string; in_route:string; pending_review:string; completed:string; critical:string };
 type QuoteMetrics = { total:string; draft:string; sent:string; accepted:string; expired:string };
@@ -26,7 +28,7 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
   const company = companies[selected];
   const showQuotes = actor.role !== "conductor";
   const today = new Intl.DateTimeFormat("sv-SE",{timeZone:"America/Santiago",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
-  const [quotes,services,serviceStats,quoteStats,months,guideAlerts,invoiceAlerts,unclassified,materials,payments,receiptGuides,receiptClosure,billingCalendar,checklistFaults,dayIssues,extraChargePending,receivables,edpInvoices] = await Promise.all([
+  const [quotes,services,serviceStats,quoteStats,months,guideAlerts,invoiceAlerts,unclassified,materials,payments,receiptGuides,receiptClosure,billingCalendar,checklistFaults,dayIssues,extraChargePending,receivables,edpInvoices,transferStats] = await Promise.all([
     showQuotes ? listQuotes(actor,"",selected) : Promise.resolve([]),
     listServices(actor,"","",selected),
     db.query<ServiceMetrics>(`SELECT count(*)::text AS total,
@@ -72,6 +74,7 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
     canManage(actor)?pendingExtraChargeCount(actor,selected):Promise.resolve(0),
     actor.role==="admin"?receivablesOverview(actor,selected,today):Promise.resolve(null),
     selected==="e_y_j"&&actor.role==="admin"?eyjEdpInvoiceDashboard():Promise.resolve(null),
+    actor.role==="admin"?moduleReady("supplier_transfers").then(ready=>ready?supplierTransferOverview(actor,selected):null):Promise.resolve(null),
   ]);
   const s=serviceStats[0],q=quoteStats[0];
   const maxMonth=Math.max(1,...months.map(m=>value(m.total)));
@@ -114,6 +117,11 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
       {label:"Facturas de proveedores que vencen en 7 días",count:value(invoiceAlerts.upcoming),href:`/facturas-recibidas?empresa=${selected}&estado=proximas`},
       {label:"Facturas de proveedores sin vencimiento",count:value(invoiceAlerts.undated),href:`/facturas-recibidas?empresa=${selected}&estado=sin_fecha`},
     ]:[]),
+    ...(transferStats?[
+      {label:"Transferencias a proveedores por aprobar",count:value(transferStats.solicitadas),href:`/transferencias?empresa=${selected}`},
+      {label:"Transferencias aprobadas por ejecutar",count:value(transferStats.aprobadas),href:`/transferencias?empresa=${selected}`},
+      {label:"Transferencias ejecutadas por verificar",count:value(transferStats.ejecutadas),href:`/transferencias?empresa=${selected}`},
+    ]:[]),
   ];
   return <>
     <Link href="/" className="back-link"><ArrowLeft size={16}/> Cambiar de empresa</Link>
@@ -127,6 +135,7 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
       {selected==="rerchar"&&canManage(actor)?<Link href="/control-guias" className="company-metric"><span>Control de guías</span><strong>{value(materials?.guides.total)}</strong><small>{value(materials?.guides.pending)} ventas por cerrar</small></Link>:<Link href={`/solicitudes?empresa=${selected}&estado=en_ruta`} className="company-metric"><span>En ruta</span><strong>{value(s?.in_route)}</strong><small>En ejecución</small></Link>}
       {selected==="rerchar"&&canManage(actor)&&(materials?.stock_ready?<Link href="/materiales-stock" className="company-metric"><span>Materiales con stock</span><strong>{value(materials.materials)}</strong><small>Existencia confirmada</small></Link>:<div className="company-metric"><span>Stock de materiales</span><strong>—</strong><small>Pendiente de habilitar en la base de datos</small></div>)}
       {selected==="e_y_j"&&canManage(actor)&&(payments?.ready?<Link href="/estados-pago" className="company-metric"><span>Estados de pago</span><strong>{value(payments.total)}</strong><small>{value(payments.pending)} por completar</small></Link>:<div className="company-metric"><span>Estados de pago</span><strong>—</strong><small>Pendiente de habilitar en la base de datos</small></div>)}
+      {transferStats&&<Link href={`/transferencias?empresa=${selected}`} className="company-metric"><span>Transferencias por revisar</span><strong>{value(transferStats.solicitadas)+value(transferStats.ejecutadas)}</strong><small>{value(transferStats.aprobadas)} aprobadas por ejecutar</small></Link>}
       <Link href={`/solicitudes?empresa=${selected}&estado=completada`} className="company-metric"><span>Completados</span><strong>{value(s?.completed)}</strong><small>Con cierre registrado</small></Link>
     </div>
     <div className="company-analytics">
