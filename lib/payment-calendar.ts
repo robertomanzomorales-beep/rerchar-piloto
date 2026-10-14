@@ -24,7 +24,7 @@ export type BillingCycle={id:string;client_id:string;client_name:string;statemen
   statement_status:"borrador"|"observado"|"enviado"|"aprobado"|null;created_at:Date|string};
 export type CompletedService={id:string;folio:string;closed_on:string;service_type:string;waste_type:string;
   guide_number:string|null;quantity:string|null;tariff_unit:string|null;unit_price_clp:string|null;
-  total_clp:string|null;invoice_number:string|null};
+  total_clp:string|null;invoice_number:string|null;status:string;partial_period:boolean};
 const cycleSelect=`SELECT b.*,c.name AS client_name,p.number AS statement_number,p.status AS statement_status
   FROM payment_statement_cycles b JOIN clients c ON c.id=b.client_id
   LEFT JOIN payment_statements p ON p.id=b.statement_id`;
@@ -41,16 +41,25 @@ export async function getBillingCycle(actor:Actor,id:string){
   if(!cycle)reject("Período no encontrado.");
   const [services,statements]=await Promise.all([
     db.query<CompletedService>(`SELECT s.id,s.folio::text,
-      to_char(s.closed_at AT TIME ZONE 'America/Santiago','YYYY-MM-DD') AS closed_on,
-      s.service_type,s.waste_type,s.guide_number,v.quantity::text,t.unit AS tariff_unit,
-      v.unit_price_clp::text,v.total_clp::text,f.invoice_number
+      CASE WHEN s.service_type='arriendo' THEN to_char(s.rental_from,'YYYY-MM-DD') || ' al ' || to_char(s.rental_to,'YYYY-MM-DD')
+        ELSE to_char(s.closed_at AT TIME ZONE 'America/Santiago','YYYY-MM-DD') END AS closed_on,
+      s.service_type,s.waste_type,s.status,s.guide_number,
+      (s.service_type='arriendo' AND (s.rental_from<$2::date OR s.rental_to>$3::date)) AS partial_period,
+      CASE WHEN s.service_type='arriendo' AND (s.rental_from<$2::date OR s.rental_to>$3::date) THEN NULL ELSE v.quantity::text END AS quantity,
+      t.unit AS tariff_unit,v.unit_price_clp::text,
+      CASE WHEN s.service_type='arriendo' AND (s.rental_from<$2::date OR s.rental_to>$3::date) THEN NULL ELSE v.total_clp::text END AS total_clp,
+      f.invoice_number
       FROM service_requests s LEFT JOIN service_valuations v ON v.service_id=s.id
       LEFT JOIN service_tariffs t ON t.id=v.tariff_id
       LEFT JOIN service_invoices f ON f.valuation_id=v.id AND f.status='emitida'
-      WHERE s.client_id=$1 AND s.operating_company='e_y_j' AND s.status='completada'
-        AND s.closed_at IS NOT NULL AND s.deleted_at IS NULL
-        AND (s.closed_at AT TIME ZONE 'America/Santiago')::date BETWEEN $2::date AND $3::date
-      ORDER BY s.closed_at,s.folio LIMIT 501`,[cycle.client_id,cycle.period_from,cycle.period_to]),
+      WHERE s.client_id=$1 AND s.operating_company='e_y_j' AND s.deleted_at IS NULL
+        AND (($4::text='arriendo' AND s.service_type='arriendo' AND s.status IN ('programada','completada')
+          AND s.rental_from<=$3::date AND s.rental_to>=$2::date)
+          OR ($4::text='residuos' AND s.service_type<>'arriendo' AND s.status='completada'
+            AND s.closed_at IS NOT NULL
+            AND (s.closed_at AT TIME ZONE 'America/Santiago')::date BETWEEN $2::date AND $3::date))
+      ORDER BY COALESCE(s.closed_at,s.scheduled_for),s.folio LIMIT 501`,
+      [cycle.client_id,cycle.period_from,cycle.period_to,cycle.statement_type]),
     db.query<{id:string;number:string;period_on:Date|string;statement_type:string;status:string}>(
       `SELECT id,number,period_on,statement_type,status FROM payment_statements
        WHERE issuer='e_y_j' AND client_id=$1 AND statement_type=$2

@@ -25,7 +25,7 @@ export function ServiceTable({ services }: { services: ServiceRow[] }) {
   if (!services.length) return <Empty title="Sin solicitudes en esta vista" detail="Cree una solicitud o cambie los filtros para ver resultados."/>;
   return <div className="table-wrap"><table className="data-table"><thead><tr><th>Folio / cliente</th><th>Servicio</th><th>Planificación</th><th>Estado</th><th aria-label="Abrir"></th></tr></thead><tbody>{services.map((service) =>
     <tr key={service.id}><td><Link className="table-main" href={`/solicitudes/${service.id}`}>{serviceFolio(service)}</Link><span className="table-sub">{service.client_name} · {companyName(service.operating_company)}</span></td>
-      <td><strong>{service.waste_type}</strong><span className="table-sub">{service.site_name} · {service.service_type}</span></td>
+      <td><strong>{service.waste_type}</strong><span className="table-sub">{service.site_name} · {service.service_type==="arriendo"?"Servicios / Arriendo":service.service_type==="traslado"?"Servicios / Traslado":service.service_type==="retiro"?"Retiro de material":service.service_type}</span></td>
       <td>{service.scheduled_for ? chileDate(service.scheduled_for) : <span className="muted">Por programar</span>}</td>
       <td><Badge status={service.status}/></td>
       <td><Link href={`/solicitudes/${service.id}`} className="table-arrow" aria-label={`Abrir folio ${serviceFolio(service)}`}><ArrowUpRight size={18}/></Link></td></tr>

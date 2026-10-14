@@ -125,10 +125,12 @@ export async function classifyContractCompany(actor:Actor,id:string,input:unknow
 
 export async function createTariff(actor:Actor,input:unknown){
   admin(actor);
-  const data=z.object({contract_id:uuid,service_type:z.enum(["retiro","traslado","compra","venta","otro"]),
-    waste_type:optional(120),unit:z.enum(["servicio","kg"]),unit_price_clp:money,valid_from:z.iso.date(),
+  const data=z.object({contract_id:uuid,service_type:z.enum(["retiro","traslado","arriendo","compra","venta","otro"]),
+    waste_type:optional(120),unit:z.enum(["servicio","kg","dia"]),unit_price_clp:money,valid_from:z.iso.date(),
     valid_until:z.union([z.iso.date(),z.literal("")]).default("")}).parse(input);
   if(data.valid_until&&data.valid_until<data.valid_from)reject("La vigencia de tarifa no puede terminar antes del inicio.");
+  if(data.unit==="dia"&&data.service_type!=="arriendo")reject("La tarifa por día corresponde sólo a arriendos.");
+  if(data.service_type==="arriendo"&&data.unit==="kg")reject("El arriendo no se valoriza por kilos.");
   return transaction(async(tx)=>{
     const [contract]=await tx.query<{starts_on:Date|string;ends_on:Date|string|null;active:boolean;operating_company:Company|null}>("SELECT starts_on,ends_on,active,operating_company FROM client_contracts WHERE id=$1 FOR UPDATE",[data.contract_id]);
     if(!contract?.active)reject("Seleccione un contrato vigente como registro activo.");
@@ -153,7 +155,7 @@ export async function valueService(actor:Actor,serviceId:string,input:unknown){
   const data=z.object({tariff_id:uuid,client_order_reference:optional(80)}).parse(input);
   return transaction(async(tx)=>{
     const [service]=await tx.query<{client_id:string;site_id:string;service_type:string;waste_type:string;status:string;operating_company:Company|null;
-      closed_at:Date;gross_kg:string;tare_kg:string}>(`SELECT client_id,site_id,service_type,waste_type,status,operating_company,closed_at,gross_kg,tare_kg
+      closed_at:Date;gross_kg:string|null;tare_kg:string|null;rental_from:Date|string|null;rental_to:Date|string|null}>(`SELECT client_id,site_id,service_type,waste_type,status,operating_company,closed_at,gross_kg,tare_kg,rental_from,rental_to
       FROM service_requests WHERE id=$1 AND deleted_at IS NULL FOR UPDATE`,[id]);
     if(!service||service.status!=="completada")reject("La valorización exige un servicio cerrado.");
     if(!service.operating_company)reject("Confirme la empresa del servicio antes de valorizarlo.");
@@ -166,7 +168,11 @@ export async function valueService(actor:Actor,serviceId:string,input:unknown){
         AND (c.ends_on IS NULL OR c.ends_on >= ($6::timestamptz AT TIME ZONE 'America/Santiago')::date)`,
       [data.tariff_id,service.client_id,service.site_id,service.service_type,service.waste_type,service.closed_at,service.operating_company]);
     if(!tariff)reject("La tarifa no corresponde al cliente, servicio, residuo o fecha de cierre.");
-    const qty=tariff.unit==="kg"?Number(service.gross_kg)-Number(service.tare_kg):1;
+    if(tariff.unit==="kg"&&(service.gross_kg==null||service.tare_kg==null))reject("Falta el pesaje para aplicar la tarifa por kg.");
+    if(tariff.unit==="dia"&&(service.service_type!=="arriendo"||!service.rental_from||!service.rental_to))reject("La tarifa por día exige un período de arriendo.");
+    const asDay=(date:Date|string)=>date instanceof Date?date.toISOString().slice(0,10):String(date).slice(0,10);
+    const qty=tariff.unit==="kg"?Number(service.gross_kg)-Number(service.tare_kg):
+      tariff.unit==="dia"?(Date.parse(asDay(service.rental_to!))-Date.parse(asDay(service.rental_from!)))/86_400_000+1:1;
     if(qty<0)reject("El pesaje no admite valorización negativa.");
     const [valued]=await tx.query<{id:string}>(`INSERT INTO service_valuations
       (service_id,tariff_id,quantity,unit_price_clp,total_clp,client_order_reference,created_by)

@@ -94,6 +94,7 @@ test("panel RERCHAR no cae entre migraciones y E y J calcula los dos formatos ED
   assert.equal((await calendar.eyjBillingCalendarDashboard("2026-01-29")).ready,false,
     "el panel no cae si el código se despliega antes de la agenda");
   await apply("026_agenda_estados_pago.sql");
+  await apply("027_solicitudes_arriendo.sql");
   assert.equal(await moduleReady("edp_calendar"),true);
   const input={client_id:client.id,statement_type:"residuos",period_from:"2026-01-01",period_to:"2026-01-31",
     cutoff_on:"2026-02-01",send_on:"2026-02-03",contact_email:"cliente@empresa.cl",notes:"Corte acordado"};

@@ -5,8 +5,8 @@ import { revalidatePath } from "next/cache";
 import { ZodError } from "zod";
 import { requireActor, signIn, signOut } from "@/lib/auth";
 import {
-  PilotError, addEvidence, assignService, cancelService, classifyServiceCompany, createAsset, createClient, createService, createSite, createUser,
-  finishService, handoffService, reportFleetIncident, resolveFleetIncident, saveChecklist, startService,
+  PilotError, addEvidence, assignService, cancelService, classifyServiceCompany, completeRental, createAsset, createClient, createService, createSite, createUser,
+  finishService, handoffService, reportFleetIncident, resolveFleetIncident, saveChecklist, scheduleRental, startService,
 } from "@/lib/pilot";
 import {updateAsset,updateClient,updateSite,MastersError} from "@/lib/masters";
 import {createExternalDriver,PersonnelError} from "@/lib/personnel";
@@ -90,12 +90,13 @@ export async function createServiceAction(form: FormData) {
       operating_company:value(form,"operating_company"),quote_id:value(form,"quote_id"),
       request_category:value(form,"request_category"),service_type: value(form,"service_type"), waste_type: value(form,"waste_type"),
       estimated_kg: value(form,"estimated_kg"), origin: value(form,"origin"), destination: value(form,"destination"),
+      rental_from:value(form,"rental_from"),rental_to:value(form,"rental_to"),
       priority: value(form,"priority"), notes: value(form,"notes"),
     });
   } catch (error) {
     const params=new URLSearchParams({error:message(error)});
     if(value(form,"quote_id"))params.set("cotizacion",value(form,"quote_id"));
-    if(value(form,"request_category")==="compra")params.set("tipo","compra");
+    params.set("tipo",value(form,"service_type"));
     redirect(`/solicitudes/nueva?${params.toString()}`);
   }
   revalidatePath("/", "layout");
@@ -105,6 +106,15 @@ export async function createServiceAction(form: FormData) {
 export async function classifyServiceCompanyAction(form:FormData) {
   const actor=await requireActor(),id=value(form,"id");
   await run(servicePath(id),()=>classifyServiceCompany(actor,id,value(form,"operating_company")));
+}
+
+export async function scheduleRentalAction(form:FormData){
+  const actor=await requireActor(),id=value(form,"id");
+  await run(servicePath(id),()=>scheduleRental(actor,id,{asset_id:value(form,"asset_id")}));
+}
+export async function completeRentalAction(form:FormData){
+  const actor=await requireActor(),id=value(form,"id");
+  await run(servicePath(id),()=>completeRental(actor,id));
 }
 
 export async function assignServiceAction(form: FormData) {

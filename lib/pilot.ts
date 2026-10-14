@@ -26,6 +26,7 @@ export type ServiceRow = {
   id: string; folio: string; client_id: string; site_id: string; client_name: string; site_name: string;
   operating_company: Company | null; quote_id: string | null;
   request_category:string;service_type: string; waste_type: string; estimated_kg: string | null; origin: string; destination: string;
+  rental_from:Date|string|null;rental_to:Date|string|null;
   priority: string; scheduled_for: Date | null; status: string; notes: string | null;
   assigned_asset_id: string | null; ramp_asset_id: string | null; driver_id: string | null; external_driver_id: string | null;
   asset_label: string | null; ramp_label: string | null; driver_name: string | null;
@@ -45,8 +46,9 @@ const serviceSelect = `SELECT s.*, c.name AS client_name, cs.name AS site_name,
   LEFT JOIN users u ON u.id = s.driver_id
   LEFT JOIN external_drivers ed ON ed.id = s.external_driver_id`;
 
-export async function listServices(actor: Actor, term = "", state = "", company = "") {
+export async function listServices(actor: Actor, term = "", state = "", company = "", type = "") {
   const q = term.trim().slice(0, 100);
+  const kind=["retiro","traslado","arriendo","compra","venta","otro"].includes(type)?type:"";
   return db.query<ServiceRow>(
     `${serviceSelect} WHERE s.deleted_at IS NULL
      AND ($1::text = '' OR c.name ILIKE '%' || $1 || '%' OR s.waste_type ILIKE '%' || $1 || '%' OR s.folio::text = $1)
@@ -54,8 +56,9 @@ export async function listServices(actor: Actor, term = "", state = "", company 
      AND ($3::text <> 'cliente' OR s.client_id = $4::uuid)
      AND ($3::text <> 'conductor' OR s.driver_id = $5::uuid)
      AND ($6::text = '' OR ($6 = 'pendiente' AND s.operating_company IS NULL) OR s.operating_company = $6)
+     AND ($7::text = '' OR s.service_type = $7)
      ORDER BY s.created_at DESC, s.folio DESC LIMIT 100`,
-    [q, state, actor.role, actor.client_id, actor.id, company],
+    [q, state, actor.role, actor.client_id, actor.id, company,kind],
   );
 }
 
@@ -218,9 +221,11 @@ const createSchema = z.object({
   submission_key: uuid, client_id: uuid, site_id: uuid,
   operating_company: z.enum(["rerchar", "e_y_j"]), quote_id: z.union([uuid,z.literal("")]).default(""),
   request_category: z.enum(["servicios", "compra", "venta", "otro"]).optional(),
-  service_type: z.enum(["retiro", "traslado", "compra", "venta", "otro"]),
+  service_type: z.enum(["retiro", "traslado", "arriendo", "compra", "venta", "otro"]),
   waste_type: required(120), estimated_kg: z.union([positive, z.literal("")]).optional(),
   origin: required(250), destination: required(250),
+  rental_from:z.union([z.iso.date(),z.literal("")]).optional().default(""),
+  rental_to:z.union([z.iso.date(),z.literal("")]).optional().default(""),
   priority: z.enum(["normal", "alta", "critica"]), notes: optional(2000),
 });
 
@@ -228,8 +233,12 @@ export async function createService(actor: Actor, input: unknown) {
   if (actor.role === "conductor") reject("Su perfil no puede crear solicitudes.");
   const data = createSchema.parse(input);
   const category = data.request_category ?? (["compra", "venta", "otro"].includes(data.service_type) ? data.service_type : "servicios");
-  if (category === "servicios" ? !["retiro", "traslado"].includes(data.service_type) : category !== data.service_type)
+  if (category === "servicios" ? !["retiro", "traslado", "arriendo"].includes(data.service_type) : category !== data.service_type)
     reject("Seleccione una clase de solicitud y un tipo de operación compatibles.");
+  if(data.service_type==="arriendo"){
+    if(!data.rental_from||!data.rental_to||data.rental_to<data.rental_from)reject("Indique las fechas de inicio y término del arriendo.");
+    if(data.estimated_kg!==""&&data.estimated_kg!==undefined)reject("El arriendo se registra sin kilos estimados.");
+  }else if(data.rental_from||data.rental_to)reject("Las fechas de arriendo corresponden sólo a ese servicio.");
   if (actor.role === "cliente" && actor.client_id !== data.client_id) reject("No puede crear solicitudes para otro cliente.");
   return transaction(async (tx) => {
     const [site] = await tx.query("SELECT id FROM client_sites WHERE id = $1 AND client_id = $2 AND deleted_at IS NULL", [data.site_id, data.client_id]);
@@ -242,16 +251,20 @@ export async function createService(actor: Actor, input: unknown) {
     }
     const [created] = await tx.query<{ id: string }>(
       `INSERT INTO service_requests
-       (submission_key, client_id, site_id, operating_company, quote_id, request_category, service_type, waste_type, estimated_kg, origin, destination, priority, notes, created_by)
-       VALUES ($1,$2,$3,$4,NULLIF($5,'')::uuid,$6,$7,$8,$9,$10,$11,$12,NULLIF($13,''),$14)
+       (submission_key, client_id, site_id, operating_company, quote_id, request_category, service_type, waste_type, estimated_kg, origin, destination, priority, notes, created_by, rental_from, rental_to)
+       VALUES ($1,$2,$3,$4,NULLIF($5,'')::uuid,$6,$7,$8,$9,$10,$11,$12,NULLIF($13,''),$14,NULLIF($15,'')::date,NULLIF($16,'')::date)
        ON CONFLICT (submission_key) DO NOTHING RETURNING id`,
       [data.submission_key, data.client_id, data.site_id, data.operating_company, data.quote_id, category, data.service_type, data.waste_type,
         data.estimated_kg === "" || data.estimated_kg === undefined ? null : data.estimated_kg,
-        data.origin, data.destination, data.priority, data.notes, actor.id],
+        data.origin, data.destination, data.priority, data.notes, actor.id,data.rental_from,data.rental_to],
     );
     if (!created) {
-      const [original] = await tx.query<{ id: string; created_by: string; operating_company:Company|null; quote_id:string|null }>("SELECT id, created_by, operating_company, quote_id FROM service_requests WHERE submission_key = $1", [data.submission_key]);
-      if (original?.created_by !== actor.id || original.operating_company !== data.operating_company || original.quote_id !== (data.quote_id || null))
+      const [original] = await tx.query<{ id: string; created_by: string; operating_company:Company|null; quote_id:string|null;service_type:string;request_category:string;rental_from:Date|string|null;rental_to:Date|string|null }>(
+        "SELECT id,created_by,operating_company,quote_id,service_type,request_category,rental_from,rental_to FROM service_requests WHERE submission_key=$1",[data.submission_key]);
+      const asDay=(value:Date|string|null)=>value instanceof Date?value.toISOString().slice(0,10):value?String(value).slice(0,10):"";
+      if (original?.created_by !== actor.id || original.operating_company !== data.operating_company || original.quote_id !== (data.quote_id || null)
+        || original.service_type!==data.service_type || original.request_category!==category
+        || asDay(original.rental_from)!==data.rental_from || asDay(original.rental_to)!==data.rental_to)
         reject("Esta clave ya corresponde a otra solicitud.");
       return original.id;
     }
@@ -301,6 +314,48 @@ function parseChileDate(value: string) {
   return new Date(instant);
 }
 
+// Los arriendos se programan con sus fechas pactadas. No son una ruta de camión
+// ni generan un pesaje; un equipo propio se puede reservar si corresponde.
+export async function scheduleRental(actor:Actor,id:string,input:unknown){
+  if(!canPlan(actor))reject("Sólo operaciones puede programar arriendos.");
+  const data=z.object({asset_id:z.union([uuid,z.literal("")]).default("")}).parse(input);
+  if(!uuid.safeParse(id).success)reject("Solicitud inválida.");
+  return transaction(async tx=>{
+    const [service]=await tx.query<{service_type:string;status:string;rental_from:Date|string;rental_to:Date|string;assigned_asset_id:string|null}>(
+      "SELECT service_type,status,rental_from,rental_to,assigned_asset_id FROM service_requests WHERE id=$1 AND deleted_at IS NULL FOR UPDATE",[id]);
+    if(!service||service.service_type!=="arriendo"||!["solicitada","programada"].includes(service.status))reject("El arriendo no está disponible para programar.");
+    if(data.asset_id){
+      const [asset]=await tx.query("SELECT id FROM assets WHERE id=$1 AND kind='equipo' AND available=true AND deleted_at IS NULL FOR UPDATE",[data.asset_id]);
+      if(!asset)reject("Seleccione un equipo disponible del inventario.");
+      const [conflict]=await tx.query(`SELECT id FROM service_requests WHERE id<>$1 AND service_type='arriendo'
+        AND assigned_asset_id=$2 AND status='programada' AND deleted_at IS NULL
+        AND rental_from<=$4::date AND rental_to>=$3::date LIMIT 1`,
+        [id,data.asset_id,service.rental_from,service.rental_to]);
+      if(conflict)reject("Ese equipo ya está reservado durante el período del arriendo.");
+    }
+    await tx.query(`UPDATE service_requests SET assigned_asset_id=NULLIF($2,'')::uuid,
+      scheduled_for=(rental_from::timestamp + interval '9 hours') AT TIME ZONE 'America/Santiago',
+      status='programada',updated_at=now() WHERE id=$1`,[id,data.asset_id]);
+    await event(tx,id,actor,"arriendo_programado","Arriendo programado",{status:service.status,asset_id:service.assigned_asset_id},
+      {status:"programada",asset_id:data.asset_id||null,rental_from:service.rental_from,rental_to:service.rental_to});
+  });
+}
+
+export async function completeRental(actor:Actor,id:string){
+  if(!canManage(actor))reject("Sólo operaciones puede cerrar arriendos.");
+  if(!uuid.safeParse(id).success)reject("Solicitud inválida.");
+  return transaction(async tx=>{
+    const [service]=await tx.query<{service_type:string;status:string;rental_from:Date|string;rental_to:Date|string}>(
+      "SELECT service_type,status,rental_from,rental_to FROM service_requests WHERE id=$1 AND deleted_at IS NULL FOR UPDATE",[id]);
+    if(!service||service.service_type!=="arriendo"||service.status!=="programada")reject("Primero programe el arriendo; no se puede cerrar dos veces.");
+    const [evidence]=await tx.query("SELECT id FROM service_evidence WHERE service_id=$1 AND storage_key IS NOT NULL LIMIT 1",[id]);
+    if(!evidence)reject("Adjunte un respaldo del arriendo antes del cierre.");
+    await tx.query("UPDATE service_requests SET status='completada',closed_at=now(),updated_at=now() WHERE id=$1",[id]);
+    await event(tx,id,actor,"arriendo_cerrado","Arriendo cerrado con respaldo",{status:service.status},
+      {status:"completada",rental_from:service.rental_from,rental_to:service.rental_to});
+  });
+}
+
 export async function assignService(actor: Actor, id: string, input: unknown) {
   if (!canPlan(actor)) reject("No tiene permiso para planificar servicios.");
   const data = z.object({ asset_id: uuid, ramp_asset_id: z.union([uuid,z.literal("")]).default(""),
@@ -308,10 +363,11 @@ export async function assignService(actor: Actor, id: string, input: unknown) {
   if(Boolean(data.driver_id)===Boolean(data.external_driver_id)) reject("Seleccione un solo conductor, de la empresa o tercero.");
   const date = parseChileDate(data.scheduled_for);
   return transaction(async (tx) => {
-    const [service] = await tx.query<{ status: string; client_id:string; site_id:string; assigned_asset_id: string | null; ramp_asset_id: string | null; driver_id: string | null; external_driver_id:string|null }>(
-      "SELECT status, client_id, site_id, assigned_asset_id, ramp_asset_id, driver_id, external_driver_id FROM service_requests WHERE id = $1 AND deleted_at IS NULL FOR UPDATE", [id],
+    const [service] = await tx.query<{ service_type:string;status: string; client_id:string; site_id:string; assigned_asset_id: string | null; ramp_asset_id: string | null; driver_id: string | null; external_driver_id:string|null }>(
+      "SELECT service_type,status, client_id, site_id, assigned_asset_id, ramp_asset_id, driver_id, external_driver_id FROM service_requests WHERE id = $1 AND deleted_at IS NULL FOR UPDATE", [id],
     );
     if (!service || !["solicitada", "programada"].includes(service.status)) reject("La solicitud no está disponible para planificación.");
+    if(service.service_type==="arriendo")reject("Use la programación de arriendo, sin camión ni conductor.");
     // Lock the shared resources before checking collisions so concurrent planners serialize.
     const [asset] = await tx.query("SELECT id FROM assets WHERE id = $1 AND kind='camion' AND available = true AND deleted_at IS NULL FOR UPDATE", [data.asset_id]);
     const [ramp] = data.ramp_asset_id ? await tx.query("SELECT id FROM assets WHERE id=$1 AND kind='rampa' AND available=true AND deleted_at IS NULL FOR UPDATE", [data.ramp_asset_id]) : [];
@@ -429,10 +485,11 @@ export async function saveChecklist(actor: Actor, id: string, input: unknown) {
 
 export async function startService(actor: Actor, id: string) {
   return transaction(async (tx) => {
-    const [service] = await tx.query<{ status: string; driver_id: string | null; external_driver_id:string|null; client_id:string; site_id:string }>(
-      "SELECT status, driver_id, external_driver_id, client_id, site_id FROM service_requests WHERE id=$1 AND deleted_at IS NULL FOR UPDATE", [id],
+    const [service] = await tx.query<{ service_type:string;status: string; driver_id: string | null; external_driver_id:string|null; client_id:string; site_id:string }>(
+      "SELECT service_type,status, driver_id, external_driver_id, client_id, site_id FROM service_requests WHERE id=$1 AND deleted_at IS NULL FOR UPDATE", [id],
     );
     if (!service || !canWorkService(actor, service)) reject("No tiene acceso a esta ruta.");
+    if(service.service_type==="arriendo")reject("El arriendo se cierra con respaldo desde su propio control.");
     if (service.status !== "programada") reject("Sólo se puede iniciar un servicio programado.");
     if (!service.driver_id && !service.external_driver_id) reject("El servicio no tiene un conductor asignado.");
     const missing=service.driver_id
@@ -478,10 +535,11 @@ export async function finishService(actor: Actor, id: string, input: unknown) {
   const data = z.object({ gross_kg: positive, tare_kg: z.coerce.number().min(0), guide_number: optional(50) }).parse(input);
   if (data.gross_kg < data.tare_kg) reject("El peso bruto no puede ser inferior a la tara.");
   return transaction(async (tx) => {
-    const [service] = await tx.query<{ status: string; driver_id: string | null; request_category:string }>(
-      "SELECT status,driver_id,request_category FROM service_requests WHERE id=$1 AND deleted_at IS NULL FOR UPDATE", [id],
+    const [service] = await tx.query<{ service_type:string;status: string; driver_id: string | null; request_category:string }>(
+      "SELECT service_type,status,driver_id,request_category FROM service_requests WHERE id=$1 AND deleted_at IS NULL FOR UPDATE", [id],
     );
     if (!service || !canWorkService(actor,service)) reject("No tiene acceso a este servicio.");
+    if(service.service_type==="arriendo")reject("El arriendo se cierra sin pesaje desde su propio control.");
     const purchase=service.request_category==="compra";
     if(purchase){
       if(!canManage(actor)||service.status!=="pendiente_revision") reject("La compra debe ser entregada por el conductor y validada por administración.");
