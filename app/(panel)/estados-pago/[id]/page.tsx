@@ -55,7 +55,7 @@ export default async function StatementDetail({params,searchParams}:{params:Prom
   const invoice=billingReady?await getStatementInvoice(actor,s):null;
   const nextOperation=Math.max(0,...operations.map(o=>o.line_number))+1;
   return <>
-    <div className="order-actions print-hide"><Link href="/estados-pago" className="back-link">← Estados de pago</Link><PrintButton label="Imprimir EDP / guardar PDF"/></div>
+    <div className="order-actions print-hide"><Link href="/estados-pago" className="back-link">← Estados de pago</Link><a href={`/api/estados-pago/${id}/pdf`} className="button button-primary">Descargar EDP en PDF</a><PrintButton label="Imprimir vista"/></div>
     <div className="print-hide"><Notice error={query.error} ok={query.ok}/></div>
     <article className="order-sheet edp-sheet"><header className="edp-header"><div><strong>EMPRESA DE SERVICIOS INTEGRALES E Y J LTDA.</strong><span>RUT 76.347.909-9{s.issuer_contact&&` · Contacto: ${s.issuer_contact}`}</span></div><div><small>ESTADO DE PAGO</small><strong>N° {s.number}</strong></div></header>
       <div className="edp-recipient"><div><small>Empresa</small><strong>{s.client_name}</strong></div><div><small>RUT</small><strong>{s.client_tax_id}</strong></div><div><small>Domicilio</small><strong>{s.client_address}</strong></div><div><small>Contacto</small><strong>{s.client_contact}</strong></div><div><small>Período</small><strong>{month(s.period_on)}</strong></div>{s.contract_reference&&<div><small>Contrato</small><strong>{s.contract_reference}</strong></div>}</div>
