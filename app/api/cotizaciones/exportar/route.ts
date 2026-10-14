@@ -3,6 +3,7 @@ import {chileCsvDay} from "@/lib/chile-csv";
 import {quoteFolio} from "@/lib/companies";
 import {quotePrincipalLabel,quoteSegmentLabel} from "@/lib/quote-catalog";
 import {QuoteError,reportQuoteLines} from "@/lib/quotes";
+import {categoryName} from "@/lib/destination-catalog";
 
 const csv=(value:string|number|null|undefined)=>{
   const raw=String(value??"");
@@ -18,7 +19,7 @@ export async function GET(request:Request){
   let rows;
   try{rows=await reportQuoteLines(actor,params.get("empresa")??"",params.get("principal")??"",params.get("segment")??"");}
   catch(error){if(error instanceof QuoteError)return new Response(error.message,{status:400});throw error;}
-  const header=["Folio","Empresa emisora","Cliente","Propuesta","Estado","Emisión","Principal","Segmentación","Detalle","Cantidad","Unidad","Unitario CLP","Neto línea CLP","IVA línea CLP","Total línea CLP"];
+  const header=["Folio","Empresa emisora","Cliente","Propuesta","Estado","Emisión","Principal","Segmentación","Residuo","Destino final","Detalle","Cantidad","Unidad","Unitario CLP","Neto línea CLP","IVA línea CLP","Total línea CLP"];
   const lines=[header.map(csv).join(";")];
   for(const row of rows){
     const net=Math.round(Number(row.quantity)*Number(row.unit_price_clp));
@@ -26,6 +27,7 @@ export async function GET(request:Request){
     lines.push([quoteFolio(row),row.issuer==="rerchar"?"RERCHAR":"E y J",row.client_name,row.title,row.status,
       row.issued_on instanceof Date?row.issued_on.toISOString().slice(0,10):String(row.issued_on).slice(0,10),
       row.principal?quotePrincipalLabel(row.principal):"",row.segment?quoteSegmentLabel(row.segment):"",
+      row.waste_category?categoryName(row.waste_category):"",row.destination_name,
       row.description,row.quantity,row.unit,row.unit_price_clp,net,vat,net+vat].map(csv).join(";"));
   }
   return new Response(`\uFEFF${lines.join("\r\n")}\r\n`,{headers:{

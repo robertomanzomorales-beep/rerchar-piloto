@@ -4,7 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, ClipboardList, CalendarDays, Boxes, LogOut, Menu, ShieldCheck, Wrench, FileBarChart2, ShoppingCart, Warehouse, Fuel, Container, Users, Banknote, FileCheck2, ScrollText, FileBadge2, Building2, FileText, ReceiptText, Search, ChevronDown } from "lucide-react";
+import { LayoutDashboard, ClipboardList, CalendarDays, Boxes, LogOut, Menu, ShieldCheck, Wrench, FileBarChart2, ShoppingCart, Warehouse, Fuel, Container, Users, Banknote, FileCheck2, ScrollText, FileBadge2, Building2, FileText, ReceiptText, Search, ChevronDown, MapPin } from "lucide-react";
 import type { Actor } from "@/lib/auth";
 import { logoutAction } from "@/app/actions";
 import { NavPendingHint, SubmitButton } from "@/components/Transition";
@@ -50,6 +50,7 @@ export default function Shell({ actor, children }: { actor: Actor; children: Rea
     { group:"Recursos compartidos", href: "/combustible", text: "Combustible", icon: Fuel, visible: actor.role === "admin" || actor.role === "operaciones" },
     { group:"Recursos compartidos", href: "/personal", text: "Personal", icon: Users, visible: actor.role === "admin" || actor.role === "operaciones" },
     { group:"Configuración", href: "/maestros", text: "Maestros", icon: Boxes, visible: actor.role === "admin" || actor.role === "operaciones" },
+    { group:"Configuración", href: "/destinos", text: "Destinos y autorizaciones", icon: MapPin, visible: actor.role === "admin" || actor.role === "operaciones" },
     { group:"Configuración", href: "/usuarios", text: "Usuarios y accesos", icon: Users, visible: actor.role === "admin" },
     { group:"Configuración", href: "/auditoria", text: "Auditoría", icon: ScrollText, visible: actor.role === "admin" },
   ];

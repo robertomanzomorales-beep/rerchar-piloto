@@ -429,6 +429,9 @@ input::placeholder,textarea::placeholder{color:#959e9d}
   .quote-line-editor[open] summary{margin-bottom:13px}
   .quote-line-remove{display:flex;justify-content:flex-end;border-top:1px solid #ececed;margin-top:10px;padding-top:10px}
   .quote-line-remove .button{color:#a24636;border-color:#ead0cc}
+.destination-category-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 16px;margin-top:8px}
+.destination-list{display:grid;gap:4px}.destination-list>.master-entry{border-top:1px solid #edf1ef}
+@media(max-width:700px){.destination-category-grid{grid-template-columns:1fr}}
 }
 
 /* Densidad de escritorio: proporciones de la referencia a 80% de zoom, sin alterar el zoom del navegador. */

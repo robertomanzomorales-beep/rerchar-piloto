@@ -4,8 +4,9 @@ import fontkit from "@pdf-lib/fontkit";
 import {PDFDocument,rgb,type PDFFont,type PDFPage} from "pdf-lib";
 import {issuers,quoteFolio,type Quote,type QuoteLine,quoteTotals} from "./quotes";
 import {quotePrincipalLabel,quoteSegmentLabel} from "./quote-catalog";
+import {categoryName} from "./destination-catalog";
 
-export async function renderQuotePdf(quote:Quote,lines:QuoteLine[]){
+export async function renderQuotePdf(quote:Quote,lines:QuoteLine[],warning=""){
   const doc=await PDFDocument.create();doc.registerFontkit(fontkit);
   const regular=await doc.embedFont(await readFile(resolve(process.cwd(),"public/fonts/montserrat-regular.ttf")),{subset:true});
   const bold=await doc.embedFont(await readFile(resolve(process.cwd(),"public/fonts/montserrat-bold.ttf")),{subset:true});
@@ -55,6 +56,7 @@ export async function renderQuotePdf(quote:Quote,lines:QuoteLine[]){
   if(quote.client_address)write(fit(quote.client_address,regular,8,300),45,625,8,regular,gray);
   write("EMISIÓN",360,679,8,bold,gray);write(fmt(quote.issued_on),360,660,9);
   write("VÁLIDA HASTA",360,640,8,bold,gray);write(fmt(quote.valid_until),360,623,9);
+  if(warning){page.drawRectangle({x:45,y:603,width:505,height:17,color:rgb(0.99,0.92,0.89)});write(fit(warning,bold,8,490),52,608,8,bold,rgb(0.65,0.18,0.12));}
   page.drawRectangle({x:45,y:545,width:505,height:62,color:pale});
   write("PROPUESTA",59,584,8,bold,green);
   for(const [i,line] of wrap(quote.title,bold,12,470).slice(0,2).entries())write(line,59,564-i*15,12,bold);
@@ -64,11 +66,13 @@ export async function renderQuotePdf(quote:Quote,lines:QuoteLine[]){
   lines.forEach((line,index)=>{
     const desc=wrap(line.description,regular,8,260).slice(0,3);
     const classified=Boolean(line.segment);
-    const height=Math.max(30,desc.length*13+9+(classified?13:0));
+    const destination=line.destination_name?wrap(`${categoryName(line.waste_category)} · ${line.destination_name}`,regular,7,260).slice(0,2):[];
+    const height=Math.max(30,desc.length*13+9+(classified?13:0)+destination.length*11);
     if(y-height<145){page=doc.addPage([595.28,841.89]);pages.push(page);header(true);y=684;tableHeader();}
     if(index%2===0)page.drawRectangle({x:45,y:y-height+5,width:505,height,color:pale});
     if(classified)write(fit(`${quotePrincipalLabel(line.principal)} · ${quoteSegmentLabel(line.segment)}`,bold,7.2,260),54,y,7.2,bold,green);
     desc.forEach((part,i)=>write(part,54,y-(classified?13:0)-i*13,8));
+    destination.forEach((part,i)=>write(part,54,y-(classified?13:0)-desc.length*13-i*11,7,regular,gray));
     write(fit(`${Number(line.quantity).toLocaleString("es-CL",{maximumFractionDigits:3})} ${line.unit}`,regular,8,69),324,y,8);
     right(money(Number(line.unit_price_clp)),480,y,8);
     right(money(totals.lines[index]),544,y,8,bold);
