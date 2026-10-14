@@ -62,6 +62,30 @@ test("ingresos, facturas y seguimiento conservan cálculos, permisos y respaldos
   assert.equal(await invoices.registerSupplierPayment(owner,invoice,{submission_key:key,amount_clp:"5000",paid_on:"2026-09-25",reference:"Transferencia 123"}),payment);
   await assert.rejects(()=>invoices.registerSupplierPayment(owner,invoice,{submission_key:randomUUID(),amount_clp:"7000",paid_on:"2026-09-25",reference:"Exceso"}),invoices.SupplierInvoiceError);
   assert.equal((await invoices.getSupplierInvoice(owner,invoice)).invoice.paid_clp,"5000.00");
+  const makeInvoice=(issuer:"rerchar"|"e_y_j",number:string,due:string,total:string)=>invoices.createSupplierInvoice(owner,{
+    issuer,supplier_tax_id:"76.123.456-7",supplier_name:"Proveedor",invoice_number:number,
+    issued_on:"2026-10-01",due_on:due,description:"Control de vencimiento",total_clp:total,
+  });
+  const overdue=await makeInvoice("e_y_j","V-ANTERIOR","2026-10-13","500");
+  const todayDue=await makeInvoice("e_y_j","V-HOY","2026-10-14","200");
+  const seven=await makeInvoice("e_y_j","V-SIETE","2026-10-21","800");
+  await makeInvoice("e_y_j","V-OCHO","2026-10-22","900");
+  const undated=await makeInvoice("e_y_j","V-SIN-FECHA","","700");
+  const paid=await makeInvoice("e_y_j","V-PAGADA","2026-10-10","300");
+  await invoices.registerSupplierPayment(owner,paid,{submission_key:randomUUID(),amount_clp:"300",paid_on:"2026-10-14",reference:"Transferencia completa"});
+  const otherCompany=await makeInvoice("rerchar","V-RERCHAR","2026-10-13","600");
+  const asOf="2026-10-14";
+  assert.deepEqual((await invoices.listSupplierInvoices(owner,"e_y_j","vencidas",asOf)).map(r=>r.id),[overdue]);
+  assert.deepEqual((await invoices.listSupplierInvoices(owner,"e_y_j","proximas",asOf)).map(r=>r.id),[todayDue,seven]);
+  assert.deepEqual((await invoices.listSupplierInvoices(owner,"e_y_j","sin_fecha",asOf)).map(r=>r.id),[undated]);
+  assert.deepEqual((await invoices.listSupplierInvoices(owner,"e_y_j","pagadas",asOf)).map(r=>r.id),[paid]);
+  assert.deepEqual((await invoices.listSupplierInvoices(owner,"rerchar","vencidas",asOf)).map(r=>r.id),[otherCompany]);
+  assert.deepEqual(await invoices.supplierInvoiceOverview(owner,"e_y_j",asOf),{
+    overdue:"1",upcoming:"2",undated:"1",outstanding:"10000.00",
+  });
+  assert.equal((await invoices.supplierInvoiceOverview(owner,"rerchar",asOf)).outstanding,"600.00");
+  assert.equal(invoices.parseSupplierInvoiceFilter("desconocido"),"pendientes");
+  await assert.rejects(()=>invoices.supplierInvoiceOverview(viewer,"e_y_j",asOf),invoices.SupplierInvoiceError);
 
   await ledger.saveGuideFollowup(owner,service.id,{requested_on:"2026-09-20",received_on:"2026-09-24",documents_sent_on:"",notes:"En revisión"});
   await ledger.saveCommercialDetails(owner,service.id,{quote_reference:"COT-1",order_reference:"OC-2",sidrep:"SID-3",rental_days:"3",quantity:"1",service_value_clp:"20000"});

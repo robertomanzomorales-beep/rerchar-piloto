@@ -2,6 +2,7 @@ import {z} from "zod";
 import type {Actor} from "./auth";
 import {db,transaction} from "./db";
 import type {Company} from "./companies";
+import {chileCsvDay} from "./chile-csv";
 
 const uuid=z.uuid();
 const optional=(max:number)=>z.string().trim().max(max).optional().default("");
@@ -27,10 +28,39 @@ export type SupplierInvoice={id:string;issuer:"rerchar"|"e_y_j";supplier_tax_id:
   status:string;paid_clp:string;paid_on:Date|string|null;notes:string|null;created_at:Date};
 export type SupplierInvoiceDetail=SupplierInvoice&{purchase_folio:string|null;purchase_title:string|null;service_folio:string|null;service_company:Company|null};
 export type SupplierPayment={id:string;amount_clp:string;paid_on:Date|string;reference:string;actor_name:string;created_at:Date};
-
-export async function listSupplierInvoices(actor:Actor){
+export type SupplierInvoiceFilter="pendientes"|"vencidas"|"proximas"|"sin_fecha"|"pagadas"|"todas";
+export type SupplierInvoiceOverview={overdue:string;upcoming:string;undated:string;outstanding:string};
+export function parseSupplierInvoiceFilter(value:string|null|undefined):SupplierInvoiceFilter{
+  return value==="vencidas"||value==="proximas"||value==="sin_fecha"||value==="pagadas"||value==="todas"?value:"pendientes";
+}
+function invoiceQuery(actor:Actor,company:Company|"",filter:SupplierInvoiceFilter,on:string){
   admin(actor);
-  return db.query<SupplierInvoice>("SELECT * FROM supplier_invoices ORDER BY issued_on DESC,created_at DESC LIMIT 400");
+  if(company!==""&&company!=="rerchar"&&company!=="e_y_j")reject("Empresa inválida.");
+  if(!["pendientes","vencidas","proximas","sin_fecha","pagadas","todas"].includes(filter))reject("Filtro inválido.");
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(on))reject("Fecha inválida.");
+}
+
+export async function listSupplierInvoices(actor:Actor,company:Company|""="",filter:SupplierInvoiceFilter="pendientes",on=chileCsvDay()){
+  invoiceQuery(actor,company,filter,on);
+  return db.query<SupplierInvoice>(`SELECT * FROM supplier_invoices
+    WHERE ($1::text='' OR issuer=$1)
+      AND ($2::text='todas'
+        OR $2='pendientes' AND paid_clp<total_clp
+        OR $2='vencidas' AND paid_clp<total_clp AND due_on<$3::date
+        OR $2='proximas' AND paid_clp<total_clp AND due_on>=$3::date AND due_on<=$3::date+7
+        OR $2='sin_fecha' AND paid_clp<total_clp AND due_on IS NULL
+        OR $2='pagadas' AND paid_clp>=total_clp)
+    ORDER BY paid_clp>=total_clp,due_on NULLS LAST,issued_on DESC,created_at DESC LIMIT 400`,[company,filter,on]);
+}
+export async function supplierInvoiceOverview(actor:Actor,company:Company|"",on=chileCsvDay()){
+  invoiceQuery(actor,company,"todas",on);
+  const [row]=await db.query<SupplierInvoiceOverview>(`SELECT
+    count(*) FILTER (WHERE paid_clp<total_clp AND due_on<$2::date)::text AS overdue,
+    count(*) FILTER (WHERE paid_clp<total_clp AND due_on>=$2::date AND due_on<=$2::date+7)::text AS upcoming,
+    count(*) FILTER (WHERE paid_clp<total_clp AND due_on IS NULL)::text AS undated,
+    COALESCE(sum(GREATEST(total_clp-paid_clp,0)),0)::text AS outstanding
+    FROM supplier_invoices WHERE ($1::text='' OR issuer=$1)`,[company,on]);
+  return row;
 }
 export async function getSupplierInvoice(actor:Actor,id:string){
   admin(actor);if(!uuid.safeParse(id).success)reject("Factura no encontrada.");

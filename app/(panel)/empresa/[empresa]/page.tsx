@@ -11,6 +11,7 @@ import {rercharMaterialDashboard,rercharReceiptGuideDashboard,rercharReceiptClos
 import {eyjBillingCalendarDashboard} from "@/lib/payment-calendar";
 import {pendingExtraChargeCount} from "@/lib/extra-charges";
 import {receivablesOverview} from "@/lib/receivables";
+import {supplierInvoiceOverview} from "@/lib/supplier-invoices";
 
 type ServiceMetrics = { total:string; requested:string; scheduled:string; in_route:string; pending_review:string; completed:string; critical:string };
 type QuoteMetrics = { total:string; draft:string; sent:string; accepted:string; expired:string };
@@ -54,8 +55,7 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
     canManage(actor) ? db.query<{total:string}>(`SELECT count(*)::text AS total FROM valued_guide_followups f
       JOIN service_requests s ON s.id=f.service_id WHERE s.operating_company=$1 AND s.deleted_at IS NULL
       AND f.requested_on IS NOT NULL AND f.received_on IS NULL`,[selected]) : Promise.resolve([]),
-    actor.role === "admin" ? db.query<{total:string}>(`SELECT count(*)::text AS total FROM supplier_invoices
-      WHERE issuer=$1 AND due_on<$2::date AND status IN ('pendiente','parcial') AND paid_clp<total_clp`,[selected,today]) : Promise.resolve([]),
+    actor.role === "admin" ? supplierInvoiceOverview(actor,selected,today) : Promise.resolve(null),
     canManage(actor) ? db.query<{total:string}>("SELECT count(*)::text AS total FROM service_requests WHERE operating_company IS NULL AND deleted_at IS NULL") : Promise.resolve([]),
     selected==="rerchar"&&canManage(actor) ? rercharMaterialDashboard() : Promise.resolve(null),
     selected==="e_y_j"&&canManage(actor) ? eyjPaymentDashboard() : Promise.resolve(null),
@@ -109,7 +109,11 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
       {label:"Envíos de EDP en los próximos 7 días",count:value(billingCalendar.sends),href:"/estados-pago/calendario"},
       {label:"Envíos de EDP atrasados",count:value(billingCalendar.overdue),href:"/estados-pago/calendario"},
     ]:[]),
-    ...(actor.role==="admin"?[{label:"Facturas de proveedores vencidas con saldo",count:value(invoiceAlerts[0]?.total),href:`/facturas-recibidas?empresa=${selected}`}]:[]),
+    ...(invoiceAlerts?[
+      {label:"Facturas de proveedores vencidas con saldo",count:value(invoiceAlerts.overdue),href:`/facturas-recibidas?empresa=${selected}&estado=vencidas`},
+      {label:"Facturas de proveedores que vencen en 7 días",count:value(invoiceAlerts.upcoming),href:`/facturas-recibidas?empresa=${selected}&estado=proximas`},
+      {label:"Facturas de proveedores sin vencimiento",count:value(invoiceAlerts.undated),href:`/facturas-recibidas?empresa=${selected}&estado=sin_fecha`},
+    ]:[]),
   ];
   return <>
     <Link href="/" className="back-link"><ArrowLeft size={16}/> Cambiar de empresa</Link>
