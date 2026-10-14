@@ -9,7 +9,7 @@ const date=z.union([z.iso.date(),z.literal("")]).default("");
 const label=(max:number)=>z.string().trim().max(max).optional().default("");
 export class LedgerError extends Error {}
 function reject(message:string):never{throw new LedgerError(message);}
-export type Followup={service_id:string;requested_on:Date|string|null;received_on:Date|string|null;documents_sent_on:Date|string|null;notes:string|null};
+export type Followup={service_id:string;dispatch_guide_status:string|null;requested_on:Date|string|null;received_on:Date|string|null;documents_sent_on:Date|string|null;notes:string|null};
 export type Commercial={service_id:string;quote_reference:string|null;quote_on:Date|string|null;order_reference:string|null;
   order_on:Date|string|null;service_sheet:string|null;eyj_guide:string|null;client_guide:string|null;sidrep:string|null;
   rental_days:string|null;quantity:string|null;service_value_clp:string|null;notes:string|null};
@@ -24,31 +24,37 @@ export async function getServiceLedger(actor:Actor,serviceId:string){
 }
 export async function listGuideFollowups(actor:Actor,company=""){
   if(!canManage(actor))reject("Acceso de operaciones requerido.");
-  return db.query<{id:string;folio:string;operating_company:Company|null;client_name:string;site_name:string;scheduled_for:Date|null;status:string;
+  return db.query<{id:string;folio:string;operating_company:Company|null;client_name:string;site_name:string;scheduled_for:Date|null;service_day:Date|string;status:string;dispatch_guide_status:string|null;
     requested_on:Date|string|null;received_on:Date|string|null;documents_sent_on:Date|string|null;notes:string|null}>(
     `SELECT s.id,s.folio,s.operating_company,c.name AS client_name,cs.name AS site_name,s.scheduled_for,s.status,
-      f.requested_on,f.received_on,f.documents_sent_on,f.notes FROM service_requests s
+      COALESCE((SELECT max(d.day) FROM service_day_reports d WHERE d.service_id=s.id AND d.outcome='completado'),
+        (s.scheduled_for AT TIME ZONE 'America/Santiago')::date) AS service_day,
+      f.dispatch_guide_status,f.requested_on,f.received_on,f.documents_sent_on,f.notes FROM service_requests s
       JOIN clients c ON c.id=s.client_id JOIN client_sites cs ON cs.id=s.site_id
       LEFT JOIN valued_guide_followups f ON f.service_id=s.id
-      WHERE s.deleted_at IS NULL AND s.status<>'cancelada'
+      WHERE s.deleted_at IS NULL AND s.status<>'cancelada' AND s.service_type<>'arriendo'
+        AND (s.scheduled_for IS NOT NULL OR f.service_id IS NOT NULL)
         AND ($1::text='' OR s.operating_company=$1)
-      ORDER BY COALESCE(f.requested_on,s.scheduled_for::date,s.created_at::date) DESC LIMIT 250`,[company]);
+      ORDER BY COALESCE(f.requested_on,(s.scheduled_for AT TIME ZONE 'America/Santiago')::date,s.created_at::date) DESC LIMIT 250`,[company]);
 }
 export async function saveGuideFollowup(actor:Actor,serviceId:string,input:unknown){
   if(!canManage(actor))reject("Acceso de operaciones requerido.");
   uuid.parse(serviceId);
-  const data=z.object({requested_on:date,received_on:date,documents_sent_on:date,notes:label(500)}).parse(input);
+  const data=z.object({dispatch_guide_status:z.enum(["pendiente","enviada","no_aplica",""]).default(""),
+    requested_on:date,received_on:date,documents_sent_on:date,notes:label(500)}).parse(input);
   if(data.received_on&&!data.requested_on)reject("Registre la fecha de solicitud antes de la recepción.");
   if(data.received_on&&data.received_on<data.requested_on)reject("La recepción precede a la solicitud.");
   if(data.documents_sent_on&&!data.received_on)reject("Registre la recepción antes del envío de documentos.");
+  if(data.documents_sent_on&&data.documents_sent_on<data.received_on)reject("El envío de documentos no puede anteceder a la recepción de la guía.");
   return transaction(async tx=>{
     const [service]=await tx.query("SELECT id FROM service_requests WHERE id=$1 AND deleted_at IS NULL",[serviceId]);
     if(!service)reject("Servicio no encontrado.");
-    await tx.query(`INSERT INTO valued_guide_followups(service_id,requested_on,received_on,documents_sent_on,notes,updated_by)
-      VALUES($1,NULLIF($2,'')::date,NULLIF($3,'')::date,NULLIF($4,'')::date,NULLIF($5,''),$6)
+    await tx.query(`INSERT INTO valued_guide_followups(service_id,requested_on,received_on,documents_sent_on,notes,updated_by,dispatch_guide_status)
+      VALUES($1,NULLIF($2,'')::date,NULLIF($3,'')::date,NULLIF($4,'')::date,NULLIF($5,''),$6,NULLIF($7,''))
       ON CONFLICT(service_id) DO UPDATE SET requested_on=EXCLUDED.requested_on,received_on=EXCLUDED.received_on,
-      documents_sent_on=EXCLUDED.documents_sent_on,notes=EXCLUDED.notes,updated_by=EXCLUDED.updated_by,updated_at=now()`,
-      [serviceId,data.requested_on,data.received_on,data.documents_sent_on,data.notes,actor.id]);
+      documents_sent_on=EXCLUDED.documents_sent_on,notes=EXCLUDED.notes,updated_by=EXCLUDED.updated_by,
+      dispatch_guide_status=EXCLUDED.dispatch_guide_status,updated_at=now()`,
+      [serviceId,data.requested_on,data.received_on,data.documents_sent_on,data.notes,actor.id,data.dispatch_guide_status]);
     await tx.query("INSERT INTO audit_events(actor_id,action,entity_type,entity_id,next_value) VALUES($1,'update','valued_guide_followup',$2,$3)",
       [actor.id,serviceId,JSON.stringify(data)]);
   });

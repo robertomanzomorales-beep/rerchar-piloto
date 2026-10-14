@@ -81,7 +81,8 @@ export async function saveGuideFollowupAction(form:FormData){
   const actor=await requireActor(),id=val(form,"service_id");
   await run(`/solicitudes/${encodeURIComponent(id)}/seguimiento`,()=>saveGuideFollowup(actor,id,{
     requested_on:val(form,"requested_on"),received_on:val(form,"received_on"),
-    documents_sent_on:val(form,"documents_sent_on"),notes:val(form,"notes")}));
+    documents_sent_on:val(form,"documents_sent_on"),notes:val(form,"notes"),
+    dispatch_guide_status:val(form,"dispatch_guide_status")}));
 }
 export async function saveCommercialAction(form:FormData){
   const actor=await requireActor(),id=val(form,"service_id");

@@ -11,11 +11,12 @@ import {
 import {updateAsset,updateClient,updateSite,MastersError} from "@/lib/masters";
 import {createExternalDriver,PersonnelError} from "@/lib/personnel";
 import {setFleetDay,FleetScheduleError} from "@/lib/fleet-schedule";
+import {reportServiceDay,ServiceDayError} from "@/lib/service-day";
 
 const value = (form: FormData, key: string) => String(form.get(key) ?? "");
 const servicePath = (id: string) => `/solicitudes/${encodeURIComponent(id)}`;
 function message(error: unknown) {
-  if (error instanceof PilotError || error instanceof MastersError || error instanceof PersonnelError || error instanceof FleetScheduleError) return error.message;
+  if (error instanceof PilotError || error instanceof MastersError || error instanceof PersonnelError || error instanceof FleetScheduleError || error instanceof ServiceDayError) return error.message;
   if (error instanceof ZodError) return "Revise los campos obligatorios y sus valores.";
   if (typeof error === "object" && error && "code" in error && error.code === "23505") return "Ya existe un registro con este código o correo.";
   console.error("Error en el piloto", error);
@@ -140,6 +141,12 @@ export async function setFleetDayAction(form:FormData){
   }catch(error){qs.set("error",message(error));redirect(`/agenda?${qs.toString()}`);}
   revalidatePath("/agenda");
   qs.set("ok","1");redirect(`/agenda?${qs.toString()}`);
+}
+export async function reportServiceDayAction(form:FormData){
+  const actor=await requireActor(),id=value(form,"id");
+  await run(servicePath(id),()=>reportServiceDay(actor,id,{
+    day:value(form,"day"),outcome:value(form,"outcome"),observation:value(form,"observation"),
+  }));
 }
 export async function cancelServiceAction(form: FormData) {
   const actor = await requireActor(); const id = value(form,"id");

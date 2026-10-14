@@ -214,6 +214,11 @@ input::placeholder,textarea::placeholder{color:#959e9d}
 .agenda-warning{background:#fff0e0;border:1px solid #edbf9b;border-radius:6px;padding:12px;color:#8d4f28;margin-top:14px;font-size:12px}
 @media(max-width:850px){.fleet-week-lower{grid-template-columns:1fr}}
 @media(max-width:600px){.fleet-week-stats{grid-template-columns:1fr}.fleet-week-stats>div{padding:10px}}
+.service-day-history{list-style:none;padding:0;margin:12px 0;display:grid;gap:8px}
+.service-day-history li{background:#f6f9f6;border:1px solid #e2eae2;border-radius:6px;padding:10px;display:grid;gap:4px;font-size:11px}
+.service-day-history li>span{color:#677870}.service-day-history p{margin:0;overflow-wrap:anywhere}
+.service-day-result{font-style:normal;font-weight:700;color:#236d50;font-size:10px;overflow-wrap:anywhere}
+.service-day-result.incompleto,.service-day-result.suspendido{color:#ab5a31}
 
 /* Revisión visual: superficies claras y logotipo transparente, sin placas de color. */
 :root{--bg:#f3f5f3;--ink:#293332;--line:#dde4df;--shadow:0 5px 22px rgba(32,57,42,.045)}

@@ -7,6 +7,7 @@ import {Badge,chileDate,Notice} from "@/components/UI";
 import {SubmitButton} from "@/components/Transition";
 import {setFleetDayAction} from "@/app/actions";
 import {companyName,serviceFolio} from "@/lib/companies";
+import {listWeekResults,listOpenDayAlerts,resultLabel,type DayReportWeek} from "@/lib/service-day";
 
 function iso(date:Date){return date.toISOString().slice(0,10);}
 function addDays(date:Date,days:number){const next=new Date(date);next.setUTCDate(next.getUTCDate()+days);return next;}
@@ -35,9 +36,11 @@ export default async function Agenda({searchParams}:{searchParams:Promise<{inici
   const company=query.empresa==="rerchar"||query.empresa==="e_y_j"?query.empresa:"";
   const monday=weekStart(query.inicio),days=Array.from({length:7},(_,offset)=>addDays(monday,offset)),next=addDays(monday,7);
   const managed=canPlan(actor);
-  const [board,services]=await Promise.all([
+  const [board,services,results,openResults]=await Promise.all([
     managed?weeklyFleet(actor,iso(monday),iso(next),company):Promise.resolve(null),
     managed?Promise.resolve([]):listAgenda(actor,iso(monday),iso(next),company),
+    managed?listWeekResults(actor,iso(monday),iso(next)):Promise.resolve([]),
+    managed?listOpenDayAlerts(actor,company):Promise.resolve([]),
   ]);
   const period=new Intl.DateTimeFormat("es-CL",{timeZone:"UTC",day:"numeric",month:"long"}).format(monday)+" – "+
     new Intl.DateTimeFormat("es-CL",{timeZone:"UTC",day:"numeric",month:"long",year:"numeric"}).format(days[6]);
@@ -50,9 +53,12 @@ export default async function Agenda({searchParams}:{searchParams:Promise<{inici
   for(const trip of board?.trips??[]){const k=key(trip.assigned_asset_id,localDay.format(new Date(trip.scheduled_for)));byCell.set(k,[...(byCell.get(k)??[]),trip]);}
   const notes=new Map((board?.notes??[]).map(n=>[key(n.asset_id,new Date(n.day).toISOString().slice(0,10)),n]));
   const busy=(asset:string,day:string)=>byCell.get(key(asset,day))??[];
+  const reportByCell=new Map<string,DayReportWeek[]>();
+  for(const report of results){const k=key(report.asset_id,new Date(report.day).toISOString().slice(0,10));reportByCell.set(k,[...(reportByCell.get(k)??[]),report]);}
+  const reports=(asset:string,day:string)=>reportByCell.get(key(asset,day))??[];
   const free=board?days.map(day=>board.assets.filter(asset=>asset.available&&
     !notes.get(key(asset.id,iso(day)))?.kind.match(/^(mantencion|indisponible|sin_conductor)$/)&&
-    busy(asset.id,iso(day)).length===0).length):[];
+    busy(asset.id,iso(day)).length===0&&reports(asset.id,iso(day)).length===0).length):[];
   const alerts=board?.pending.filter(p=>p.priority==="critica"||p.priority==="alta").length??0;
   return <>
     <div className="page-title-row"><div><div className="eyebrow">PLANIFICACIÓN</div><h1>Programación semanal de camiones</h1><p className="page-intro">Camiones por día, servicios y novedades de operación. Horarios de Chile.</p></div><span className="title-icon"><CalendarDays size={24}/></span></div>
@@ -66,19 +72,29 @@ export default async function Agenda({searchParams}:{searchParams:Promise<{inici
         <div className="fleet-week-scroll"><table className="fleet-week-table"><thead><tr><th>Camión</th>{days.map((day,i)=><th key={iso(day)}>{dayLabel(day)}<span>{free[i]} libre(s)</span></th>)}</tr></thead><tbody>
           {board.assets.map(asset=><tr key={asset.id}><th><Link href={`/flota/${asset.id}`}>{asset.plate||asset.code}</Link><small>{asset.label}</small>{!asset.available&&<em>Detenido</em>}</th>{days.map(day=>{
             const date=iso(day),note=notes.get(key(asset.id,date)),trips=busy(asset.id,date),shown=trips.filter(selected),other=trips.length-shown.length;
+            const dayReports=reports(asset.id,date),extraReports=dayReports.filter(r=>!trips.some(t=>t.id===r.service_id)&&(!company||r.operating_company===company));
+            const otherReports=dayReports.filter(r=>!trips.some(t=>t.id===r.service_id)&&company&&r.operating_company!==company).length;
             return <td key={date} className={note?.kind&&note.kind!=="nota"?"fleet-week-blocked":""}>{note&&<div className={`fleet-week-note ${note.kind}`}><strong>{kindLabel[note.kind]||note.kind}</strong><span>{note.detail}</span></div>}
               {shown.map(trip=><Link className="fleet-week-trip" href={`/solicitudes/${trip.id}`} key={trip.id}>
                 <strong>{serviceFolio(trip)} · {trip.client_name}</strong><span>{new Intl.DateTimeFormat("es-CL",{timeZone:"America/Santiago",hour:"2-digit",minute:"2-digit",hour12:false}).format(new Date(trip.scheduled_for))} · {trip.waste_type}</span>
                 <span>{trip.driver_name??"Conductor pendiente"}{trip.ramp_label?` · Rampla ${trip.ramp_label}`:""}</span>
                 <span>{companyName(trip.operating_company)} · {trip.status.replaceAll("_"," ")}</span>
+                {dayReports.filter(r=>r.service_id===trip.id).map(r=><em className={`service-day-result ${r.outcome}`} key={r.service_id}>{resultLabel[r.outcome]}{r.observation?` · ${r.observation}`:""}</em>)}
                 {trip.notes&&<small>{trip.notes}</small>}
+              </Link>)}{extraReports.map(r=><Link className="fleet-week-trip" href={`/solicitudes/${r.service_id}`} key={r.service_id}>
+                <strong>Parte {serviceFolio(r)} · {r.client_name}</strong><em className={`service-day-result ${r.outcome}`}>{resultLabel[r.outcome]}</em><small>{r.observation}</small>
               </Link>)}{other>0&&<span className="fleet-week-other">{other} asignación(es) de otra empresa</span>}
-              {!trips.length&&!note&&<span className="fleet-week-empty">{asset.available?"Libre":"No disponible"}</span>}
+              {otherReports>0&&<span className="fleet-week-other">{otherReports} parte(s) de otra empresa</span>}
+              {!trips.length&&!note&&!dayReports.length&&<span className="fleet-week-empty">{asset.available?"Libre":"No disponible"}</span>}
             </td>;
           })}</tr>)}
           {!board.assets.length&&<tr><td colSpan={8}>Agregue camiones en Maestros para comenzar la programación.</td></tr>}
         </tbody></table></div>
       </section>
+      {openResults.length>0&&<section className="section-card"><div className="section-heading"><div><div className="eyebrow">SEGUIMIENTO DE TERRENO</div><h2>Viajes incompletos o suspendidos</h2></div><span className="count-pill">{openResults.length}{openResults.length===100?"+":""}</span></div>
+        <p className="helper-text">Se muestran los últimos partes pendientes de resolver; un nuevo parte realizado o el cierre del servicio quita la alerta. Revise la causa y el siguiente paso en la solicitud.</p>
+        <ul className="fleet-week-pending">{openResults.map(r=><li key={r.service_id}><Link href={`/solicitudes/${r.service_id}`}><strong>{serviceFolio(r)} · {resultLabel[r.outcome]} · {r.client_name}</strong><span>{new Date(r.day).toISOString().slice(0,10)} · {r.waste_type} · {r.driver_name||"Sin conductor"}</span><small>{r.observation}</small></Link></li>)}</ul>
+      </section>}
       <div className="fleet-week-lower"><section className="section-card"><div className="section-heading"><div><div className="eyebrow">DESPACHO</div><h2>Solicitudes sin asignación</h2></div><span className="count-pill">{board.pending.length}</span></div>
         {board.pending.length?<ul className="fleet-week-pending">{board.pending.map(trip=><li key={trip.id}><Link href={`/solicitudes/${trip.id}`}><strong>{serviceFolio(trip)} · {trip.client_name}</strong><span>{trip.site_name} · {trip.waste_type}</span><small>{companyName(trip.operating_company)}{trip.priority!=="normal"?` · Prioridad ${trip.priority}`:""}</small></Link></li>)}</ul>:<p className="muted">No hay solicitudes pendientes de programación.</p>}
       </section><section className="section-card"><div className="section-heading"><div><div className="eyebrow">NOVEDADES</div><h2><AlertTriangle size={18}/> Bloqueo u observación</h2></div></div>
