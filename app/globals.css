@@ -484,3 +484,5 @@ input::placeholder,textarea::placeholder{color:#959e9d}
   .module-unavailable h1{font-size:23px;line-height:1.2;margin:0}.module-unavailable p{font-size:13px;color:#666a70;line-height:1.6;margin:0 0 10px}
   .module-unavailable-actions{display:flex;gap:9px;flex-wrap:wrap}
 }
+
+.maintenance-procedure{max-width:420px;margin-top:8px;font-size:11px;color:#52665e}.maintenance-procedure summary{cursor:pointer;color:#2e715d;font-weight:750}.maintenance-procedure p{white-space:pre-wrap;line-height:1.6;margin:7px 0 0}

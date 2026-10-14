@@ -11,7 +11,7 @@ test("avería a orden de trabajo, repuestos y disponibilidad; planes, combustibl
   const pilot=await import("../lib/pilot");
   const continuity=await import("../lib/continuity");
   const supply=await import("../lib/supply");
-  for (const name of ["001_piloto.sql","002_flota_y_despacho.sql","003_abastecimiento.sql","004_mantenimiento_combustible.sql","005_contenedores.sql","006_acreditacion.sql","007_finanzas.sql","008_trazabilidad_ambiental.sql","009_certificados.sql","010_evidencia_persistente.sql","011_operacion_real_2026.sql","012_planillas_operacion.sql","018_empresa_operadora.sql","023_conductores_terceros.sql","033_checklist_a_mantenimiento.sql"]) {
+  for (const name of ["001_piloto.sql","002_flota_y_despacho.sql","003_abastecimiento.sql","004_mantenimiento_combustible.sql","005_contenedores.sql","006_acreditacion.sql","007_finanzas.sql","008_trazabilidad_ambiental.sql","009_certificados.sql","010_evidencia_persistente.sql","011_operacion_real_2026.sql","012_planillas_operacion.sql","018_empresa_operadora.sql","023_conductores_terceros.sql","033_checklist_a_mantenimiento.sql","034_pautas_horometro.sql"]) {
     const sql=await readFile(resolve(process.cwd(),`db/${name}`),"utf8");
     await transaction(async tx => { for (const part of sql.split(/;\s*(?:\n|$)/).map(s=>s.trim()).filter(Boolean)) await tx.query(part); });
   }
@@ -58,6 +58,24 @@ test("avería a orden de trabajo, repuestos y disponibilidad; planes, combustibl
   await continuity.closeWorkOrder(actor,preventive,{resolution:"Pauta de mantención completada",supplier:"",labor_cost:0,parts_cost:0,reading:125});
   const [rescheduled]=await db.query<{next_due_reading:string}>("SELECT next_due_reading FROM maintenance_plans WHERE id=$1",[plan]);
   assert.equal(rescheduled.next_due_reading,"175.00");
+  const grab=await pilot.createAsset(actor,{code:"GARRA-01",label:"Garra PC200-LC 8M0",kind:"equipo",plate:""});
+  await continuity.setAssetDetails(actor,grab,{brand:"Komatsu",model:"PC200-LC 8M0",model_year:"",reading_unit:"horas"});
+  await assert.rejects(()=>continuity.createHourMaintenancePlan(actor,{asset_id:grab,template_key:"pc200-250",next_due_reading:5547,lead_reading:25}),continuity.ContinuityError);
+  await continuity.recordAssetReading(actor,grab,{reading:5297,note:"Horómetro actual verificado"});
+  await assert.rejects(()=>continuity.createHourMaintenancePlan(actor,{asset_id:grab,template_key:"pc200-250",next_due_reading:5200,lead_reading:25}),continuity.ContinuityError);
+  await assert.rejects(()=>continuity.createHourMaintenancePlan(actor,{asset_id:asset,template_key:"pc200-250",next_due_reading:5547,lead_reading:25}),continuity.ContinuityError);
+  const hourPlan=await continuity.createHourMaintenancePlan(actor,{asset_id:grab,template_key:"pc200-250",next_due_reading:5547,lead_reading:25});
+  await assert.rejects(()=>continuity.createHourMaintenancePlan(actor,{asset_id:grab,template_key:"pc200-250",next_due_reading:5547,lead_reading:25}));
+  const hourPauta=(await continuity.listMaintenance(actor)).plans.find(p=>p.id===hourPlan);
+  assert.match(hourPauta?.procedure??"",/6742-01-4540/);
+  assert.equal(hourPauta?.warning,false);
+  const hourOrder=await continuity.createWorkOrder(actor,{asset_id:grab,plan_id:hourPlan,incident_id:"",kind:"preventiva",title:hourPauta!.title,description:"",scheduled_for:"",blocks_asset:false});
+  assert.match((await continuity.getWorkOrder(actor,hourOrder)).order.description??"",/Cambiar respiradero del tanque hidráulico/);
+  await continuity.startWorkOrder(actor,hourOrder);
+  await assert.rejects(()=>continuity.closeWorkOrder(actor,hourOrder,{resolution:"Mantención según pauta completada",supplier:"",labor_cost:0,parts_cost:0,reading:""}),continuity.ContinuityError);
+  await continuity.closeWorkOrder(actor,hourOrder,{resolution:"Mantención según pauta completada",supplier:"",labor_cost:0,parts_cost:0,reading:5547});
+  const [nextHour]=await db.query<{next_due_reading:string}>("SELECT next_due_reading FROM maintenance_plans WHERE id=$1",[hourPlan]);
+  assert.equal(nextHour.next_due_reading,"5797.00");
   const first={submission_key:randomUUID(),asset_id:asset,driver_id:driver.id,service_id:"",fuel_date:"2026-09-24",liters:25,cost_clp:30000,reading:200,full_tank:true,supplier:"Estación local",receipt_number:"B-100",notes:""};
   const fuelId=await continuity.registerFuel(actor,first);
   assert.equal(await continuity.registerFuel(actor,first),fuelId);

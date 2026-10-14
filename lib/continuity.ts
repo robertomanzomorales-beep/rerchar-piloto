@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { Actor } from "./auth";
 import { canManage } from "./auth";
 import { db, transaction, type Db } from "./db";
+import { hourMaintenanceProcedure, hourMaintenanceTemplates } from "./maintenance-templates";
 
 const uuid = z.uuid();
 const optionalId = z.union([uuid,z.literal("")]).default("");
@@ -60,7 +61,8 @@ export async function recordAssetReading(actor: Actor, assetId: string, input: u
 
 export type MaintenancePlan = { id: string; asset_id: string; asset_label: string; asset_code: string; title: string; frequency_kind: string;
   interval_days: number | null; interval_reading: string | null; next_due_date: Date | string | null; next_due_reading: string | null;
-  lead_days: number; lead_reading: string; current_reading: string; reading_unit: string; warning: boolean };
+  lead_days: number; lead_reading: string; current_reading: string; reading_unit: string; warning: boolean;
+  template_key: string | null; procedure: string | null };
 export type WorkOrder = { id: string; folio: string; asset_id: string; asset_label: string; asset_code: string; plan_id: string | null; incident_id: string | null; source_service_id:string|null;
   kind: string; title: string; description: string | null; status: string; blocks_asset: boolean; scheduled_for: Date | string | null; started_at: Date | null;
   closed_at: Date | null; reading_at_close: string | null; labor_cost: string; parts_cost: string; supplier: string | null;
@@ -110,6 +112,30 @@ export async function createMaintenancePlan(actor: Actor, input: unknown) {
   });
 }
 
+export async function createHourMaintenancePlan(actor: Actor, input: unknown) {
+  guard(actor);
+  const data = z.object({ asset_id:uuid, template_key:z.string(),
+    next_due_reading:positive, lead_reading:nonnegative }).parse(input);
+  const template=hourMaintenanceTemplates.find((entry)=>entry.key===data.template_key);
+  if (!template) reject("Seleccione una pauta de la planilla de mantenimiento.");
+  return transaction(async (tx) => {
+    const [asset]=await tx.query<{kind:string;reading_unit:string;current_reading:string}>(
+      "SELECT kind,reading_unit,current_reading FROM assets WHERE id=$1 AND deleted_at IS NULL FOR UPDATE",[data.asset_id]);
+    if (!asset || asset.kind!=="equipo" || asset.reading_unit!=="horas")
+      reject("Seleccione un equipo configurado con horómetro en horas.");
+    if (Number(asset.current_reading)<=0) reject("Registre la lectura actual del horómetro antes de activar la pauta.");
+    if (data.next_due_reading<Number(asset.current_reading))
+      reject("La próxima mantención no puede estar antes de la lectura actual. Verifique el horómetro vigente.");
+    const [plan]=await tx.query<{id:string}>(`INSERT INTO maintenance_plans
+      (asset_id,title,frequency_kind,interval_reading,next_due_reading,lead_reading,template_key,procedure,created_by)
+      VALUES ($1,$2,'lectura',$3,$4,$5,$6,$7,$8) RETURNING id`,
+      [data.asset_id,`Mantención ${template.interval} h · ${template.model}`,template.interval,
+        data.next_due_reading,data.lead_reading,template.key,hourMaintenanceProcedure(template),actor.id]);
+    await audit(tx,actor,"create_from_spreadsheet","maintenance_plan",plan.id,{...data,source:template.model,interval:template.interval});
+    return plan.id;
+  });
+}
+
 export async function createWorkOrder(actor: Actor, input: unknown) {
   guard(actor);
   const data = z.object({ asset_id: uuid, plan_id: optionalId, incident_id: optionalId,
@@ -119,9 +145,11 @@ export async function createWorkOrder(actor: Actor, input: unknown) {
   return transaction(async (tx) => {
     const [asset] = await tx.query("SELECT id FROM assets WHERE id=$1 AND deleted_at IS NULL FOR UPDATE",[data.asset_id]);
     if (!asset) reject("Activo no encontrado.");
+    let planProcedure="";
     if (data.plan_id) {
-      const [plan] = await tx.query("SELECT id FROM maintenance_plans WHERE id=$1 AND asset_id=$2 AND active=true FOR UPDATE",[data.plan_id,data.asset_id]);
+      const [plan] = await tx.query<{id:string;procedure:string|null}>("SELECT id,procedure FROM maintenance_plans WHERE id=$1 AND asset_id=$2 AND active=true FOR UPDATE",[data.plan_id,data.asset_id]);
       if (!plan || data.kind!=="preventiva") reject("El plan debe estar vigente y vinculado a una orden preventiva del mismo activo.");
+      planProcedure=plan.procedure??"";
     }
     if (data.incident_id) {
       const [incident] = await tx.query("SELECT id FROM fleet_incidents WHERE id=$1 AND asset_id=$2 AND status='abierta' FOR UPDATE",[data.incident_id,data.asset_id]);
@@ -129,7 +157,7 @@ export async function createWorkOrder(actor: Actor, input: unknown) {
     }
     const [order] = await tx.query<{id:string}>(`INSERT INTO work_orders (asset_id,plan_id,incident_id,kind,title,description,scheduled_for,blocks_asset,created_by)
       VALUES ($1,NULLIF($2,'')::uuid,NULLIF($3,'')::uuid,$4,$5,NULLIF($6,''),NULLIF($7,'')::date,$8,$9) RETURNING id`,
-      [data.asset_id,data.plan_id,data.incident_id,data.kind,data.title,data.description,data.scheduled_for,data.blocks_asset||!!data.incident_id,actor.id]);
+      [data.asset_id,data.plan_id,data.incident_id,data.kind,data.title,data.description||planProcedure,data.scheduled_for,data.blocks_asset||!!data.incident_id,actor.id]);
     await audit(tx,actor,"create","work_order",order.id,data);
     return order.id;
   });
@@ -210,7 +238,8 @@ export async function closeWorkOrder(actor: Actor, orderId: string, input: unkno
     await tx.query(`UPDATE work_orders SET status='cerrada',closed_at=now(),closed_by=$2,resolution=$3,supplier=NULLIF($4,''),
       labor_cost=$5,parts_cost=$6,reading_at_close=$7 WHERE id=$1`,[id,actor.id,data.resolution,data.supplier,data.labor_cost,data.parts_cost,asset.reading_unit==="sin" ? null : finalReading]);
     if (order.plan_id) {
-      const [plan] = await tx.query<{frequency_kind:string}>("SELECT frequency_kind FROM maintenance_plans WHERE id=$1 FOR UPDATE",[order.plan_id]);
+      const [plan] = await tx.query<{frequency_kind:string;template_key:string|null}>("SELECT frequency_kind,template_key FROM maintenance_plans WHERE id=$1 FOR UPDATE",[order.plan_id]);
+      if (plan?.template_key && data.reading==="") reject("Registre el horómetro al cerrar la pauta de la planilla para calcular el próximo vencimiento.");
       if (plan?.frequency_kind==="fecha") await tx.query(`UPDATE maintenance_plans SET next_due_date=(now() AT TIME ZONE 'America/Santiago')::date + interval_days WHERE id=$1`,[order.plan_id]);
       if (plan?.frequency_kind==="lectura") await tx.query("UPDATE maintenance_plans SET next_due_reading=$2+interval_reading WHERE id=$1",[order.plan_id,finalReading]);
     }

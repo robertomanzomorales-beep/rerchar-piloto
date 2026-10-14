@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { ZodError } from "zod";
 import { requireActor } from "@/lib/auth";
 import {
-  ContinuityError, cancelWorkOrder, closeWorkOrder, createMaintenancePlan, createTire, createWorkOrder,
+  ContinuityError, cancelWorkOrder, closeWorkOrder, createHourMaintenancePlan, createMaintenancePlan, createTire, createWorkOrder,
   moveTire, recordAssetReading, registerFuel, reserveForWorkOrder, setAssetDetails, startWorkOrder,
 } from "@/lib/continuity";
 
@@ -42,6 +42,13 @@ export async function createPlanAction(form:FormData) {
     interval_days:value(form,"interval_days"),next_due_date:value(form,"next_due_date"),
     interval_reading:value(form,"interval_reading"),next_due_reading:value(form,"next_due_reading"),
     lead_days:value(form,"lead_days"),lead_reading:value(form,"lead_reading"),
+  }));
+}
+export async function createHourPlanAction(form:FormData) {
+  const actor=await requireActor();
+  await run("/mantenimiento",()=>createHourMaintenancePlan(actor,{
+    asset_id:value(form,"asset_id"),template_key:value(form,"template_key"),
+    next_due_reading:value(form,"next_due_reading"),lead_reading:value(form,"lead_reading"),
   }));
 }
 export async function createWorkOrderAction(form:FormData) {
