@@ -11,11 +11,15 @@ test("compra de Carol conserva materiales, observaciones e IVA confirmado hasta 
   const quotes=await import("../lib/quotes");
   const pilot=await import("../lib/pilot");
   const materials=await import("../lib/materials");
+  const {moduleReady}=await import("../lib/schema-readiness");
   const {renderQuotePdf}=await import("../lib/quote-pdf");
+  assert.equal(await moduleReady("cotizaciones"),false,"una instalación sin migrar no abre el formulario incompleto");
   for(const name of (await readdir(resolve(process.cwd(),"db"))).filter(file=>/^\d+.*\.sql$/.test(file)).sort()){
     const sql=await readFile(resolve(process.cwd(),`db/${name}`),"utf8");
     await transaction(async tx=>{for(const statement of sql.split(/;\s*(?:\n|$)/).map(value=>value.trim()).filter(Boolean))await tx.query(statement);});
+    if(name.startsWith("030_"))assert.equal(await moduleReady("cotizaciones"),false,"se requiere también el esquema de compra");
   }
+  assert.equal(await moduleReady("cotizaciones"),true);
   const [client]=await db.query<{id:string}>("INSERT INTO clients(name,email) VALUES('Proveedor de metales','cliente@example.cl') RETURNING id");
   const [site]=await db.query<{id:string}>("INSERT INTO client_sites(client_id,name) VALUES($1,'Faena norte') RETURNING id",[client.id]);
   const [admin,customer]=await db.query<{id:string}>(`INSERT INTO users(email,name,password_hash,role,client_id)
@@ -72,4 +76,32 @@ test("compra de Carol conserva materiales, observaciones e IVA confirmado hasta 
   const stored=await materials.getMaterialReceipt(actor,receiptId);
   assert.equal(stored.material_id,iron.id);
   assert.equal(stored.service_id,serviceId);
+
+  for(const issuer of ["rerchar","e_y_j"] as const){
+    const purchaseId=await quotes.createQuote(actor,{...input,submission_key:randomUUID(),issuer,vat_rate:"",title:`Compra ${issuer}`,
+      line:{...input.line,description:iron.name}});
+    const purchase=await quotes.getQuote(actor,purchaseId);
+    assert.equal(purchase.quote.issuer,issuer);
+    assert.equal(Number(purchase.quote.vat_rate),0);
+    assert.equal(purchase.lines[0].description,iron.name);
+    assert.ok((await renderQuotePdf(purchase.quote,purchase.lines)).length>7000);
+
+    const generalId=await quotes.createQuote(actor,{...input,submission_key:randomUUID(),issuer,vat_rate:"0.19",title:`Servicio ${issuer}`,
+      line:{description:"Arriendo de equipo",material_id:"",line_note:"Incluye operador",principal:"arriendo",segment:"arriendo_equipo",quantity:"2",unit:"día",unit_price_clp:"150000",taxable:true}});
+    const general=await quotes.getQuote(actor,generalId);
+    assert.equal(general.quote.issuer,issuer);
+    assert.equal(general.quote.commercial_kind,"general");
+    assert.equal(general.lines[0].description,"Arriendo de equipo");
+
+    const request=await pilot.createService(actor,{...serviceInput,submission_key:randomUUID(),quote_id:"",operating_company:issuer,
+      material_id:iron.id,waste_type:iron.name,estimated_kg:""});
+    const [material]=await db.query<{quantity_kg:string|null;material_name:string}>(
+      "SELECT quantity_kg,material_name FROM service_request_materials WHERE service_id=$1",[request]);
+    assert.equal(material.quantity_kg,null,"la compra nueva espera el pesaje real");
+    assert.equal(material.material_name,iron.name);
+    const [service]=await db.query<{estimated_kg:string|null;waste_type:string}>(
+      "SELECT estimated_kg,waste_type FROM service_requests WHERE id=$1",[request]);
+    assert.equal(service.estimated_kg,null);
+    assert.equal(service.waste_type,iron.name);
+  }
 });

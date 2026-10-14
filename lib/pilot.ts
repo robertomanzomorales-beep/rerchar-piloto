@@ -245,7 +245,7 @@ export async function createService(actor: Actor, input: unknown) {
   return transaction(async (tx) => {
     const [site] = await tx.query("SELECT id FROM client_sites WHERE id = $1 AND client_id = $2 AND deleted_at IS NULL", [data.site_id, data.client_id]);
     if (!site) reject("El centro no pertenece al cliente seleccionado.");
-    let materialRows:{id:string;position:number;material_id:string|null;description:string;quantity:string;unit:string;unit_price_clp:string;line_note:string|null}[]=[];
+    let materialRows:{id:string;position:number;material_id:string|null;description:string;quantity:string|null;unit:string;unit_price_clp:string;line_note:string|null}[]=[];
     if (data.quote_id) {
       const [quote] = await tx.query<{issuer:Company;client_id:string;status:string;commercial_kind:string;notes:string|null}>(
         "SELECT issuer,client_id,status,commercial_kind,notes FROM client_quotes WHERE id=$1 FOR UPDATE", [data.quote_id]);
@@ -262,9 +262,8 @@ export async function createService(actor: Actor, input: unknown) {
         if(!materialRows.length||materialRows.some(line=>!line.material_id||line.unit!=="kg"))reject("La propuesta de compra debe incluir materiales del catálogo en kg.");
       }
     }else if(category==="compra"&&data.material_id){
-      if(data.estimated_kg===""||data.estimated_kg===undefined)reject("Indique los kg estimados del material del catálogo.");
       const name=await catalogName(tx,data.material_id);
-      materialRows=[{id:"",position:1,material_id:data.material_id,description:name,quantity:Number(data.estimated_kg).toFixed(3),unit:"kg",unit_price_clp:"0",line_note:null}];
+      materialRows=[{id:"",position:1,material_id:data.material_id,description:name,quantity:data.estimated_kg?Number(data.estimated_kg).toFixed(3):null,unit:"kg",unit_price_clp:"0",line_note:null}];
     }
     const [created] = await tx.query<{ id: string }>(
       `INSERT INTO service_requests
@@ -272,7 +271,7 @@ export async function createService(actor: Actor, input: unknown) {
        VALUES ($1,$2,$3,$4,NULLIF($5,'')::uuid,$6,$7,$8,$9,$10,$11,$12,NULLIF($13,''),$14,NULLIF($15,'')::date,NULLIF($16,'')::date)
        ON CONFLICT (submission_key) DO NOTHING RETURNING id`,
       [data.submission_key, data.client_id, data.site_id, data.operating_company, data.quote_id, category, data.service_type,
-        category==="compra"?materialRows.map(row=>row.description).join(", ").slice(0,120):data.waste_type,
+        category==="compra"&&materialRows.length?materialRows.map(row=>row.description).join(", ").slice(0,120):data.waste_type,
         data.estimated_kg === "" || data.estimated_kg === undefined ? null : data.estimated_kg,
         data.origin, data.destination, data.priority, data.notes, actor.id,data.rental_from,data.rental_to],
     );

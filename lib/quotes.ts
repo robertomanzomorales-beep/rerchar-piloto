@@ -8,7 +8,7 @@ import {quoteFolio} from "./companies";
 import {quotePrincipals,quoteUnits,validQuoteSegment} from "./quote-catalog";
 import {wasteCategories,segmentWasteCategory,destinationNeeded,categoryName} from "./destination-catalog";
 import {calculateQuoteCost,type QuoteCosting} from "./quote-planning";
-import {catalogName} from "./material-stock";
+import {catalogName,MaterialStockError} from "./material-stock";
 export {quoteFolio} from "./companies";
 
 const uuid=z.uuid();
@@ -55,15 +55,16 @@ async function destinationSnapshot(tx:Db,destinationId:string){
   return destination.name;
 }
 async function purchaseLine(tx:Db,data:z.infer<typeof item>,kind:"general"|"compra_material",tax:"no_aplica"|"pendiente"|"sin_iva"|"con_iva"){
+  async function nameFromCatalog(){try{return await catalogName(tx,data.material_id);}catch(error){if(error instanceof MaterialStockError)reject(error.message);throw error;}}
   if(kind==="general"){
     if(data.material_id&&data.principal!=="compra")reject("El material del catálogo corresponde a un concepto de compra.");
-    const name=data.material_id?await catalogName(tx,data.material_id):data.description;
+    const name=data.material_id?await nameFromCatalog():data.description;
     return {name,materialId:data.material_id||null,taxable:data.taxable};
   }
   if(data.principal!=="compra"||data.segment!=="compra_metal"||data.unit!=="kg"||data.destination_id||data.waste_category)
     reject("Una propuesta de compra admite exclusivamente materiales del catálogo en kg.");
   if(!data.material_id)reject("Seleccione un material del catálogo de Entrada de material.");
-  const name=await catalogName(tx,data.material_id);
+  const name=await nameFromCatalog();
   return {name,materialId:data.material_id,taxable:tax==="con_iva"};
 }
 type DestinationValidity={id:string;name:string;status:string;accepted_categories:string[];
@@ -164,9 +165,10 @@ export async function getQuote(actor:Actor,quoteId:string){
 export async function createQuote(actor:Actor,input:unknown){
   canEdit(actor);
   const data=z.object({submission_key:uuid,client_id:uuid,issuer:z.enum(["rerchar","e_y_j"]),title:z.string().trim().min(3).max(180),
-    notes:optional(1000),issued_on:z.iso.date(),valid_until:z.iso.date(),vat_rate:z.union([z.literal("0"),z.literal("0.19")]).default("0.19"),line:item}).parse(input);
+    notes:optional(1000),issued_on:z.iso.date(),valid_until:z.iso.date(),vat_rate:z.union([z.literal(""),z.literal("0"),z.literal("0.19")]).default("0.19"),line:item}).parse(input);
   checkClassification(data.line,true);
   checkDestinationInput(data.line);
+  if(data.line.principal!=="compra"&&data.vat_rate==="")reject("Seleccione el tratamiento de IVA de la cotización.");
   if(data.valid_until<data.issued_on)reject("La vigencia no puede vencer antes de la fecha de emisión.");
   return transaction(async tx=>{
     const [client]=await tx.query<{name:string;tax_id:string|null;email:string|null;address:string|null}>("SELECT name,tax_id,email,address FROM clients WHERE id=$1 AND deleted_at IS NULL",[data.client_id]);
