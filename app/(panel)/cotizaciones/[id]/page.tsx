@@ -11,6 +11,8 @@ import {quotePrincipalLabel,quoteSegmentLabel} from "@/lib/quote-catalog";
 import {QuoteDestinationFields} from "@/components/QuoteDestinationFields";
 import {listQuoteDestinations} from "@/lib/destinations";
 import {categoryName} from "@/lib/destination-catalog";
+import {getQuotePlanning,listPlanningAssets} from "@/lib/quote-planning";
+import {QuotePlanningPanel} from "@/components/QuotePlanningPanel";
 
 const money=(n:number)=>`$${n.toLocaleString("es-CL")}`;
 function date(d:Date|string){return new Intl.DateTimeFormat("es-CL",{dateStyle:"long",timeZone:"UTC"}).format(new Date(d));}
@@ -18,9 +20,11 @@ export default async function QuoteDetail({params,searchParams}:{params:Promise<
   const actor=await requireActor();const {id}=await params;let detail;
   try{detail=await getQuote(actor,id);}catch(error){if(error instanceof QuoteError)notFound();throw error;}
   const {quote,lines,totals}=detail;const query=await searchParams;const editable=actor.role!=="cliente"&&actor.role!=="conductor";
-  const [destinations,deliveryIssues]=await Promise.all([
+  const [destinations,deliveryIssues,planning,assets]=await Promise.all([
     editable&&quote.status==="borrador"?listQuoteDestinations(actor):Promise.resolve([]),
     quote.status==="borrador"?quoteDeliveryIssues(quote,lines):Promise.resolve([]),
+    editable?getQuotePlanning(actor,id):Promise.resolve(null),
+    editable?listPlanningAssets(actor):Promise.resolve([]),
   ]);
   const folio=quoteFolio(quote);
   return <><Link href="/cotizaciones" className="back-link">← Cotizaciones</Link><div className="page-title-row"><div><div className="eyebrow">{issuers[quote.issuer].name}</div><h1>Cotización {folio}</h1><p className="page-intro">{quote.client_name} · {quote.title}</p></div><span className={`badge supply-status-${quote.status}`}>{quote.status}</span></div>
@@ -32,6 +36,8 @@ export default async function QuoteDetail({params,searchParams}:{params:Promise<
       <div className="quote-totals"><div><span>Neto</span><strong>{money(totals.net)}</strong></div><div><span>IVA ({Number(quote.vat_rate)*100}%)</span><strong>{money(totals.vat)}</strong></div><div><span>Total</span><strong>{money(totals.total)}</strong></div></div>
       {quote.notes&&<div className="note-block"><span>Observaciones</span><p>{quote.notes}</p></div>}
     </section>
+    {detail.route&&!editable&&<section className="section-card"><h2>Recorrido acordado</h2><p>{detail.route.origin} → {detail.route.pickup} → {detail.route.destination} → {detail.route.return_to}</p><strong>Circuito total: {Number(detail.route.total_km).toLocaleString("es-CL",{maximumFractionDigits:2})} km</strong></section>}
+    {editable&&planning&&<QuotePlanningPanel quote={quote} lines={lines} destinations={destinations} assets={assets} route={planning.route} cost={planning.cost} quotedNet={totals.net}/>}
     {editable&&quote.status==="borrador"&&<section className="section-card"><h2>Corregir conceptos del borrador</h2><p className="helper-text">Puede cambiar material, cantidad, unidad y precio antes de entregar la cotización. El folio se conserva y el PDF reflejará los cambios.</p>
       {lines.map(line=><details key={line.id} className="quote-line-editor"><summary><span>{line.description}</span><strong>Editar concepto</strong></summary>
         <form action={updateQuoteLineAction} className="form-grid"><input type="hidden" name="quote_id" value={id}/><input type="hidden" name="line_id" value={line.id}/>

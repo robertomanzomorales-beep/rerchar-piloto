@@ -7,6 +7,7 @@ import {renderQuotePdf} from "./quote-pdf";
 import {quoteFolio} from "./companies";
 import {quotePrincipals,quoteUnits,validQuoteSegment} from "./quote-catalog";
 import {wasteCategories,segmentWasteCategory,destinationNeeded,categoryName} from "./destination-catalog";
+import {calculateQuoteCost,type QuoteCosting} from "./quote-planning";
 export {quoteFolio} from "./companies";
 
 const uuid=z.uuid();
@@ -30,9 +31,10 @@ function canEdit(actor:Actor){if(!canManage(actor))reject("Sólo operaciones pue
 export const issuers={rerchar:{name:"RERCHAR CHILE SPA",tax_id:"77.639.762-8"},e_y_j:{name:"EMPRESAS DE SERVICIOS INTEGRALES E Y J LIMITADA",tax_id:"76.347.909-9"}} as const;
 export type Quote={id:string;folio:string;display_folio:string|null;submission_key:string;client_id:string;issuer:keyof typeof issuers;client_name:string;client_tax_id:string|null;
   client_email:string|null;client_address:string|null;title:string;notes:string|null;issued_on:Date|string;valid_until:Date|string;vat_rate:string;status:string;sent_at:Date|null;created_at:Date;
-  segments?:string[]};
+  route_required:boolean;segments?:string[]};
 export type QuoteLine={id:string;position:number;description:string;quantity:string;unit:string;unit_price_clp:string;taxable:boolean;
   principal:string|null;segment:string|null;waste_category:string|null;destination_id:string|null;destination_name:string|null;destination_required:boolean};
+export type PublicQuoteRoute={origin:string;pickup:string;destination:string;return_to:string;total_km:string};
 function checkClassification(data:z.infer<typeof item>,required:boolean){
   if(!data.principal&&!data.segment){if(required)reject("Seleccione Principal y Segmentación para el concepto.");return;}
   if(!validQuoteSegment(data.principal,data.segment))reject("Seleccione una Segmentación correspondiente a Principal.");
@@ -51,7 +53,7 @@ async function destinationSnapshot(tx:Db,destinationId:string){
 }
 type DestinationValidity={id:string;name:string;status:string;accepted_categories:string[];
   authorization_valid_until:Date|string|null;authorization_document_name:string|null;disposal_unit:string|null;disposal_price_clp:string|null};
-export async function quoteDeliveryIssues(quote:Pick<Quote,"valid_until">,lines:QuoteLine[],source:Db=db){
+export async function quoteDeliveryIssues(quote:Pick<Quote,"valid_until"> & Partial<Pick<Quote,"id"|"route_required"|"vat_rate">>,lines:QuoteLine[],source:Db=db){
   const ids=[...new Set(lines.map(line=>line.destination_id).filter((id):id is string=>Boolean(id)))];
   const destinations=ids.length?await source.query<DestinationValidity>(`SELECT id,name,status,accepted_categories,
     authorization_valid_until,authorization_document_name,disposal_unit,disposal_price_clp FROM quote_destinations WHERE id=ANY($1::uuid[])`,[ids]):[];
@@ -74,6 +76,20 @@ export async function quoteDeliveryIssues(quote:Pick<Quote,"valid_until">,lines:
     if(!expiry||expiry<validUntil)issues.push(`${context}: la autorización de ${destination.name} no cubre la vigencia de la cotización.`);
     if(!destination.authorization_document_name||!destination.disposal_unit||destination.disposal_price_clp===null)
       issues.push(`${context}: faltan respaldo o tarifa de disposición de ${destination.name}.`);
+  }
+  if(quote.route_required&&quote.id){
+    if(new Set(lines.map(line=>line.destination_id).filter(Boolean)).size>1)
+      issues.push("Esta cotización incluye varios destinos finales. Separe los circuitos en cotizaciones distintas.");
+    const [route]=await source.query<{reviewed_for_truck:boolean;total_km:string}>("SELECT reviewed_for_truck,total_km FROM client_quote_routes WHERE quote_id=$1",[quote.id]);
+    const [cost]=await source.query<QuoteCosting>("SELECT * FROM client_quote_costings WHERE quote_id=$1",[quote.id]);
+    if(!route)issues.push("Defina planta, retiro, destino, retorno y kilómetros del circuito.");
+    else if(!route.reviewed_for_truck)issues.push("Revise y confirme que el circuito es apto para el camión.");
+    if(!cost)issues.push("Guarde el cálculo interno de costos y precio de venta.");
+    else if(route){
+      try{if(calculateQuoteCost(cost,Number(route.total_km),Number(quote.vat_rate??"0.19")).cost<=0)
+        issues.push("El cálculo interno no registra costos de la operación.");}
+      catch{issues.push("Revise rendimiento y montos del cálculo interno después de cambiar la ruta.");}
+    }
   }
   return issues;
 }
@@ -121,7 +137,9 @@ export async function getQuote(actor:Actor,quoteId:string){
   const [quote]=await db.query<Quote>("SELECT * FROM client_quotes WHERE id=$1",[quoteId]);
   if(!quote||actor.role==="conductor"||(actor.role==="cliente"&&(actor.client_id!==quote.client_id||!["enviada","aceptada","rechazada"].includes(quote.status))))reject("Cotización no disponible.");
   const lines=await db.query<QuoteLine>("SELECT * FROM client_quote_lines WHERE quote_id=$1 ORDER BY position",[quoteId]);
-  return {quote,lines,totals:quoteTotals(lines,Number(quote.vat_rate))};
+  const [route]=await db.query<PublicQuoteRoute>(`SELECT origin,pickup,destination,return_to,total_km FROM client_quote_routes
+    WHERE quote_id=$1 AND reviewed_for_truck=true`,[quoteId]);
+  return {quote,lines,route:route??null,totals:quoteTotals(lines,Number(quote.vat_rate))};
 }
 export async function createQuote(actor:Actor,input:unknown){
   canEdit(actor);
@@ -141,7 +159,8 @@ export async function createQuote(actor:Actor,input:unknown){
       [data.submission_key,data.client_id,data.issuer,client.name,client.tax_id,client.email,client.address,data.title,data.notes,
        data.issued_on,data.valid_until,data.vat_rate,actor.id]);
     const displayFolio=`COT-${data.issuer==="rerchar"?"RER":"EYJ"}-${String(quote.folio).padStart(5,"0")}`;
-    await tx.query("UPDATE client_quotes SET display_folio=$2 WHERE id=$1",[quote.id,displayFolio]);
+    await tx.query("UPDATE client_quotes SET display_folio=$2,route_required=$3 WHERE id=$1",
+      [quote.id,displayFolio,["retiro","transporte","instalacion"].includes(data.line.principal)]);
     const destinationName=await destinationSnapshot(tx,data.line.destination_id);
     await tx.query(`INSERT INTO client_quote_lines(quote_id,position,description,quantity,unit,unit_price_clp,taxable,principal,segment,waste_category,destination_id,destination_name,destination_required)
       VALUES ($1,1,$2,$3,$4,$5,$6,$7,$8,NULLIF($9,''),NULLIF($10,'')::uuid,$11,true)`,
@@ -167,6 +186,8 @@ export async function addQuoteLine(actor:Actor,quoteId:string,input:unknown){
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NULLIF($10,''),NULLIF($11,'')::uuid,$12,true) RETURNING id`,
       [id,position.next,data.description,data.quantity,data.unit,data.unit_price_clp,data.taxable,data.principal,data.segment,
        data.waste_category,data.destination_id,destinationName]);
+    if(["retiro","transporte","instalacion"].includes(data.principal))
+      await tx.query("UPDATE client_quotes SET route_required=true WHERE id=$1",[id]);
     await tx.query("INSERT INTO audit_events(actor_id,action,entity_type,entity_id,next_value) VALUES ($1,'add_line','client_quote',$2,$3)",
       [actor.id,id,JSON.stringify({line_id:line.id,description:data.description})]);
     return line.id;
@@ -188,6 +209,8 @@ export async function updateQuoteLine(actor:Actor,quoteId:string,lineId:string,i
       WHERE id=$1 AND quote_id=$2`,
       [line,id,data.description,data.quantity,data.unit,data.unit_price_clp,data.taxable,data.principal,data.segment,
        data.waste_category,data.destination_id,destinationName]);
+    await tx.query(`UPDATE client_quotes SET route_required=EXISTS
+      (SELECT 1 FROM client_quote_lines WHERE quote_id=$1 AND principal IN ('retiro','transporte','instalacion')) WHERE id=$1`,[id]);
     await tx.query("INSERT INTO audit_events(actor_id,action,entity_type,entity_id,previous_value,next_value) VALUES ($1,'update_line','client_quote',$2,$3,$4)",
       [actor.id,id,JSON.stringify(previous),JSON.stringify({line_id:line,...data})]);
   });
@@ -202,6 +225,8 @@ export async function removeQuoteLine(actor:Actor,quoteId:string,lineId:string){
     const [count]=await tx.query<{count:string}>("SELECT count(*)::text AS count FROM client_quote_lines WHERE quote_id=$1",[id]);
     if(Number(count.count)<=1)reject("La cotización debe conservar al menos un concepto.");
     await tx.query("DELETE FROM client_quote_lines WHERE id=$1 AND quote_id=$2",[line,id]);
+    await tx.query(`UPDATE client_quotes SET route_required=EXISTS
+      (SELECT 1 FROM client_quote_lines WHERE quote_id=$1 AND principal IN ('retiro','transporte','instalacion')) WHERE id=$1`,[id]);
     await tx.query("INSERT INTO audit_events(actor_id,action,entity_type,entity_id,previous_value) VALUES ($1,'remove_line','client_quote',$2,$3)",
       [actor.id,id,JSON.stringify(previous)]);
   });
@@ -253,12 +278,12 @@ export async function sendQuote(actor:Actor,quoteId:string){
   canEdit(actor);
   if(!quoteMailConfigured())reject("Configure el correo remitente SMTP del sistema antes de enviar cotizaciones.");
   const id=uuid.parse(quoteId);
-  const {quote,lines}=await getQuote(actor,id);
+  const {quote,lines,route}=await getQuote(actor,id);
   if(quote.status!=="borrador")reject("Esta cotización ya no está en borrador.");
   if(!quote.client_email||!z.email().safeParse(quote.client_email).success)reject("Complete el correo del cliente y cree una nueva cotización para guardar sus datos de emisión.");
   const issues=await quoteDeliveryIssues(quote,lines);
   if(issues.length)reject(`Antes de enviar: ${issues[0]}`);
-  const pdf=await renderQuotePdf(quote,lines);
+  const pdf=await renderQuotePdf(quote,lines,"",route);
   const [claimed]=await db.query<{id:string}>("UPDATE client_quotes SET status='enviando' WHERE id=$1 AND status='borrador' RETURNING id",[id]);
   if(!claimed)reject("La cotización cambió de estado. Recargue la pantalla.");
   try{

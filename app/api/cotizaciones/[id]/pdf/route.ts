@@ -8,7 +8,7 @@ export async function GET(_request:Request,{params}:{params:Promise<{id:string}>
   const {id}=await params;let detail;
   try{detail=await getQuote(actor,id);}catch(error){if(error instanceof QuoteError)return new Response("No encontrado",{status:404});throw error;}
   const issues=detail.quote.status==="borrador"?await quoteDeliveryIssues(detail.quote,detail.lines):[];
-  const pdf=await renderQuotePdf(detail.quote,detail.lines,issues.length?"BORRADOR · DESTINO PENDIENTE DE VALIDACIÓN · NO ENVIAR":"");
+  const pdf=await renderQuotePdf(detail.quote,detail.lines,issues.length?"BORRADOR · DATOS PENDIENTES DE VALIDACIÓN · NO ENVIAR":"",detail.route);
   return new Response(new Uint8Array(pdf),{headers:{"Content-Type":"application/pdf",
     "Content-Disposition":`attachment; filename="cotizacion-${quoteFolio(detail.quote).toLowerCase()}.pdf"`,
     "Cache-Control":"private, no-store","X-Content-Type-Options":"nosniff"}});

@@ -2,11 +2,11 @@ import {readFile} from "node:fs/promises";
 import {resolve} from "node:path";
 import fontkit from "@pdf-lib/fontkit";
 import {PDFDocument,rgb,type PDFFont,type PDFPage} from "pdf-lib";
-import {issuers,quoteFolio,type Quote,type QuoteLine,quoteTotals} from "./quotes";
+import {issuers,quoteFolio,type Quote,type QuoteLine,type PublicQuoteRoute,quoteTotals} from "./quotes";
 import {quotePrincipalLabel,quoteSegmentLabel} from "./quote-catalog";
 import {categoryName} from "./destination-catalog";
 
-export async function renderQuotePdf(quote:Quote,lines:QuoteLine[],warning=""){
+export async function renderQuotePdf(quote:Quote,lines:QuoteLine[],warning="",route:PublicQuoteRoute|null=null){
   const doc=await PDFDocument.create();doc.registerFontkit(fontkit);
   const regular=await doc.embedFont(await readFile(resolve(process.cwd(),"public/fonts/montserrat-regular.ttf")),{subset:true});
   const bold=await doc.embedFont(await readFile(resolve(process.cwd(),"public/fonts/montserrat-bold.ttf")),{subset:true});
@@ -86,9 +86,19 @@ export async function renderQuotePdf(quote:Quote,lines:QuoteLine[],warning=""){
   page.drawRectangle({x:388,y:y-73,width:162,height:26,color:green});
   write("TOTAL",398,y-64,10,bold,rgb(1,1,1));right(money(totals.total),544,y-64,10,bold,rgb(1,1,1));
   if(!taxable)write("Ítems no afectos a IVA en esta cotización.",45,y-48,8,regular,gray);
+  let footerY=y-103;
+  if(route){
+    const details=[`Origen: ${route.origin}`,`Retiro: ${route.pickup}`,`Destino final: ${route.destination}`,
+      `Regreso: ${route.return_to}`,`Circuito revisado: ${Number(route.total_km).toLocaleString("es-CL",{maximumFractionDigits:2})} km`]
+      .flatMap(value=>wrap(value,regular,8,490));
+    if(footerY-details.length*12<60){page=doc.addPage([595.28,841.89]);pages.push(page);header(true);footerY=680;}
+    write("RECORRIDO DEL SERVICIO",45,footerY,8,bold,green);
+    details.forEach((line,i)=>write(line,45,footerY-16-i*12,8));
+    footerY-=details.length*12+34;
+  }
   if(quote.notes){
     const notes=wrap(quote.notes,regular,8,490);
-    let noteY=y-103;
+    let noteY=footerY;
     if(noteY-notes.length*12<52){page=doc.addPage([595.28,841.89]);pages.push(page);header(true);noteY=680;}
     write("CONDICIONES Y OBSERVACIONES",45,noteY,8,bold,green);
     notes.forEach((line,i)=>write(line,45,noteY-16-i*12,8));

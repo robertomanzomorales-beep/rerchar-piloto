@@ -10,6 +10,7 @@ test("destinos de Carol bloquean entrega inválida y conservan cotizaciones ante
   const {db,transaction}=await import("../lib/db");
   const quotes=await import("../lib/quotes");
   const destinations=await import("../lib/destinations");
+  const planning=await import("../lib/quote-planning");
   for(const name of (await readdir(resolve(process.cwd(),"db"))).filter(file=>/^\d+.*\.sql$/.test(file)).sort()){
     const sql=await readFile(resolve(process.cwd(),`db/${name}`),"utf8");
     await transaction(async tx=>{for(const statement of sql.split(/;\s*(?:\n|$)/).map(x=>x.trim()).filter(Boolean))await tx.query(statement);});
@@ -50,6 +51,35 @@ test("destinos de Carol bloquean entrega inválida y conservan cotizaciones ante
   await destinations.updateQuoteDestination(owner,seed.id,{...base,accepted_categories:["reciclable"],authorization_valid_until:"2099-12-30"});
   assert.ok((await quotes.quoteDeliveryIssues(initial.quote,initial.lines)).some(issue=>issue.includes("no cubre la vigencia")));
   await destinations.updateQuoteDestination(owner,seed.id,{...base,accepted_categories:["reciclable"]});
+  assert.ok((await quotes.quoteDeliveryIssues(initial.quote,initial.lines)).some(issue=>issue.includes("circuito")));
+  assert.equal(planning.circuitKm([10,17,19]),46,"ejemplo de Carol: 10 + 17 + 19 km");
+  const places={origin:"Planta RERCHAR, Calama",pickup:"Hotel Village, Calama",destination:"Vertedero Municipal, Calama",return_to:"Planta RERCHAR, Calama"};
+  await assert.rejects(()=>planning.saveQuoteRoute(viewer,quoteId,{...places,pickup_km:"10",destination_km:"17",return_km:"19",
+    reviewed_for_truck:true,correction_reason:"Vía revisada por operador"}),planning.QuotePlanningError);
+  const oldFetch=globalThis.fetch;
+  process.env.GOOGLE_MAPS_ROUTES_API_KEY="test-private-key";
+  globalThis.fetch=async(_url,init)=>{
+    assert.equal((init?.headers as Record<string,string>)["X-Goog-Api-Key"],"test-private-key");
+    assert.deepEqual(JSON.parse(String(init?.body)).intermediates,[{address:places.pickup},{address:places.destination}]);
+    return new Response(JSON.stringify({routes:[{legs:[{distanceMeters:10000},{distanceMeters:17000},{distanceMeters:19000}]}]}),{status:200});
+  };
+  try{assert.equal(await planning.calculateMapRoute(owner,quoteId,places),46);}
+  finally{globalThis.fetch=oldFetch;delete process.env.GOOGLE_MAPS_ROUTES_API_KEY;}
+  assert.equal((await planning.getQuotePlanning(owner,quoteId)).route?.reviewed_for_truck,false);
+  await assert.rejects(()=>planning.applySuggestedQuotePrice(owner,quoteId),planning.QuotePlanningError);
+  assert.equal(await planning.saveQuoteRoute(owner,quoteId,{...places,pickup_km:"10",destination_km:"17",return_km:"19",
+    reviewed_for_truck:true,correction_reason:"Ruta apta verificada con conductor"}),46);
+  const costing={trips:"2",asset_id:"",equipment:"Camión tolva",capacity:"10",capacity_unit:"tonelada",km_per_liter:"2",
+    fuel_price_clp:"1000",equipment_cost_clp:"10000",tolls_clp:"2000",driver_hours:"3",driver_hour_clp:"5000",
+    support_hours:"2",support_hour_clp:"2000",per_diem_clp:"3000",loading_clp:"1000",disposal_quantity:"1.5",
+    disposal_unit:"tonelada",disposal_unit_clp:"10000",stay_clp:"500",other_clp:"500",contingency_pct:"10",margin_pct:"20"};
+  await assert.rejects(()=>planning.saveQuoteCosting(viewer,quoteId,costing),planning.QuotePlanningError);
+  const estimate=await planning.saveQuoteCosting(owner,quoteId,costing);
+  assert.deepEqual([estimate.fuel,estimate.direct,estimate.contingency,estimate.cost,estimate.net,estimate.vat,estimate.total],
+    [46000,148000,14800,162800,203500,38665,242165]);
+  await assert.rejects(()=>planning.getQuotePlanning(viewer,quoteId),planning.QuotePlanningError);
+  await planning.applySuggestedQuotePrice(owner,quoteId);
+  assert.equal((await quotes.getQuote(owner,quoteId)).totals.net,203500);
   assert.deepEqual(await quotes.quoteDeliveryIssues(initial.quote,initial.lines),[]);
   await quotes.recordManualQuoteDelivery(owner,quoteId,delivery);
   assert.equal((await quotes.getQuote(viewer,quoteId)).quote.status,"enviada");
@@ -62,6 +92,7 @@ test("destinos de Carol bloquean entrega inválida y conservan cotizaciones ante
     issued_on:"2026-10-14",valid_until:"2099-12-31",line:{description:"Retiro anterior",principal:"retiro",segment:"retiro_chatarra",
     quantity:"1",unit:"viaje",unit_price_clp:"1000"}});
   await db.query("UPDATE client_quote_lines SET destination_required=false WHERE quote_id=$1",[historicId]);
+  await db.query("UPDATE client_quotes SET route_required=false WHERE id=$1",[historicId]);
   const historic=await quotes.getQuote(owner,historicId);
   assert.deepEqual(await quotes.quoteDeliveryIssues(historic.quote,historic.lines),[],"los conceptos anteriores no reciben restricciones nuevas");
   await quotes.recordManualQuoteDelivery(owner,historicId,delivery);
