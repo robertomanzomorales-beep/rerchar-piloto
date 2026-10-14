@@ -8,10 +8,14 @@ Fuente: `CONTROL GUIA RERCHAR CHILE AÑO 2026.xlsx`, hojas mensuales (en particu
 | H–L: ticket faena, peso faena, complemento stock, ticket salida, salida | Campos del material y salida calculada | L = I + J; una salida sólo desde stock es válida |
 | M–Q: ticket destino, llegada, devuelto, diferencia, observaciones | Llegada, devolución, diferencia y observaciones | P = N − (L − O); faltantes permanecen pendientes, no se vuelven cero |
 | R–Y: impureza, peso factura, diferencia, precios y valores | Impureza, kg facturados, precios y totales calculados | T = (N − R) − S; W = U × (N − R); X = S × V; Y = W − X |
-| Z–AC: factura, emisión, estado y pago | Número, fecha, estado y fecha de pago por ítem | Venta sin factura y factura no pagada generan alerta |
+| Z–AC: factura, emisión, estado y pago | Número, fecha, estado y fecha de pago por ítem | El registro histórico conserva su estado; la venta nueva puede vincular su factura real con Cobranza |
 | AD–AJ: flete, transportista, factura, guía, pago y observación | Datos y estado de flete en encabezado | La referencia de guía distinta se marca para revisión |
 
 La columna O es el material devuelto según la cabecera de la planilla. El ticket y peso de retorno se conservan aparte; no se aplican como otra resta. El control es operativo e imprimible; no emite documentos tributarios ni reemplaza la guía oficial.
+
+## Venta y cobranza
+
+Administración puede vincular cada material de una guía de **venta** RERCHAR con el folio de la factura externa, su emisión, vencimiento y **total real del documento**, que puede incluir impuestos y varios materiales. El valor calculado por kilos es sólo referencia operativa. Si dos ítems o guías del mismo cliente comparten folio, fechas y total, se usa una única cuenta por cobrar. Las alertas de cobranza toman el saldo de los abonos comprobados, no el estado manual anterior de la planilla. Se rechaza la vinculación de ítems que ya indican pagos históricos sin conciliar, folios vigentes de Finanzas o datos contradictorios. Al anular una factura sin abonos, se desvinculan los materiales y se conserva la trazabilidad en Auditoría. La migración `043_venta_material_cobranza.sql` habilita esta función; si falta, la guía sigue operativa y muestra el aviso de migración.
 
 Los controles anteriores asociados a servicios permanecen en sus fichas y se enlazan desde la vista general, sin duplicarse. La planilla histórica aún no está importada: sus filas con pesos ausentes, anulaciones y fórmulas requieren conciliación. Con la migración `020`, la columna `J` de **ventas nuevas** descuenta material del catálogo con saldo físico confirmado. La columna `I` (faena) sigue en tránsito y no se descuenta. Las guías creadas antes de `020` no generan un descuento retroactivo; se señalan cuando su salida desde stock requiere conciliación.
 

@@ -1,4 +1,5 @@
 import {db} from "./db";
+import {moduleReady} from "./schema-readiness";
 
 type GuideStats={total:string;pending:string;stock_pending:string};
 type MaterialStats={guides:GuideStats;materials:string;stock_ready:boolean};
@@ -42,12 +43,17 @@ export async function rercharReceiptClosureDashboard(){
 // Otros errores de base de datos se propagan para no presentar cifras falsas.
 export async function rercharMaterialDashboard():Promise<MaterialStats>{
   try{
+    const billingReady=await moduleReady("material_sale_billing");
     const [guides,balances]=await Promise.all([
       db.query<GuideStats>(`SELECT count(*)::text AS total,
         count(*) FILTER (WHERE movement_type='venta' AND EXISTS (
           SELECT 1 FROM material_guide_items i WHERE i.guide_id=g.id AND
             (i.arrival_kg IS NULL OR i.invoice_number IS NULL OR
-              (i.invoice_number IS NOT NULL AND i.invoice_status IS DISTINCT FROM 'pagada'))))::text AS pending,
+              (i.invoice_number IS NOT NULL AND ${billingReady?`(i.receivable_invoice_id IS NOT NULL AND EXISTS(
+                SELECT 1 FROM extra_receivable_invoices f WHERE f.id=i.receivable_invoice_id AND f.status='emitida' AND
+                  f.total_clp>COALESCE((SELECT sum(p.amount_clp) FROM extra_receivable_payments p WHERE p.invoice_id=f.id),0))
+                OR i.receivable_invoice_id IS NULL AND i.invoice_status IS DISTINCT FROM 'pagada')`:
+                "i.invoice_status IS DISTINCT FROM 'pagada'"}))))::text AS pending,
         count(*) FILTER (WHERE movement_type='venta' AND EXISTS (
           SELECT 1 FROM material_guide_items i WHERE i.guide_id=g.id AND i.stock_kg>0 AND
             COALESCE((SELECT -sum(m.delta_kg) FROM material_stock_movements m WHERE m.guide_item_id=i.id),0)<i.stock_kg))::text AS stock_pending

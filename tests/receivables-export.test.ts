@@ -4,7 +4,7 @@ import {filterReceivables,parseReceivableFilter,receivablesCsv} from "../lib/rec
 import type {Receivable} from "../lib/receivables";
 
 const invoice=(id:string,due_on:string,total_clp:string,paid_clp:string,client_name="Cliente"):Receivable=>({
-  id,source:"servicio",service_id:null,statement_id:null,edp_count:"0",extra_count:"0",
+  id,source:"servicio",service_id:null,statement_id:null,guide_id:null,guide_count:"0",edp_count:"0",extra_count:"0",
   invoice_number:`F-${id}`,client_name,issued_on:"2026-10-01",due_on,total_clp,paid_clp,
 });
 
@@ -27,6 +27,8 @@ test("CSV de cada empresa conserva saldo y protege textos al abrir una planilla"
   const rerchar=receivablesCsv([row],"rerchar","2026-10-14");
   assert.match(rerchar,/^\uFEFF"Empresa";/);
   assert.match(rerchar,/"RERCHAR";"F-1";"'=SUM\(1;1\)\n""Cliente"""/);
-  assert.match(rerchar,/"2026-10-12";"2";"Vencida";"1234,50";"234,25";"1000,25";"2";"0"\r\n$/);
+  assert.match(rerchar,/"2026-10-12";"2";"Vencida";"1234,50";"234,25";"1000,25";"2";"0";"0"\r\n$/);
   assert.match(receivablesCsv([row],"e_y_j","2026-10-14"),/"E y J";"F-1"/);
+  row.source="material";row.guide_count="2";
+  assert.match(receivablesCsv([row],"rerchar","2026-10-14"),/"Venta de material".*"2"\r\n$/s);
 });

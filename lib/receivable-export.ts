@@ -32,17 +32,17 @@ function csv(value:string|number){
 
 export function receivablesCsv(rows:Receivable[],company:Company,today:string){
   const seven=plusDays(today,7);
-  const header=["Empresa","Folio factura","Cliente","Origen","Emisión","Vencimiento","Días vencidos","Estado","Total CLP","Abonado CLP","Saldo CLP","EDP vinculados","Cargos vinculados"];
+  const header=["Empresa","Folio factura","Cliente","Origen","Emisión","Vencimiento","Días vencidos","Estado","Total CLP","Abonado CLP","Saldo CLP","EDP vinculados","Cargos vinculados","Guías vinculadas"];
   const lines=[header.map(csv).join(";")];
   for(const invoice of rows){
     const due=day(invoice.due_on),amount=balance(invoice);
     const daysOverdue=amount>0&&due<today?Math.round((Date.parse(`${today}T12:00:00Z`)-Date.parse(`${due}T12:00:00Z`))/86400000):0;
     const status=amount<=0?"Pagada":due<today?"Vencida":due<=seven?"Vence en 7 días":"Pendiente";
-    const origin=invoice.source==="servicio"?"Servicio":invoice.source==="edp"?"Estado de pago":"Cargo extraordinario";
+    const origin=invoice.source==="servicio"?"Servicio":invoice.source==="edp"?"Estado de pago":invoice.source==="material"?"Venta de material":"Cargo extraordinario";
     const money=(value:number|string)=>Number(value).toFixed(2).replace(".",",");
     lines.push([company==="rerchar"?"RERCHAR":"E y J",invoice.invoice_number,invoice.client_name,origin,
       day(invoice.issued_on),due,daysOverdue,status,money(invoice.total_clp),money(invoice.paid_clp),money(amount),
-      invoice.edp_count,invoice.extra_count].map(csv).join(";"));
+      invoice.edp_count,invoice.extra_count,invoice.guide_count].map(csv).join(";"));
   }
   return `\uFEFF${lines.join("\r\n")}\r\n`;
 }

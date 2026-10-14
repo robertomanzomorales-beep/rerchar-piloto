@@ -1,6 +1,6 @@
 import {db} from "./db";
 
-export type ModuleKey="guias"|"ingresos"|"stock"|"edp"|"edp_service_import"|"edp_billing"|"edp_calendar"|"cotizaciones"|"certificados_borradores";
+export type ModuleKey="guias"|"ingresos"|"stock"|"edp"|"edp_service_import"|"edp_billing"|"edp_calendar"|"cotizaciones"|"certificados_borradores"|"material_sale_billing";
 
 // Sólo se consultan nombres fijos del esquema. Detectar la tabla sin sus columnas
 // evita mostrar un módulo parcialmente migrado como si estuviera operativo.
@@ -8,6 +8,8 @@ const requirements:Record<ModuleKey,{tables:string[];columns:[string,string][]}>
   certificados_borradores:{tables:["service_certificate_drafts"],columns:[["service_certificate_drafts","snapshot"]]},
   guias:{tables:["material_guides","material_guide_items","material_catalog","material_stock_movements"],
     columns:[["material_guide_items","material_id"],["material_guides","movement_detail"]]},
+  material_sale_billing:{tables:["material_guide_items","extra_receivable_invoices","extra_receivable_payments"],
+    columns:[["material_guide_items","receivable_invoice_id"]]},
   ingresos:{tables:["material_receipts","material_catalog","material_stock_balances"],
     columns:[["material_receipts","material_id"],["material_receipts","receipt_mode"]]},
   stock:{tables:["material_catalog","material_stock_balances","material_stock_movements"],columns:[]},

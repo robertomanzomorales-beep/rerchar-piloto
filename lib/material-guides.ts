@@ -3,6 +3,7 @@ import type {Actor} from "./auth";
 import {canManage} from "./auth";
 import {db,transaction,type Db} from "./db";
 import {catalogName,syncGuideStock} from "./material-stock";
+import {moduleReady} from "./schema-readiness";
 
 const uuid=z.uuid();
 const optional=(max:number)=>z.string().trim().max(max).default("");
@@ -44,7 +45,8 @@ export type MaterialGuideItem={id:string;guide_id:string;line_number:number;mate
   destination_ticket:string|null;arrival_kg:string|null;returned_kg:string|null;return_ticket:string|null;
   return_kg:string|null;destination_impurity_kg:string|null;invoice_kg:string|null;agreed_price_clp:string|null;
   invoice_price_clp:string|null;invoice_number:string|null;invoice_issued_on:Date|string|null;
-  invoice_status:string|null;payment_on:Date|string|null;valued_guide_number:string|null;notes:string|null};
+  invoice_status:string|null;payment_on:Date|string|null;valued_guide_number:string|null;notes:string|null;
+  receivable_invoice_id?:string|null};
 
 const cents=(value:string|number|null)=>value==null||value===""?null:Math.round(Number(value)*100);
 export function materialGuideTotals(item:Pick<MaterialGuideItem,"origin_kg"|"stock_kg"|"arrival_kg"|"returned_kg"|
@@ -81,12 +83,16 @@ function validateItem(item:Item,type:MaterialGuide["movement_type"]){
     reject("El pago no puede ser anterior a la factura.");
 }
 
-const base=`SELECT g.*,c.name AS counterparty_name,
+const base=(billingReady:boolean)=>`SELECT g.*,c.name AS counterparty_name,
   count(i.id)::text AS line_count,
   sum(COALESCE(i.origin_kg,0)+COALESCE(i.stock_kg,0)) FILTER (WHERE i.origin_kg IS NOT NULL OR i.stock_kg IS NOT NULL)::text AS departure_kg,
   count(i.id) FILTER (WHERE g.movement_type='venta' AND i.arrival_kg IS NULL)::text AS missing_arrival,
   count(i.id) FILTER (WHERE g.movement_type='venta' AND i.invoice_number IS NULL)::text AS missing_invoice,
-  count(i.id) FILTER (WHERE g.movement_type='venta' AND i.invoice_number IS NOT NULL AND i.invoice_status IS DISTINCT FROM 'pagada')::text AS missing_payment,
+  count(i.id) FILTER (WHERE g.movement_type='venta' AND i.invoice_number IS NOT NULL AND
+    ${billingReady?`(i.receivable_invoice_id IS NOT NULL AND EXISTS(SELECT 1 FROM extra_receivable_invoices f WHERE f.id=i.receivable_invoice_id
+        AND f.status='emitida' AND f.total_clp>COALESCE((SELECT sum(p.amount_clp) FROM extra_receivable_payments p WHERE p.invoice_id=f.id),0))
+      OR i.receivable_invoice_id IS NULL AND i.invoice_status IS DISTINCT FROM 'pagada')`:
+      "i.invoice_status IS DISTINCT FROM 'pagada'"})::text AS missing_payment,
   count(i.id) FILTER (WHERE g.movement_type='venta' AND i.stock_kg>0 AND
     COALESCE((SELECT -sum(m.delta_kg) FROM material_stock_movements m WHERE m.guide_item_id=i.id),0)<i.stock_kg)::text AS unposted_stock
   FROM material_guides g JOIN clients c ON c.id=g.counterparty_id LEFT JOIN material_guide_items i ON i.guide_id=g.id`;
@@ -95,7 +101,8 @@ export async function listMaterialGuides(actor:Actor,term="",type=""){
   manage(actor);
   const q=term.trim().slice(0,100);
   const kind=["venta","compra","traslado"].includes(type)?type:"";
-  return db.query<MaterialGuide>(`${base} WHERE ($1::text='' OR g.guide_number ILIKE '%'||$1||'%'
+  const ready=await moduleReady("material_sale_billing");
+  return db.query<MaterialGuide>(`${base(ready)} WHERE ($1::text='' OR g.guide_number ILIKE '%'||$1||'%'
     OR c.name ILIKE '%'||$1||'%' OR EXISTS (SELECT 1 FROM material_guide_items x WHERE x.guide_id=g.id AND x.material_name ILIKE '%'||$1||'%'))
     AND ($2::text='' OR g.movement_type=$2)
     GROUP BY g.id,c.name ORDER BY g.movement_on DESC,g.created_at DESC LIMIT 250`,[q,kind]);
@@ -104,7 +111,8 @@ export async function listMaterialGuides(actor:Actor,term="",type=""){
 export async function getMaterialGuide(actor:Actor,id:string){
   manage(actor);
   if(!uuid.safeParse(id).success)reject("Guía no encontrada.");
-  const [guide]=await db.query<MaterialGuide>(`${base} WHERE g.id=$1 GROUP BY g.id,c.name`,[id]);
+  const ready=await moduleReady("material_sale_billing");
+  const [guide]=await db.query<MaterialGuide>(`${base(ready)} WHERE g.id=$1 GROUP BY g.id,c.name`,[id]);
   if(!guide)reject("Guía no encontrada.");
   const items=await db.query<MaterialGuideItem>("SELECT * FROM material_guide_items WHERE guide_id=$1 ORDER BY line_number",[id]);
   return {guide,items};
@@ -170,6 +178,12 @@ export async function saveMaterialGuideItem(actor:Actor,guideId:string,input:unk
     if(!item.item_id)return insertItem(tx,actor,guideId,item,guide.movement_type,guide.guide_number,movementOn);
     const [previous]=await tx.query<MaterialGuideItem>("SELECT * FROM material_guide_items WHERE id=$1 AND guide_id=$2 FOR UPDATE",[item.item_id,guideId]);
     if(!previous||previous.line_number!==item.line_number)reject("Ítem no encontrado; recargue la guía.");
+    if(previous.receivable_invoice_id&&(
+      (previous.invoice_number??"")!==item.invoice_number||
+      (previous.invoice_issued_on instanceof Date?previous.invoice_issued_on.toISOString().slice(0,10):String(previous.invoice_issued_on??"").slice(0,10))!==item.invoice_issued_on||
+      (previous.invoice_status??"")!==item.invoice_status||
+      (previous.payment_on instanceof Date?previous.payment_on.toISOString().slice(0,10):String(previous.payment_on??"").slice(0,10))!==item.payment_on))
+      reject("La factura vinculada y sus pagos se administran en Cobranza. Conserve esos campos al editar el material.");
     const materialName=item.material_id?await catalogName(tx,item.material_id):item.material_name;
     const fields=["material_id","material_name","origin_ticket","origin_kg","stock_kg","departure_ticket","destination_ticket","arrival_kg",
       "returned_kg","return_ticket","return_kg","destination_impurity_kg","invoice_kg","agreed_price_clp",
@@ -187,9 +201,17 @@ export async function saveMaterialGuideItem(actor:Actor,guideId:string,input:unk
 export async function updateMaterialGuide(actor:Actor,id:string,input:unknown){
   manage(actor);if(!uuid.safeParse(id).success)reject("Guía inválida.");
   const data=headerSchema.omit({submission_key:true,guide_number:true,movement_type:true}).parse(input);
+  const billingReady=await moduleReady("material_sale_billing");
   await transaction(async tx=>{
     const [previous]=await tx.query<MaterialGuide>("SELECT * FROM material_guides WHERE id=$1 FOR UPDATE",[id]);
     if(!previous)reject("Guía no encontrada.");
+    if(billingReady){
+      const [linked]=await tx.query<{issued_on:Date|string}>(`SELECT f.issued_on FROM material_guide_items i
+        JOIN extra_receivable_invoices f ON f.id=i.receivable_invoice_id WHERE i.guide_id=$1 ORDER BY f.issued_on LIMIT 1`,[id]);
+      if(linked&&(data.counterparty_id!==previous.counterparty_id||
+        data.movement_on>(linked.issued_on instanceof Date?linked.issued_on.toISOString().slice(0,10):String(linked.issued_on).slice(0,10))))
+        reject("La guía tiene una factura vinculada. No cambie el cliente ni mueva la salida después de la emisión.");
+    }
     const [client]=await tx.query("SELECT id FROM clients WHERE id=$1 AND deleted_at IS NULL",[data.counterparty_id]);
     if(!client)reject("Seleccione una contraparte activa.");
     const fields=["movement_on","counterparty_id","movement_detail","origin","destination","driver_name","truck_plate","trailer_plate",

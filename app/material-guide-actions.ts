@@ -6,6 +6,7 @@ import {ZodError} from "zod";
 import {requireActor} from "@/lib/auth";
 import {MaterialGuideError,createMaterialGuide,saveMaterialGuideItem,updateMaterialGuide} from "@/lib/material-guides";
 import {MaterialStockError} from "@/lib/material-stock";
+import {MaterialSaleBillingError,linkMaterialSaleInvoice} from "@/lib/material-sale-billing";
 
 const value=(form:FormData,key:string)=>String(form.get(key)??"");
 const header=["submission_key","guide_number","movement_on","movement_type","counterparty_id","movement_detail","origin","destination",
@@ -17,7 +18,7 @@ const item=["item_id","line_number","material_id","material_name","origin_ticket
   "payment_on","valued_guide_number","notes"] as const;
 const fields=(form:FormData,keys:readonly string[])=>Object.fromEntries(keys.map(key=>[key,value(form,key)]));
 function message(error:unknown){
-  if(error instanceof MaterialGuideError||error instanceof MaterialStockError)return error.message;
+  if(error instanceof MaterialGuideError||error instanceof MaterialStockError||error instanceof MaterialSaleBillingError)return error.message;
   if(error instanceof ZodError)return "Revise fecha, contraparte, material, pesos y datos de factura.";
   console.error("Error al registrar control de guía",error);
   return "No fue posible guardar la guía. Revise si el número ya existe.";
@@ -49,4 +50,13 @@ export async function updateMaterialGuideAction(form:FormData){
   catch(error){notify(path,error);}
   revalidatePath("/","layout");
   redirect(`${path}?ok=1`);
+}
+
+export async function linkMaterialSaleInvoiceAction(form:FormData){
+  const actor=await requireActor(),id=value(form,"guide_id");
+  const path=`/control-guias/${encodeURIComponent(id)}`;
+  try{await linkMaterialSaleInvoice(actor,id,value(form,"item_id"),fields(form,["invoice_number","issued_on","due_on","total_clp"]));}
+  catch(error){notify(path,error);}
+  revalidatePath("/","layout");
+  redirect(`${path}?ok=1#cobranza`);
 }

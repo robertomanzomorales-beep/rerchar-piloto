@@ -23,7 +23,7 @@ export default async function Receivables({searchParams}:{searchParams:Promise<{
   const seven=inSeven.toISOString().slice(0,10);
   const visible=filterReceivables(invoices,filter,today);
   return <>
-    <div className="page-title-row"><div><div className="eyebrow">ADMINISTRACIÓN · {companyName(company)}</div><h1>Cobranza clientes</h1><p className="page-intro">Facturas externas de servicios y cargos extraordinarios, pagos, vencimientos y alertas.</p></div><Banknote size={23}/></div>
+    <div className="page-title-row"><div><div className="eyebrow">ADMINISTRACIÓN · {companyName(company)}</div><h1>Cobranza clientes</h1><p className="page-intro">Facturas externas de servicios, estados de pago, ventas de material y cargos extraordinarios, con saldos y alertas.</p></div><Banknote size={23}/></div>
     <Notice error={query.error} ok={query.ok}/>
     <form action="/cobranzas" method="GET" className="filters"><label>Empresa<select name="empresa" defaultValue={company}><option value="rerchar">RERCHAR</option><option value="e_y_j">E y J</option></select></label>
       <label>Estado<select name="estado" defaultValue={filter}><option value="pendientes">Con saldo</option><option value="vencidas">Vencidas</option><option value="proximas">Vencen en 7 días</option><option value="pagadas">Pagadas</option><option value="todas">Todas</option></select></label>
@@ -38,9 +38,10 @@ export default async function Receivables({searchParams}:{searchParams:Promise<{
         const balance=Number(invoice.total_clp)-Number(invoice.paid_clp),due=day(invoice.due_on);
         return <article key={`${invoice.source}-${invoice.id}`} className="note-block">
           <strong>{invoice.invoice_number} · {invoice.client_name} · {balance<=0?"Pagada":due<today?"Vencida":due<=seven?"Vence pronto":"Pendiente"}</strong>
-          <p>{invoice.source==="servicio"?"Factura de servicio":invoice.source==="edp"?"Factura asociada a EDP":"Factura de cobro extraordinario"} · Emisión {day(invoice.issued_on)} · Vencimiento {due}{Number(invoice.edp_count)>0?` · ${invoice.edp_count} EDP vinculado(s)`:""}{Number(invoice.extra_count)>0?` · ${invoice.extra_count} cargo(s) asociados`:""}</p>
+          <p>{invoice.source==="servicio"?"Factura de servicio":invoice.source==="edp"?"Factura asociada a EDP":invoice.source==="material"?"Factura de venta de material":"Factura de cobro extraordinario"} · Emisión {day(invoice.issued_on)} · Vencimiento {due}{Number(invoice.edp_count)>0?` · ${invoice.edp_count} EDP vinculado(s)`:""}{Number(invoice.extra_count)>0?` · ${invoice.extra_count} cargo(s) asociados`:""}{Number(invoice.guide_count)>0?` · ${invoice.guide_count} guía(s) vinculada(s)`:""}</p>
           <p>Total <strong>${money(invoice.total_clp)}</strong> · Abonado ${money(invoice.paid_clp)} · Saldo <strong>${money(balance)}</strong></p>
           {invoice.statement_id&&<Link href={`/estados-pago/${invoice.statement_id}`}>Ver EDP asociado →</Link>}
+          {invoice.guide_id&&<Link href={`/control-guias/${invoice.guide_id}`}>Ver guía de material →</Link>}
           {invoice.source==="servicio"?<Link href={`/finanzas/${invoice.service_id}`}>Ver factura y registrar abono →</Link>:<>
             {invoice.service_id&&<Link href={`/solicitudes/${invoice.service_id}`}>Ver servicio asociado →</Link>}
             {balance>0&&<details className="reference-control"><summary>Registrar abono comprobado</summary><form action={registerExtraReceivablePaymentAction} className="form-grid detail-form">
@@ -53,7 +54,7 @@ export default async function Receivables({searchParams}:{searchParams:Promise<{
             {Number(invoice.paid_clp)===0&&<details className="cancel-control"><summary>Anular factura registrada por error</summary><form action={voidExtraReceivableInvoiceAction} className="form-grid detail-form"><input type="hidden" name="invoice_id" value={invoice.id}/><input type="hidden" name="company" value={company}/><label className="field-full">Motivo<input name="reason" minLength={5} maxLength={500} required/></label><div className="field-full form-footer"><SubmitButton className="button button-outline">Confirmar anulación</SubmitButton></div></form></details>}
           </>}
         </article>;
-      })}</div>:<p className="muted">No hay facturas en esta vista. Cambie el estado o registre una factura desde el servicio.</p>}
+      })}</div>:<p className="muted">No hay facturas en esta vista. Cambie el estado o registre una factura desde el servicio, el EDP o la guía de material.</p>}
     </section>
   </>;
 }
