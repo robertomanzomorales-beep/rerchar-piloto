@@ -5,7 +5,7 @@ import {redirect} from "next/navigation";
 import {revalidatePath} from "next/cache";
 import {ZodError} from "zod";
 import {requireActor} from "@/lib/auth";
-import {QuoteError,createQuote,addQuoteLine,updateQuoteLine,removeQuoteLine,recordManualQuoteDelivery,recordQuoteDecision,resolveQuoteSending,sendQuote} from "@/lib/quotes";
+import {QuoteError,createQuote,addQuoteLine,updateQuoteLine,removeQuoteLine,recordManualQuoteDelivery,recordQuoteDecision,resolveQuoteSending,sendQuote,confirmPurchaseTax} from "@/lib/quotes";
 
 const v=(form:FormData,key:string)=>String(form.get(key)??"");
 function message(error:unknown){if(error instanceof QuoteError)return error.message;if(error instanceof ZodError)return "Revise cliente, fechas, clasificación, destino, cantidad y precio.";console.error("Error en cotizaciones",error);return "No se pudo guardar esta cotización.";}
@@ -13,25 +13,31 @@ export async function createQuoteAction(form:FormData){
   const actor=await requireActor();let id:string;
   try{id=await createQuote(actor,{submission_key:v(form,"submission_key")||randomUUID(),client_id:v(form,"client_id"),issuer:v(form,"issuer"),title:v(form,"title"),
     notes:v(form,"notes"),issued_on:v(form,"issued_on"),valid_until:v(form,"valid_until"),vat_rate:v(form,"vat_rate"),
-    line:{description:v(form,"description"),principal:v(form,"principal"),segment:v(form,"segment"),waste_category:v(form,"waste_category"),destination_id:v(form,"destination_id"),quantity:v(form,"quantity"),unit:v(form,"unit"),unit_price_clp:v(form,"unit_price_clp"),taxable:form.get("taxable")==="on"}});}
+    line:{description:v(form,"description"),principal:v(form,"principal"),segment:v(form,"segment"),waste_category:v(form,"waste_category"),destination_id:v(form,"destination_id"),material_id:v(form,"material_id"),line_note:v(form,"line_note"),quantity:v(form,"quantity"),unit:v(form,"unit"),unit_price_clp:v(form,"unit_price_clp"),taxable:form.get("taxable")==="on"}});}
   catch(error){redirect(`/cotizaciones/nueva?error=${encodeURIComponent(message(error))}`);}
   revalidatePath("/","layout");redirect(`/cotizaciones/${id}?ok=1`);
 }
 export async function addQuoteLineAction(form:FormData){
   const actor=await requireActor();const id=v(form,"quote_id"),path=`/cotizaciones/${encodeURIComponent(id)}`;
-  try{await addQuoteLine(actor,id,{description:v(form,"description"),principal:v(form,"principal"),segment:v(form,"segment"),waste_category:v(form,"waste_category"),destination_id:v(form,"destination_id"),quantity:v(form,"quantity"),unit:v(form,"unit"),unit_price_clp:v(form,"unit_price_clp"),taxable:form.get("taxable")==="on"});}
+  try{await addQuoteLine(actor,id,{description:v(form,"description"),principal:v(form,"principal"),segment:v(form,"segment"),waste_category:v(form,"waste_category"),destination_id:v(form,"destination_id"),material_id:v(form,"material_id"),line_note:v(form,"line_note"),quantity:v(form,"quantity"),unit:v(form,"unit"),unit_price_clp:v(form,"unit_price_clp"),taxable:form.get("taxable")==="on"});}
   catch(error){redirect(`${path}?error=${encodeURIComponent(message(error))}`);}
   revalidatePath("/","layout");redirect(`${path}?ok=1`);
 }
 export async function updateQuoteLineAction(form:FormData){
   const actor=await requireActor();const id=v(form,"quote_id"),path=`/cotizaciones/${encodeURIComponent(id)}`;
-  try{await updateQuoteLine(actor,id,v(form,"line_id"),{description:v(form,"description"),principal:v(form,"principal"),segment:v(form,"segment"),waste_category:v(form,"waste_category"),destination_id:v(form,"destination_id"),quantity:v(form,"quantity"),unit:v(form,"unit"),unit_price_clp:v(form,"unit_price_clp"),taxable:form.get("taxable")==="on"});}
+  try{await updateQuoteLine(actor,id,v(form,"line_id"),{description:v(form,"description"),principal:v(form,"principal"),segment:v(form,"segment"),waste_category:v(form,"waste_category"),destination_id:v(form,"destination_id"),material_id:v(form,"material_id"),line_note:v(form,"line_note"),quantity:v(form,"quantity"),unit:v(form,"unit"),unit_price_clp:v(form,"unit_price_clp"),taxable:form.get("taxable")==="on"});}
   catch(error){redirect(`${path}?error=${encodeURIComponent(message(error))}`);}
   revalidatePath("/","layout");redirect(`${path}?ok=1`);
 }
 export async function removeQuoteLineAction(form:FormData){
   const actor=await requireActor();const id=v(form,"quote_id"),path=`/cotizaciones/${encodeURIComponent(id)}`;
   try{await removeQuoteLine(actor,id,v(form,"line_id"));}
+  catch(error){redirect(`${path}?error=${encodeURIComponent(message(error))}`);}
+  revalidatePath("/","layout");redirect(`${path}?ok=1`);
+}
+export async function confirmPurchaseTaxAction(form:FormData){
+  const actor=await requireActor(),id=v(form,"quote_id"),path=`/cotizaciones/${encodeURIComponent(id)}`;
+  try{await confirmPurchaseTax(actor,id,{treatment:v(form,"treatment"),reference:v(form,"reference")});}
   catch(error){redirect(`${path}?error=${encodeURIComponent(message(error))}`);}
   revalidatePath("/","layout");redirect(`${path}?ok=1`);
 }

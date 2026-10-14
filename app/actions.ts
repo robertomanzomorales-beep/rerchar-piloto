@@ -87,7 +87,7 @@ export async function createServiceAction(form: FormData) {
   try {
     id = await createService(actor, {
       submission_key: value(form,"submission_key"), client_id: value(form,"client_id"), site_id: value(form,"site_id"),
-      operating_company:value(form,"operating_company"),quote_id:value(form,"quote_id"),
+      operating_company:value(form,"operating_company"),quote_id:value(form,"quote_id"),material_id:value(form,"material_id"),
       request_category:value(form,"request_category"),service_type: value(form,"service_type"), waste_type: value(form,"waste_type"),
       estimated_kg: value(form,"estimated_kg"), origin: value(form,"origin"), destination: value(form,"destination"),
       rental_from:value(form,"rental_from"),rental_to:value(form,"rental_to"),

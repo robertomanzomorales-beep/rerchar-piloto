@@ -8,6 +8,7 @@ import { db, transaction, type Db } from "./db";
 import { hashPassword } from "./password";
 import { findMissingExternalRequirements, findMissingRequirements } from "./personnel";
 import type { Company } from "./companies";
+import {catalogName} from "./material-stock";
 
 const uuid = z.uuid();
 const required = (max = 180) => z.string().trim().min(2).max(max);
@@ -220,6 +221,7 @@ export async function createUser(actor: Actor, input: unknown) {
 const createSchema = z.object({
   submission_key: uuid, client_id: uuid, site_id: uuid,
   operating_company: z.enum(["rerchar", "e_y_j"]), quote_id: z.union([uuid,z.literal("")]).default(""),
+  material_id:z.union([uuid,z.literal("")]).default(""),
   request_category: z.enum(["servicios", "compra", "venta", "otro"]).optional(),
   service_type: z.enum(["retiro", "traslado", "arriendo", "compra", "venta", "otro"]),
   waste_type: required(120), estimated_kg: z.union([positive, z.literal("")]).optional(),
@@ -243,18 +245,34 @@ export async function createService(actor: Actor, input: unknown) {
   return transaction(async (tx) => {
     const [site] = await tx.query("SELECT id FROM client_sites WHERE id = $1 AND client_id = $2 AND deleted_at IS NULL", [data.site_id, data.client_id]);
     if (!site) reject("El centro no pertenece al cliente seleccionado.");
+    let materialRows:{id:string;position:number;material_id:string|null;description:string;quantity:string;unit:string;unit_price_clp:string;line_note:string|null}[]=[];
     if (data.quote_id) {
-      const [quote] = await tx.query<{issuer:Company;client_id:string;status:string}>(
-        "SELECT issuer,client_id,status FROM client_quotes WHERE id=$1", [data.quote_id]);
+      const [quote] = await tx.query<{issuer:Company;client_id:string;status:string;commercial_kind:string;notes:string|null}>(
+        "SELECT issuer,client_id,status,commercial_kind,notes FROM client_quotes WHERE id=$1 FOR UPDATE", [data.quote_id]);
       if (!quote || quote.status !== "aceptada" || quote.client_id !== data.client_id || quote.issuer !== data.operating_company)
         reject("La cotización debe estar aceptada y corresponder al mismo cliente y empresa.");
+      if((quote.commercial_kind==="compra_material")!==(category==="compra"))reject("La clase de solicitud debe coincidir con la propuesta aceptada.");
+      if(category==="compra"){
+        if(data.material_id)reject("Los materiales de una propuesta aceptada se copian automáticamente.");
+        const [existing]=await tx.query<{id:string;submission_key:string;created_by:string}>(
+          "SELECT id,submission_key,created_by FROM service_requests WHERE quote_id=$1 AND deleted_at IS NULL LIMIT 1",[data.quote_id]);
+        if(existing){if(existing.submission_key===data.submission_key&&existing.created_by===actor.id)return existing.id;
+          reject("Esta propuesta de compra ya tiene una solicitud vinculada.");}
+        materialRows=await tx.query("SELECT id,position,material_id,description,quantity,unit,unit_price_clp,line_note FROM client_quote_lines WHERE quote_id=$1 ORDER BY position",[data.quote_id]);
+        if(!materialRows.length||materialRows.some(line=>!line.material_id||line.unit!=="kg"))reject("La propuesta de compra debe incluir materiales del catálogo en kg.");
+      }
+    }else if(category==="compra"&&data.material_id){
+      if(data.estimated_kg===""||data.estimated_kg===undefined)reject("Indique los kg estimados del material del catálogo.");
+      const name=await catalogName(tx,data.material_id);
+      materialRows=[{id:"",position:1,material_id:data.material_id,description:name,quantity:Number(data.estimated_kg).toFixed(3),unit:"kg",unit_price_clp:"0",line_note:null}];
     }
     const [created] = await tx.query<{ id: string }>(
       `INSERT INTO service_requests
        (submission_key, client_id, site_id, operating_company, quote_id, request_category, service_type, waste_type, estimated_kg, origin, destination, priority, notes, created_by, rental_from, rental_to)
        VALUES ($1,$2,$3,$4,NULLIF($5,'')::uuid,$6,$7,$8,$9,$10,$11,$12,NULLIF($13,''),$14,NULLIF($15,'')::date,NULLIF($16,'')::date)
        ON CONFLICT (submission_key) DO NOTHING RETURNING id`,
-      [data.submission_key, data.client_id, data.site_id, data.operating_company, data.quote_id, category, data.service_type, data.waste_type,
+      [data.submission_key, data.client_id, data.site_id, data.operating_company, data.quote_id, category, data.service_type,
+        category==="compra"?materialRows.map(row=>row.description).join(", ").slice(0,120):data.waste_type,
         data.estimated_kg === "" || data.estimated_kg === undefined ? null : data.estimated_kg,
         data.origin, data.destination, data.priority, data.notes, actor.id,data.rental_from,data.rental_to],
     );
@@ -267,6 +285,12 @@ export async function createService(actor: Actor, input: unknown) {
         || asDay(original.rental_from)!==data.rental_from || asDay(original.rental_to)!==data.rental_to)
         reject("Esta clave ya corresponde a otra solicitud.");
       return original.id;
+    }
+    for(const line of materialRows){
+      await tx.query(`INSERT INTO service_request_materials
+        (service_id,position,material_id,material_name,quantity_kg,unit_price_clp,line_note,source_quote_line_id)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,[created.id,line.position,line.material_id,line.description,line.quantity,
+          data.quote_id?line.unit_price_clp:null,line.line_note,data.quote_id?line.id:null]);
     }
     await event(tx, created.id, actor, "solicitud_creada", "Solicitud registrada", null, { status: "solicitada", operating_company:data.operating_company, quote_id:data.quote_id || null });
     return created.id;

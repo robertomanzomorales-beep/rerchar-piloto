@@ -8,6 +8,7 @@ import {quoteFolio} from "./companies";
 import {quotePrincipals,quoteUnits,validQuoteSegment} from "./quote-catalog";
 import {wasteCategories,segmentWasteCategory,destinationNeeded,categoryName} from "./destination-catalog";
 import {calculateQuoteCost,type QuoteCosting} from "./quote-planning";
+import {catalogName} from "./material-stock";
 export {quoteFolio} from "./companies";
 
 const uuid=z.uuid();
@@ -24,16 +25,18 @@ const quantity=z.union([z.string(),z.number()]).transform((v,ctx)=>{
 });
 const item=z.object({description:z.string().trim().min(2).max(240),quantity,unit:z.string().trim().min(1).max(30),unit_price_clp:money,
   taxable:z.boolean().default(true),principal:z.string().trim().default(""),segment:z.string().trim().default(""),
-  waste_category:z.string().trim().default(""),destination_id:z.string().trim().default("")});
+  waste_category:z.string().trim().default(""),destination_id:z.string().trim().default(""),
+  material_id:z.string().trim().default(""),line_note:optional(500)});
 export class QuoteError extends Error {}
 function reject(message:string):never{throw new QuoteError(message);}
 function canEdit(actor:Actor){if(!canManage(actor))reject("Sólo operaciones puede preparar cotizaciones.");}
 export const issuers={rerchar:{name:"RERCHAR CHILE SPA",tax_id:"77.639.762-8"},e_y_j:{name:"EMPRESAS DE SERVICIOS INTEGRALES E Y J LIMITADA",tax_id:"76.347.909-9"}} as const;
 export type Quote={id:string;folio:string;display_folio:string|null;submission_key:string;client_id:string;issuer:keyof typeof issuers;client_name:string;client_tax_id:string|null;
   client_email:string|null;client_address:string|null;title:string;notes:string|null;issued_on:Date|string;valid_until:Date|string;vat_rate:string;status:string;sent_at:Date|null;created_at:Date;
-  route_required:boolean;segments?:string[]};
+  route_required:boolean;commercial_kind:"general"|"compra_material";tax_review_status:"no_aplica"|"pendiente"|"sin_iva"|"con_iva";tax_review_note:string|null;segments?:string[]};
 export type QuoteLine={id:string;position:number;description:string;quantity:string;unit:string;unit_price_clp:string;taxable:boolean;
-  principal:string|null;segment:string|null;waste_category:string|null;destination_id:string|null;destination_name:string|null;destination_required:boolean};
+  principal:string|null;segment:string|null;waste_category:string|null;destination_id:string|null;destination_name:string|null;destination_required:boolean;
+  material_id:string|null;line_note:string|null};
 export type PublicQuoteRoute={origin:string;pickup:string;destination:string;return_to:string;total_km:string};
 function checkClassification(data:z.infer<typeof item>,required:boolean){
   if(!data.principal&&!data.segment){if(required)reject("Seleccione Principal y Segmentación para el concepto.");return;}
@@ -51,15 +54,31 @@ async function destinationSnapshot(tx:Db,destinationId:string){
   if(!destination)reject("El destino ya no está disponible.");
   return destination.name;
 }
+async function purchaseLine(tx:Db,data:z.infer<typeof item>,kind:"general"|"compra_material",tax:"no_aplica"|"pendiente"|"sin_iva"|"con_iva"){
+  if(kind==="general"){
+    if(data.material_id&&data.principal!=="compra")reject("El material del catálogo corresponde a un concepto de compra.");
+    const name=data.material_id?await catalogName(tx,data.material_id):data.description;
+    return {name,materialId:data.material_id||null,taxable:data.taxable};
+  }
+  if(data.principal!=="compra"||data.segment!=="compra_metal"||data.unit!=="kg"||data.destination_id||data.waste_category)
+    reject("Una propuesta de compra admite exclusivamente materiales del catálogo en kg.");
+  if(!data.material_id)reject("Seleccione un material del catálogo de Entrada de material.");
+  const name=await catalogName(tx,data.material_id);
+  return {name,materialId:data.material_id,taxable:tax==="con_iva"};
+}
 type DestinationValidity={id:string;name:string;status:string;accepted_categories:string[];
   authorization_valid_until:Date|string|null;authorization_document_name:string|null;disposal_unit:string|null;disposal_price_clp:string|null};
-export async function quoteDeliveryIssues(quote:Pick<Quote,"valid_until"> & Partial<Pick<Quote,"id"|"route_required"|"vat_rate">>,lines:QuoteLine[],source:Db=db){
+export async function quoteDeliveryIssues(quote:Pick<Quote,"valid_until"> & Partial<Pick<Quote,"id"|"route_required"|"vat_rate"|"commercial_kind"|"tax_review_status">>,lines:QuoteLine[],source:Db=db){
   const ids=[...new Set(lines.map(line=>line.destination_id).filter((id):id is string=>Boolean(id)))];
   const destinations=ids.length?await source.query<DestinationValidity>(`SELECT id,name,status,accepted_categories,
     authorization_valid_until,authorization_document_name,disposal_unit,disposal_price_clp FROM quote_destinations WHERE id=ANY($1::uuid[])`,[ids]):[];
   const byId=new Map(destinations.map(item=>[item.id,item]));
   const validUntil=quote.valid_until instanceof Date?quote.valid_until.toISOString().slice(0,10):String(quote.valid_until).slice(0,10);
   const issues:string[]=[];
+  if(quote.commercial_kind==="compra_material"){
+    if(quote.tax_review_status==="pendiente")issues.push("Compra de material: registre la confirmación del tratamiento de IVA con Johana antes de entregar.");
+    if(lines.some(line=>!line.material_id||line.principal!=="compra"||line.unit!=="kg"))issues.push("Complete el material del catálogo y kg de cada concepto de compra.");
+  }
   for(const line of lines){
     const context=`Concepto ${line.position} (${line.description})`;
     if(line.destination_required&&destinationNeeded(line.segment)&&!line.destination_id){issues.push(`${context}: seleccione un destino final.`);continue;}
@@ -117,14 +136,15 @@ export async function listQuotes(actor:Actor,clientId="",company="",principal=""
 }
 export type QuoteReportLine={folio:string;display_folio:string|null;issuer:keyof typeof issuers;client_name:string;title:string;
   status:string;issued_on:Date|string;principal:string|null;segment:string|null;description:string;quantity:string;
-  unit:string;unit_price_clp:string;taxable:boolean;vat_rate:string;waste_category:string|null;destination_name:string|null};
+  unit:string;unit_price_clp:string;taxable:boolean;vat_rate:string;waste_category:string|null;destination_name:string|null;
+  material_id:string|null;line_note:string|null;commercial_kind:string;tax_review_status:string};
 export async function reportQuoteLines(actor:Actor,company="",principal="",segment=""){
   if(actor.role==="conductor")reject("Sin acceso a cotizaciones.");
   if(company&&!["rerchar","e_y_j"].includes(company))reject("Empresa inválida.");
   if(principal&&!quotePrincipals.some(group=>group.value===principal))reject("Principal inválida.");
   if(segment&&!validQuoteSegment(principal,segment))reject("Segmentación inválida.");
-  const rows=await db.query<QuoteReportLine>(`SELECT q.folio,q.display_folio,q.issuer,q.client_name,q.title,q.status,q.issued_on,q.vat_rate,
-    l.principal,l.segment,l.description,l.quantity,l.unit,l.unit_price_clp,l.taxable,l.waste_category,l.destination_name
+  const rows=await db.query<QuoteReportLine>(`SELECT q.folio,q.display_folio,q.issuer,q.client_name,q.title,q.status,q.issued_on,q.vat_rate,q.commercial_kind,q.tax_review_status,
+    l.principal,l.segment,l.description,l.quantity,l.unit,l.unit_price_clp,l.taxable,l.waste_category,l.destination_name,l.material_id,l.line_note
     FROM client_quotes q JOIN client_quote_lines l ON l.quote_id=q.id
     WHERE ($1::text<>'cliente' OR (q.client_id=$2::uuid AND q.status IN ('enviada','aceptada','rechazada')))
     AND ($3::text='' OR q.issuer=$3) AND ($4::text='' OR l.principal=$4) AND ($5::text='' OR l.segment=$5)
@@ -153,19 +173,21 @@ export async function createQuote(actor:Actor,input:unknown){
     if(!client)reject("Seleccione un cliente registrado.");
     const [existing]=await tx.query<{id:string;created_by:string}>("SELECT id,created_by FROM client_quotes WHERE submission_key=$1",[data.submission_key]);
     if(existing){if(existing.created_by!==actor.id)reject("La clave de cotización pertenece a otro usuario.");return existing.id;}
+    const kind=data.line.principal==="compra"?"compra_material":"general";
+    const line=await purchaseLine(tx,data.line,kind,"pendiente");
     const [quote]=await tx.query<{id:string;folio:string}>(`INSERT INTO client_quotes
-      (submission_key,client_id,issuer,client_name,client_tax_id,client_email,client_address,title,notes,issued_on,valid_until,vat_rate,created_by)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NULLIF($9,''),$10,$11,$12,$13) RETURNING id,folio`,
+      (submission_key,client_id,issuer,client_name,client_tax_id,client_email,client_address,title,notes,issued_on,valid_until,vat_rate,created_by,commercial_kind,tax_review_status)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NULLIF($9,''),$10,$11,$12,$13,$14,$15) RETURNING id,folio`,
       [data.submission_key,data.client_id,data.issuer,client.name,client.tax_id,client.email,client.address,data.title,data.notes,
-       data.issued_on,data.valid_until,data.vat_rate,actor.id]);
+       data.issued_on,data.valid_until,kind==="compra_material"?"0":data.vat_rate,actor.id,kind,kind==="compra_material"?"pendiente":"no_aplica"]);
     const displayFolio=`COT-${data.issuer==="rerchar"?"RER":"EYJ"}-${String(quote.folio).padStart(5,"0")}`;
     await tx.query("UPDATE client_quotes SET display_folio=$2,route_required=$3 WHERE id=$1",
       [quote.id,displayFolio,["retiro","transporte","instalacion"].includes(data.line.principal)]);
     const destinationName=await destinationSnapshot(tx,data.line.destination_id);
-    await tx.query(`INSERT INTO client_quote_lines(quote_id,position,description,quantity,unit,unit_price_clp,taxable,principal,segment,waste_category,destination_id,destination_name,destination_required)
-      VALUES ($1,1,$2,$3,$4,$5,$6,$7,$8,NULLIF($9,''),NULLIF($10,'')::uuid,$11,true)`,
-      [quote.id,data.line.description,data.line.quantity,data.line.unit,data.line.unit_price_clp,data.line.taxable,data.line.principal,data.line.segment,
-       data.line.waste_category,data.line.destination_id,destinationName]);
+    await tx.query(`INSERT INTO client_quote_lines(quote_id,position,description,quantity,unit,unit_price_clp,taxable,principal,segment,waste_category,destination_id,destination_name,destination_required,material_id,line_note)
+      VALUES ($1,1,$2,$3,$4,$5,$6,$7,$8,NULLIF($9,''),NULLIF($10,'')::uuid,$11,true,$12,NULLIF($13,''))`,
+      [quote.id,line.name,data.line.quantity,data.line.unit,data.line.unit_price_clp,line.taxable,data.line.principal,data.line.segment,
+       data.line.waste_category,data.line.destination_id,destinationName,line.materialId,data.line.line_note]);
     await tx.query("INSERT INTO audit_events(actor_id,action,entity_type,entity_id,next_value) VALUES ($1,'create','client_quote',$2,$3)",
       [actor.id,quote.id,JSON.stringify({client_id:data.client_id,title:data.title,issuer:data.issuer})]);
     return quote.id;
@@ -176,16 +198,17 @@ export async function addQuoteLine(actor:Actor,quoteId:string,input:unknown){
   checkClassification(data,true);
   checkDestinationInput(data);
   return transaction(async tx=>{
-    const [quote]=await tx.query<{status:string}>("SELECT status FROM client_quotes WHERE id=$1 FOR UPDATE",[id]);
+    const [quote]=await tx.query<Pick<Quote,"status"|"commercial_kind"|"tax_review_status">>("SELECT status,commercial_kind,tax_review_status FROM client_quotes WHERE id=$1 FOR UPDATE",[id]);
     if(!quote||quote.status!=="borrador")reject("Sólo el borrador admite nuevos conceptos.");
     const [count]=await tx.query<{count:string}>("SELECT count(*)::text AS count FROM client_quote_lines WHERE quote_id=$1",[id]);
     if(Number(count.count)>=100)reject("Esta cotización alcanzó 100 conceptos.");
     const [position]=await tx.query<{next:number}>("SELECT COALESCE(max(position),0)+1 AS next FROM client_quote_lines WHERE quote_id=$1",[id]);
     const destinationName=await destinationSnapshot(tx,data.destination_id);
-    const [line]=await tx.query<{id:string}>(`INSERT INTO client_quote_lines(quote_id,position,description,quantity,unit,unit_price_clp,taxable,principal,segment,waste_category,destination_id,destination_name,destination_required)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NULLIF($10,''),NULLIF($11,'')::uuid,$12,true) RETURNING id`,
-      [id,position.next,data.description,data.quantity,data.unit,data.unit_price_clp,data.taxable,data.principal,data.segment,
-       data.waste_category,data.destination_id,destinationName]);
+    const purchase=await purchaseLine(tx,data,quote.commercial_kind,quote.tax_review_status);
+    const [line]=await tx.query<{id:string}>(`INSERT INTO client_quote_lines(quote_id,position,description,quantity,unit,unit_price_clp,taxable,principal,segment,waste_category,destination_id,destination_name,destination_required,material_id,line_note)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NULLIF($10,''),NULLIF($11,'')::uuid,$12,true,$13,NULLIF($14,'')) RETURNING id`,
+      [id,position.next,purchase.name,data.quantity,data.unit,data.unit_price_clp,purchase.taxable,data.principal,data.segment,
+       data.waste_category,data.destination_id,destinationName,purchase.materialId,data.line_note]);
     if(["retiro","transporte","instalacion"].includes(data.principal))
       await tx.query("UPDATE client_quotes SET route_required=true WHERE id=$1",[id]);
     await tx.query("INSERT INTO audit_events(actor_id,action,entity_type,entity_id,next_value) VALUES ($1,'add_line','client_quote',$2,$3)",
@@ -197,18 +220,19 @@ export async function updateQuoteLine(actor:Actor,quoteId:string,lineId:string,i
   canEdit(actor);const id=uuid.parse(quoteId),line=uuid.parse(lineId),data=item.parse(input);
   checkDestinationInput(data);
   await transaction(async tx=>{
-    const [quote]=await tx.query<{status:string}>("SELECT status FROM client_quotes WHERE id=$1 FOR UPDATE",[id]);
+    const [quote]=await tx.query<Pick<Quote,"status"|"commercial_kind"|"tax_review_status">>("SELECT status,commercial_kind,tax_review_status FROM client_quotes WHERE id=$1 FOR UPDATE",[id]);
     if(quote?.status!=="borrador")reject("Sólo se pueden corregir conceptos de un borrador.");
     const [previous]=await tx.query<QuoteLine>("SELECT * FROM client_quote_lines WHERE id=$1 AND quote_id=$2",[line,id]);
     if(!previous)reject("El concepto no pertenece a esta cotización.");
     checkClassification(data,Boolean(previous.principal));
     const destinationName=await destinationSnapshot(tx,data.destination_id);
+    const purchase=await purchaseLine(tx,data,quote.commercial_kind,quote.tax_review_status);
     await tx.query(`UPDATE client_quote_lines SET description=$3,quantity=$4,unit=$5,unit_price_clp=$6,taxable=$7,
       principal=NULLIF($8,''),segment=NULLIF($9,''),waste_category=NULLIF($10,''),destination_id=NULLIF($11,'')::uuid,destination_name=$12,
-      destination_required=destination_required OR NULLIF($11,'') IS NOT NULL
+      destination_required=destination_required OR NULLIF($11,'') IS NOT NULL,material_id=$13,line_note=NULLIF($14,'')
       WHERE id=$1 AND quote_id=$2`,
-      [line,id,data.description,data.quantity,data.unit,data.unit_price_clp,data.taxable,data.principal,data.segment,
-       data.waste_category,data.destination_id,destinationName]);
+      [line,id,purchase.name,data.quantity,data.unit,data.unit_price_clp,purchase.taxable,data.principal,data.segment,
+       data.waste_category,data.destination_id,destinationName,purchase.materialId,data.line_note]);
     await tx.query(`UPDATE client_quotes SET route_required=EXISTS
       (SELECT 1 FROM client_quote_lines WHERE quote_id=$1 AND principal IN ('retiro','transporte','instalacion')) WHERE id=$1`,[id]);
     await tx.query("INSERT INTO audit_events(actor_id,action,entity_type,entity_id,previous_value,next_value) VALUES ($1,'update_line','client_quote',$2,$3,$4)",
@@ -240,6 +264,20 @@ export async function recordQuoteDecision(actor:Actor,quoteId:string,decision:"a
     await tx.query("UPDATE client_quotes SET status=$2 WHERE id=$1",[id,decision]);
     await tx.query("INSERT INTO audit_events(actor_id,action,entity_type,entity_id,next_value) VALUES ($1,$2,'client_quote',$3,$4)",
       [actor.id,decision,id,JSON.stringify({status:decision})]);
+  });
+}
+
+export async function confirmPurchaseTax(actor:Actor,quoteId:string,input:unknown){
+  canEdit(actor);const id=uuid.parse(quoteId);
+  const data=z.object({treatment:z.enum(["sin_iva","con_iva"]),reference:z.string().trim().min(10).max(500)}).parse(input);
+  await transaction(async tx=>{
+    const [quote]=await tx.query<Quote>("SELECT * FROM client_quotes WHERE id=$1 FOR UPDATE",[id]);
+    if(!quote||quote.status!=="borrador"||quote.commercial_kind!=="compra_material")reject("Sólo una propuesta de compra en borrador admite confirmar IVA.");
+    await tx.query(`UPDATE client_quotes SET tax_review_status=$2,tax_review_note=$3,tax_reviewed_by=$4,
+      tax_reviewed_at=now(),vat_rate=$5 WHERE id=$1`,[id,data.treatment,data.reference,actor.id,data.treatment==="con_iva"?"0.19":"0"]);
+    await tx.query("UPDATE client_quote_lines SET taxable=$2 WHERE quote_id=$1",[id,data.treatment==="con_iva"]);
+    await tx.query("INSERT INTO audit_events(actor_id,action,entity_type,entity_id,previous_value,next_value) VALUES ($1,'confirm_purchase_tax','client_quote',$2,$3,$4)",
+      [actor.id,id,JSON.stringify({treatment:quote.tax_review_status,reference:quote.tax_review_note}),JSON.stringify(data)]);
   });
 }
 

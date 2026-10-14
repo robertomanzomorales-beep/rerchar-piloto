@@ -91,7 +91,11 @@ export async function createMaterialReceipt(actor:Actor,input:unknown){
     const [client]=await tx.query("SELECT id FROM clients WHERE id=$1 AND deleted_at IS NULL",[data.client_id]);
     if(!client)reject("Seleccione un cliente activo.");
     if(data.service_id){const [service]=await tx.query("SELECT id FROM service_requests WHERE id=$1 AND client_id=$2 AND operating_company='rerchar' AND deleted_at IS NULL",[data.service_id,data.client_id]);
-      if(!service)reject("La hoja de ingreso de RERCHAR requiere un servicio de RERCHAR del mismo cliente.");}
+      if(!service)reject("La hoja de ingreso de RERCHAR requiere un servicio de RERCHAR del mismo cliente.");
+      const expected=await tx.query<{material_id:string}>("SELECT material_id FROM service_request_materials WHERE service_id=$1",[data.service_id]);
+      if(expected.length&&(!data.material_id||!expected.some(item=>item.material_id===data.material_id)))
+        reject("Seleccione un material que figure en la solicitud de compra vinculada.");
+    }
     const materialName=data.material_id?await catalogName(tx,data.material_id):data.material_name;
     const [r]=await tx.query<{id:string}>(`INSERT INTO material_receipts(client_id,service_id,kind,movement_on,site_name,origin,destination,
       driver_name,driver_tax_id,truck_plate,trailer_plate,weighing_ticket,material_name,supplier_kg,rerchar_kg,impurity_kg,

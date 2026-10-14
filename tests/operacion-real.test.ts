@@ -60,7 +60,7 @@ test("cotización del cliente, PDF y guía de tres pesos respetan totales y perm
   await assert.rejects(()=>quotes.updateQuoteLine(owner,quoteId,lines[1].id,{description:"Cambio tardío",quantity:"1",unit:"kg",unit_price_clp:"10",taxable:false}),quotes.QuoteError);
   await assert.rejects(()=>quotes.recordManualQuoteDelivery(owner,quoteId,{channel:"correo",recipient:"compras@cliente.cl",reference:"Enviado otra vez"}),quotes.QuoteError);
 
-  const legacyId=await quotes.createQuote(owner,{submission_key:randomUUID(),client_id:clientA.id,issuer:"rerchar",title:"Cotización anterior",issued_on:"2026-09-25",valid_until:"2026-10-25",line:{description:"Concepto previo",principal:"compra",segment:"compra_metal",quantity:"1",unit:"servicio",unit_price_clp:"5000"}});
+  const legacyId=await quotes.createQuote(owner,{submission_key:randomUUID(),client_id:clientA.id,issuer:"rerchar",title:"Cotización anterior",issued_on:"2026-09-25",valid_until:"2026-10-25",line:{description:"Concepto previo",principal:"retiro",segment:"retiro_chatarra",quantity:"1",unit:"servicio",unit_price_clp:"5000"}});
   const legacyLine=(await quotes.getQuote(owner,legacyId)).lines[0];
   await db.query("UPDATE client_quote_lines SET principal=NULL,segment=NULL,unit='unidad' WHERE id=$1",[legacyLine.id]);
   const old=await quotes.getQuote(owner,legacyId);

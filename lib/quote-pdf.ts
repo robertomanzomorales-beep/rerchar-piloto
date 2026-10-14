@@ -56,23 +56,26 @@ export async function renderQuotePdf(quote:Quote,lines:QuoteLine[],warning="",ro
   if(quote.client_address)write(fit(quote.client_address,regular,8,300),45,625,8,regular,gray);
   write("EMISIÓN",360,679,8,bold,gray);write(fmt(quote.issued_on),360,660,9);
   write("VÁLIDA HASTA",360,640,8,bold,gray);write(fmt(quote.valid_until),360,623,9);
-  if(warning){page.drawRectangle({x:45,y:603,width:505,height:17,color:rgb(0.99,0.92,0.89)});write(fit(warning,bold,8,490),52,608,8,bold,rgb(0.65,0.18,0.12));}
+  const pending=quote.commercial_kind==="compra_material"&&quote.tax_review_status==="pendiente";
+  if(warning||pending){page.drawRectangle({x:45,y:603,width:505,height:17,color:rgb(0.99,0.92,0.89)});write(fit(warning||"BORRADOR · IVA PENDIENTE DE CONFIRMACIÓN · NO ENVIAR",bold,8,490),52,608,8,bold,rgb(0.65,0.18,0.12));}
   page.drawRectangle({x:45,y:545,width:505,height:62,color:pale});
   write("PROPUESTA",59,584,8,bold,green);
   for(const [i,line] of wrap(quote.title,bold,12,470).slice(0,2).entries())write(line,59,564-i*15,12,bold);
   let y=518;
-  function tableHeader(){page.drawRectangle({x:45,y:y-6,width:505,height:25,color:green});write("DESCRIPCIÓN",54,y+2,8,bold,rgb(1,1,1));write("CANT.",324,y+2,8,bold,rgb(1,1,1));write("UNITARIO",400,y+2,8,bold,rgb(1,1,1));write("TOTAL",492,y+2,8,bold,rgb(1,1,1));y-=31;}
+  function tableHeader(){page.drawRectangle({x:45,y:y-6,width:505,height:25,color:green});write(quote.commercial_kind==="compra_material"?"MATERIAL / OBSERVACIÓN":"DESCRIPCIÓN",54,y+2,8,bold,rgb(1,1,1));write(quote.commercial_kind==="compra_material"?"KG":"CANT.",324,y+2,8,bold,rgb(1,1,1));write(quote.commercial_kind==="compra_material"?"$/KG":"UNITARIO",400,y+2,8,bold,rgb(1,1,1));write("TOTAL",492,y+2,8,bold,rgb(1,1,1));y-=31;}
   tableHeader();
   lines.forEach((line,index)=>{
     const desc=wrap(line.description,regular,8,260).slice(0,3);
     const classified=Boolean(line.segment);
     const destination=line.destination_name?wrap(`${categoryName(line.waste_category)} · ${line.destination_name}`,regular,7,260).slice(0,2):[];
-    const height=Math.max(30,desc.length*13+9+(classified?13:0)+destination.length*11);
+    const observation=line.line_note?wrap(`Obs.: ${line.line_note}`,regular,7,260):[];
+    const height=Math.max(30,desc.length*13+9+(classified?13:0)+destination.length*11+observation.length*11);
     if(y-height<145){page=doc.addPage([595.28,841.89]);pages.push(page);header(true);y=684;tableHeader();}
     if(index%2===0)page.drawRectangle({x:45,y:y-height+5,width:505,height,color:pale});
     if(classified)write(fit(`${quotePrincipalLabel(line.principal)} · ${quoteSegmentLabel(line.segment)}`,bold,7.2,260),54,y,7.2,bold,green);
     desc.forEach((part,i)=>write(part,54,y-(classified?13:0)-i*13,8));
     destination.forEach((part,i)=>write(part,54,y-(classified?13:0)-desc.length*13-i*11,7,regular,gray));
+    observation.forEach((part,i)=>write(part,54,y-(classified?13:0)-desc.length*13-destination.length*11-i*11,7,regular,gray));
     write(fit(`${Number(line.quantity).toLocaleString("es-CL",{maximumFractionDigits:3})} ${line.unit}`,regular,8,69),324,y,8);
     right(money(Number(line.unit_price_clp)),480,y,8);
     right(money(totals.lines[index]),544,y,8,bold);
@@ -82,10 +85,10 @@ export async function renderQuotePdf(quote:Quote,lines:QuoteLine[],warning="",ro
   page.drawLine({start:{x:45,y:y+3},end:{x:550,y:y+3},thickness:1,color:rule});
   const taxable=lines.some(line=>line.taxable);
   write("NETO",398,y-18,9,bold);right(money(totals.net),544,y-18,9,bold);
-  write(`IVA (${Number(quote.vat_rate)*100}%)`,398,y-38,9);right(money(totals.vat),544,y-38,9);
+  write(pending?"IVA pendiente":`IVA (${Number(quote.vat_rate)*100}%)`,398,y-38,9);right(pending?"—":money(totals.vat),544,y-38,9);
   page.drawRectangle({x:388,y:y-73,width:162,height:26,color:green});
   write("TOTAL",398,y-64,10,bold,rgb(1,1,1));right(money(totals.total),544,y-64,10,bold,rgb(1,1,1));
-  if(!taxable)write("Ítems no afectos a IVA en esta cotización.",45,y-48,8,regular,gray);
+  if(!taxable&&!pending)write("IVA aplicado: 0% según revisión registrada.",45,y-48,8,regular,gray);
   let footerY=y-103;
   if(route){
     const details=[`Origen: ${route.origin}`,`Retiro: ${route.pickup}`,`Destino final: ${route.destination}`,
