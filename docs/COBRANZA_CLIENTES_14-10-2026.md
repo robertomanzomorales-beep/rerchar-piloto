@@ -9,6 +9,7 @@ La hoja `FACTURAS` de `SERVICIOS Y TRANSPORTES (CON ALERTAS) - 2026.xlsx` regist
 3. En **Cobranza clientes**, Administración filtra por empresa y por saldo, vencidas, próximos 7 días, pagadas o todas. Registra abonos comprobados de facturas extraordinarias, con fecha y referencia; los abonos de la factura principal siguen en Finanzas.
 4. El panel de cada empresa muestra facturas vencidas, próximos vencimientos y documentos anteriores por conciliar. Anular un folio sin abonos devuelve sus cargos extraordinarios a `aprobado` y conserva el motivo en Auditoría.
 5. Para E y J, un estado de pago aprobado puede enlazar una factura externa. Un folio ya registrado del mismo cliente se reutiliza, incluidos los cargos extraordinarios vinculados; varios EDP que comparten folio cuentan como una sola factura. La diferencia de montos entre factura y EDP asociados exige una explicación. Anular la factura sin abonos desvincula los EDP y reactiva el pendiente de facturación en el panel.
+6. **Descargar vista CSV** exporta las facturas del filtro y empresa seleccionados con folio, cliente, origen, emisión, vencimiento, días vencidos, alerta, total, abonos, saldo y cantidad de EDP/cargos vinculados. Usa separador `;`, importes con coma decimal y fecha de Chile para abrirse en planillas locales. Igual que la vista, cubre hasta 500 facturas por empresa; el resumen superior contabiliza todas. Los documentos anteriores por conciliar no se suman ni exportan hasta confirmar el total real.
 
 ## Importes anteriores
 
