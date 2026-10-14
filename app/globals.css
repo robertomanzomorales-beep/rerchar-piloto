@@ -193,6 +193,28 @@ input::placeholder,textarea::placeholder{color:#959e9d}
 @media(max-width:860px){.agenda-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:650px){.agenda-grid{grid-template-columns:1fr}.agenda-controls{padding:10px}.agenda-controls>strong{font-size:11px}.agenda-controls>a{font-size:11px}}
 
+.fleet-week-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:15px}
+.fleet-week-stats>div{border:1px solid var(--line);border-radius:8px;background:#fff;padding:14px 16px;display:grid;gap:3px}
+.fleet-week-stats strong{font-size:22px;color:#096d53;line-height:1.1}.fleet-week-stats span{font-size:11px;color:#64716a}
+.fleet-week-scroll{overflow-x:auto;max-width:100%;border:1px solid var(--line);border-radius:8px}
+.fleet-week-table{width:100%;min-width:1050px;table-layout:fixed;border-collapse:collapse;font-size:11px}
+.fleet-week-table th,.fleet-week-table td{border-right:1px solid #e4ebe6;border-bottom:1px solid #e4ebe6;vertical-align:top;padding:8px;overflow-wrap:anywhere}
+.fleet-week-table th:first-child{width:145px;text-align:left}.fleet-week-table thead th{background:#f3f7f4;text-align:left;color:#274638;text-transform:capitalize}
+.fleet-week-table thead th span,.fleet-week-table tbody th small{display:block;color:#6e8075;font-size:10px;font-weight:500;margin-top:4px}
+.fleet-week-table tbody th{background:#fafcfb}.fleet-week-table tbody th a{color:#006e4e}.fleet-week-table tbody th em{display:block;color:#b35b39;font-size:10px;font-style:normal;margin-top:5px}
+.fleet-week-table tbody tr:last-child>*{border-bottom:0}.fleet-week-table tr>*:last-child{border-right:0}
+.fleet-week-blocked{background:#fff7ed}.fleet-week-note{display:grid;gap:2px;padding:6px;background:#f4f6ef;border-radius:5px;color:#435d46;margin-bottom:5px}
+.fleet-week-note:not(.nota){background:#fcebdc;color:#935134}.fleet-week-note span{font-size:10px}
+.fleet-week-trip{display:grid;gap:3px;padding:6px;margin-bottom:5px;background:#edf7f2;border-left:2px solid #118467;border-radius:4px;color:#41584d;line-height:1.3}
+.fleet-week-trip:hover{background:#ddf0e5}.fleet-week-trip strong{color:#175c44;font-size:10px}.fleet-week-trip span,.fleet-week-trip small{font-size:10px}
+.fleet-week-other{display:block;padding:6px;background:#eef2f5;border-radius:5px;color:#576c78;font-size:10px}
+.fleet-week-empty{color:#819188;font-size:10px}.fleet-week-lower{display:grid;grid-template-columns:1.2fr .8fr;gap:14px;margin-top:14px}
+.fleet-week-pending{list-style:none;padding:0;margin:0;max-height:400px;overflow:auto}.fleet-week-pending li+li{border-top:1px solid var(--line)}
+.fleet-week-pending a{display:grid;gap:3px;padding:9px 2px}.fleet-week-pending a:hover{color:#006e4e}.fleet-week-pending span,.fleet-week-pending small{color:#65776a}
+.agenda-warning{background:#fff0e0;border:1px solid #edbf9b;border-radius:6px;padding:12px;color:#8d4f28;margin-top:14px;font-size:12px}
+@media(max-width:850px){.fleet-week-lower{grid-template-columns:1fr}}
+@media(max-width:600px){.fleet-week-stats{grid-template-columns:1fr}.fleet-week-stats>div{padding:10px}}
+
 /* Revisión visual: superficies claras y logotipo transparente, sin placas de color. */
 :root{--bg:#f3f5f3;--ink:#293332;--line:#dde4df;--shadow:0 5px 22px rgba(32,57,42,.045)}
 .sidebar{background:#f7f9f7;color:#2b3932;border-right:1px solid #dae4dc;padding-top:19px}

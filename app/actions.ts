@@ -10,11 +10,12 @@ import {
 } from "@/lib/pilot";
 import {updateAsset,updateClient,updateSite,MastersError} from "@/lib/masters";
 import {createExternalDriver,PersonnelError} from "@/lib/personnel";
+import {setFleetDay,FleetScheduleError} from "@/lib/fleet-schedule";
 
 const value = (form: FormData, key: string) => String(form.get(key) ?? "");
 const servicePath = (id: string) => `/solicitudes/${encodeURIComponent(id)}`;
 function message(error: unknown) {
-  if (error instanceof PilotError || error instanceof MastersError || error instanceof PersonnelError) return error.message;
+  if (error instanceof PilotError || error instanceof MastersError || error instanceof PersonnelError || error instanceof FleetScheduleError) return error.message;
   if (error instanceof ZodError) return "Revise los campos obligatorios y sus valores.";
   if (typeof error === "object" && error && "code" in error && error.code === "23505") return "Ya existe un registro con este código o correo.";
   console.error("Error en el piloto", error);
@@ -126,6 +127,19 @@ export async function assignServiceAction(form: FormData) {
     external_driver_id:selection.startsWith("tercero:")?selection.slice(8):"",
     scheduled_for: value(form,"scheduled_for"),
   }));
+}
+export async function setFleetDayAction(form:FormData){
+  const actor=await requireActor();
+  const start=value(form,"inicio"),company=value(form,"empresa");
+  const qs=new URLSearchParams();
+  if(/^\d{4}-\d{2}-\d{2}$/.test(start))qs.set("inicio",start);
+  if(company==="rerchar"||company==="e_y_j")qs.set("empresa",company);
+  const target=`/agenda?${qs.toString()}`;
+  try{
+    await setFleetDay(actor,{asset_id:value(form,"asset_id"),day:value(form,"day"),kind:value(form,"kind"),detail:value(form,"detail")});
+  }catch(error){qs.set("error",message(error));redirect(`/agenda?${qs.toString()}`);}
+  revalidatePath("/agenda");
+  qs.set("ok","1");redirect(`/agenda?${qs.toString()}`);
 }
 export async function cancelServiceAction(form: FormData) {
   const actor = await requireActor(); const id = value(form,"id");

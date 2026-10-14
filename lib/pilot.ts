@@ -402,6 +402,11 @@ export async function assignService(actor: Actor, id: string, input: unknown) {
       ? await findMissingRequirements(tx,data.driver_id,service.client_id,service.site_id)
       : await findMissingExternalRequirements(tx,data.external_driver_id,service.client_id,service.site_id);
     if (missing.length) reject(`El conductor no cumple la acreditación de esta faena: ${missing.join(", ")}. Revise Personal.`);
+    const [dayBlock]=await tx.query<{kind:string}>(`SELECT kind FROM fleet_day_notes
+      WHERE (asset_id=$1 OR asset_id=NULLIF($2,'')::uuid)
+        AND day=($3::timestamptz AT TIME ZONE 'America/Santiago')::date AND kind<>'nota' LIMIT 1`,
+      [data.asset_id,data.ramp_asset_id,date]);
+    if(dayBlock)reject("El camión o la rampla tiene una indisponibilidad en la programación semanal de ese día.");
     const [collision] = await tx.query(
       `SELECT id FROM service_requests WHERE id <> $1 AND deleted_at IS NULL AND status IN ('programada','en_ruta')
        AND scheduled_for BETWEEN $2::timestamptz - interval '4 hours' AND $2::timestamptz + interval '4 hours'
