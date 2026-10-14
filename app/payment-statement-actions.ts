@@ -4,7 +4,7 @@ import {redirect} from "next/navigation";
 import {revalidatePath} from "next/cache";
 import {ZodError} from "zod";
 import {requireActor} from "@/lib/auth";
-import {PaymentStatementError,createPaymentStatement,saveStatementCharge,saveStatementOperation,deletePaymentStatementLine,setPaymentStatementStatus} from "@/lib/payment-statements";
+import {PaymentStatementError,createPaymentStatement,saveStatementCharge,saveStatementOperation,addStatementService,deletePaymentStatementLine,setPaymentStatementStatus} from "@/lib/payment-statements";
 
 const val=(form:FormData,key:string)=>String(form.get(key)??"");
 const select=(form:FormData,fields:readonly string[])=>Object.fromEntries(fields.map(key=>[key,val(form,key)]));
@@ -33,6 +33,10 @@ export async function saveStatementOperationAction(form:FormData){
   const fields=["line_id","line_number","description","operation_on","weight_kg","weighing_ticket","service_sheet",
     "guide_number","sidrep","rental_from","rental_to","is_disposal"];
   await run(path(id),()=>saveStatementOperation(actor,id,select(form,fields)));
+}
+export async function addStatementServiceAction(form:FormData){
+  const actor=await requireActor(),id=val(form,"statement_id");
+  await run(path(id),()=>addStatementService(actor,id,select(form,["service_id","line_number","is_disposal"])));
 }
 export async function saveStatementChargeAction(form:FormData){
   const actor=await requireActor(),id=val(form,"statement_id");

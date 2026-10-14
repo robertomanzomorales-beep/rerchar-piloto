@@ -1,6 +1,6 @@
 import {db} from "./db";
 
-export type ModuleKey="guias"|"ingresos"|"stock"|"edp"|"edp_calendar"|"cotizaciones";
+export type ModuleKey="guias"|"ingresos"|"stock"|"edp"|"edp_service_import"|"edp_calendar"|"cotizaciones";
 
 // Sólo se consultan nombres fijos del esquema. Detectar la tabla sin sus columnas
 // evita mostrar un módulo parcialmente migrado como si estuviera operativo.
@@ -12,6 +12,8 @@ const requirements:Record<ModuleKey,{tables:string[];columns:[string,string][]}>
   stock:{tables:["material_catalog","material_stock_balances","material_stock_movements"],columns:[]},
   edp:{tables:["payment_statements","payment_statement_operations","payment_statement_charges"],
     columns:[["payment_statements","issuer_contact"],["payment_statements","contract_manager"]]},
+  edp_service_import:{tables:["payment_statement_operations","service_day_reports","service_commercial_details","service_guide_controls"],
+    columns:[["payment_statement_operations","service_id"],["service_guide_controls","departure_ticket"]]},
   edp_calendar:{tables:["payment_statement_cycles","payment_statements","service_valuations"],
     columns:[["payment_statement_cycles","contact_email"],["payment_statement_cycles","statement_id"]]},
   cotizaciones:{tables:["client_quotes","client_quote_lines","client_quote_routes","client_quote_costings","quote_destinations","material_catalog","material_stock_balances"],

@@ -28,11 +28,15 @@ export type Statement={id:string;client_id:string;client_name:string;client_tax_
   issuer_contact:string|null;contract_manager:string|null;number:string;period_on:Date|string;
   statement_type:"residuos"|"arriendo";contract_reference:string|null;notes:string|null;
   status:"borrador"|"enviado"|"aprobado"|"observado";created_at:Date|string};
-export type Operation={id:string;statement_id:string;line_number:number;description:string;operation_on:Date|string|null;
+export type Operation={id:string;statement_id:string;service_id:string|null;line_number:number;description:string;operation_on:Date|string|null;
   weight_kg:string|null;weighing_ticket:string|null;service_sheet:string|null;guide_number:string|null;sidrep:string|null;
   rental_from:Date|string|null;rental_to:Date|string|null;is_disposal:boolean};
 export type Charge={id:string;statement_id:string;line_number:number;description:string;pricing:"clp_servicio"|"uf_ton"|"uf_unidad";
   unit_value:string;quantity:string|null;uf_value_clp:string|null;uf_on:Date|string|null};
+export type StatementService={id:string;folio:string;service_type:string;waste_type:string;operation_on:Date|string|null;
+  weight_kg:string|null;rental_from:Date|string|null;rental_to:Date|string|null;
+  guide_number:string|null;service_sheet:string|null;sidrep:string|null;weighing_ticket:string|null;
+  transport_used:boolean;disposal_used:boolean};
 export type StatementTotals={lines:{charge:Charge;quantity:number|null;total_clp:number|null}[];net_clp:number|null;
   vat_clp:number|null;total_clp:number|null;disposal_tons:number|null};
 
@@ -62,6 +66,90 @@ export async function getPaymentStatement(actor:Actor,id:string){
     db.query<Charge>("SELECT * FROM payment_statement_charges WHERE statement_id=$1 ORDER BY line_number",[id]),
   ]);
   return {statement,operations,charges,totals:statementTotals(operations,charges)};
+}
+
+const serviceSelect=`SELECT s.id,s.folio::text,s.service_type,s.waste_type,
+  COALESCE((SELECT max(d.day) FROM service_day_reports d WHERE d.service_id=s.id AND d.outcome='completado'),
+    (s.closed_at AT TIME ZONE 'America/Santiago')::date)::text AS operation_on,
+  CASE WHEN s.gross_kg IS NOT NULL AND s.tare_kg IS NOT NULL THEN (s.gross_kg-s.tare_kg)::text END AS weight_kg,
+  s.rental_from::text,s.rental_to::text,
+  COALESCE(NULLIF(c.eyj_guide,''),NULLIF(s.guide_number,''),g.guide_number) AS guide_number,
+  c.service_sheet,c.sidrep,
+  COALESCE(NULLIF(g.departure_ticket,''),NULLIF(g.destination_ticket,''),NULLIF(g.origin_ticket,'')) AS weighing_ticket
+  FROM service_requests s LEFT JOIN service_commercial_details c ON c.service_id=s.id
+  LEFT JOIN LATERAL (SELECT guide_number,departure_ticket,destination_ticket,origin_ticket
+    FROM service_guide_controls WHERE service_id=s.id ORDER BY movement_date DESC,line_number DESC LIMIT 1) g ON true`;
+
+export async function listStatementServices(actor:Actor,statementId:string){
+  read(actor);if(!uuid.safeParse(statementId).success)reject("Estado de pago no encontrado.");
+  const [statement]=await db.query<{client_id:string;statement_type:Statement["statement_type"]}>(
+    "SELECT client_id,statement_type FROM payment_statements WHERE id=$1 AND issuer='e_y_j'",[statementId]);
+  if(!statement)reject("Estado de pago no encontrado.");
+  const services=await db.query<StatementService>(`SELECT source.*,
+    EXISTS(SELECT 1 FROM payment_statement_operations o WHERE o.service_id=source.id AND NOT o.is_disposal) AS transport_used,
+    EXISTS(SELECT 1 FROM payment_statement_operations o WHERE o.service_id=source.id AND o.is_disposal) AS disposal_used
+    FROM (${serviceSelect} WHERE s.operating_company='e_y_j' AND s.client_id=$1 AND s.deleted_at IS NULL
+      AND s.status='completada' AND (($2::text='arriendo' AND s.service_type='arriendo') OR
+      ($2::text='residuos' AND s.service_type IN ('retiro','traslado','otro')))
+      AND NOT EXISTS(SELECT 1 FROM payment_statement_operations o WHERE o.service_id=s.id AND o.statement_id<>$3)
+      ORDER BY s.folio DESC LIMIT 300) source ORDER BY source.folio::bigint DESC`,
+    [statement.client_id,statement.statement_type,statementId]);
+  return services.filter(s=>!s.transport_used||(statement.statement_type==="residuos"&&!s.disposal_used));
+}
+
+export async function addStatementService(actor:Actor,statementId:string,input:unknown){
+  admin(actor);uuid.parse(statementId);
+  const data=z.object({service_id:uuid,line_number:z.coerce.number().int().min(1).max(200),
+    is_disposal:z.enum(["0","1"])}).parse(input);
+  return transaction(async tx=>{
+    const statement=await editable(tx,statementId);
+    const [scope]=await tx.query<{client_id:string}>("SELECT client_id FROM payment_statements WHERE id=$1 AND issuer='e_y_j'",[statementId]);
+    if(!scope)reject("Estado de pago no encontrado.");
+    // Serializa las importaciones del mismo servicio entre EDP concurrentes.
+    const [lock]=await tx.query<{id:string}>("SELECT id FROM service_requests WHERE id=$1 FOR UPDATE",[data.service_id]);
+    if(!lock)reject("Servicio no encontrado.");
+    const [service]=await tx.query<StatementService>(`${serviceSelect} WHERE s.id=$1 AND s.client_id=$2
+      AND s.operating_company='e_y_j' AND s.deleted_at IS NULL AND s.status='completada'`,
+      [data.service_id,scope.client_id]);
+    if(!service)reject("El servicio debe estar completado, ser de E y J y pertenecer al mismo cliente.");
+    if((statement.statement_type==="arriendo")!==(service.service_type==="arriendo"))
+      reject("El tipo de servicio no corresponde al formato del estado de pago.");
+    if(statement.statement_type==="residuos"&&!(["retiro","traslado","otro"].includes(service.service_type)))
+      reject("El EDP de residuos sólo incorpora servicios de retiro o traslado.");
+    const disposal=data.is_disposal==="1";
+    if(statement.statement_type==="arriendo"&&disposal)reject("El arriendo no tiene disposición final.");
+    if(statement.statement_type==="residuos"&&(!service.operation_on||!service.weight_kg||Number(service.weight_kg)<=0))
+      reject("Complete la fecha de cierre y el pesaje bruto/tara del servicio antes de incorporarlo.");
+    if(statement.statement_type==="arriendo"&&(!service.rental_from||!service.rental_to))
+      reject("Complete las fechas de arriendo del servicio antes de incorporarlo.");
+    const [linked]=await tx.query("SELECT id FROM payment_statement_operations WHERE service_id=$1 AND statement_id<>$2 LIMIT 1",
+      [data.service_id,statementId]);
+    if(linked)reject("Este servicio ya respalda otro estado de pago.");
+    const [duplicate]=await tx.query("SELECT id FROM payment_statement_operations WHERE service_id=$1 AND is_disposal=$2",
+      [data.service_id,disposal]);
+    if(duplicate)reject("Ese tipo de ítem ya fue incorporado desde el servicio.");
+    for(const [name,value] of Object.entries({service_sheet:service.service_sheet,guide_number:service.guide_number,
+      sidrep:service.sidrep,weighing_ticket:service.weighing_ticket}))
+      if(value&&value.length>80)reject(`El campo ${name} supera 80 caracteres; corríjalo en el servicio.`);
+    const description=statement.statement_type==="arriendo"?`Arriendo ${service.waste_type}`:
+      disposal?`Disposición final ${service.waste_type}`:`Servicio de transporte ${service.waste_type}`;
+    const [line]=await tx.query<{id:string}>(`INSERT INTO payment_statement_operations
+      (statement_id,service_id,line_number,description,operation_on,weight_kg,weighing_ticket,service_sheet,
+       guide_number,sidrep,rental_from,rental_to,is_disposal,recorded_by)
+      VALUES($1,$2,$3,$4,$5::date,$6,$7,$8,$9,$10,$11::date,$12::date,$13,$14) RETURNING id`,
+      [statementId,service.id,data.line_number,description,
+        statement.statement_type==="residuos"?service.operation_on:null,
+        statement.statement_type==="residuos"?service.weight_kg:null,
+        statement.statement_type==="residuos"?service.weighing_ticket:null,
+        statement.statement_type==="residuos"?service.service_sheet:null,
+        statement.statement_type==="residuos"?service.guide_number:null,
+        statement.statement_type==="residuos"?service.sidrep:null,
+        statement.statement_type==="arriendo"?service.rental_from:null,
+        statement.statement_type==="arriendo"?service.rental_to:null,disposal,actor.id]);
+    await audit(tx,actor,"create","payment_statement_operation",line.id,
+      {statement_id:statementId,service_id:service.id,is_disposal:disposal,line_number:data.line_number});
+    return line.id;
+  });
 }
 
 export async function createPaymentStatement(actor:Actor,input:unknown){

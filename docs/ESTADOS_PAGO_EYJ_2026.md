@@ -23,10 +23,14 @@ Los archivos son referencias de formato. La migración no crea EDP históricos n
 
 1. Seleccionar **E y J** y abrir **Estados de pago** en **Cierre y control**.
 2. Administración crea el encabezado y elige **Transporte y disposición** o **Arriendo**.
-3. Agrega operaciones respaldadas y cobros. En cada cobro en UF registra el valor UF y su fecha; el sistema no descarga una tasa automáticamente.
-4. Revisa la vista imprimible, el neto, el IVA y el total; imprime o guarda en PDF desde el navegador.
-5. Marca **enviado**. Un documento enviado se puede **aprobar** u **observar**; un observado vuelve a ser editable. El aprobado queda cerrado. Operaciones puede consultar, administración puede editar y cambiar estados.
+3. En un borrador, **Incorporar servicio ejecutado** ofrece los servicios completados de E y J para el mismo cliente y el formato correcto. Copia fecha real de cierre, peso neto (bruto menos tara), guía, ticket, hoja y SIDREP, o las fechas de arriendo. La fuente queda vinculada y el ítem conserva una copia editable para revisión. Si falta el cierre o pesaje, se corrige primero en Operaciones. También puede agregar una operación manual respaldada.
+4. El mismo servicio de residuos puede originar un ítem de transporte y uno de disposición final, como en la planilla: cada categoría se incorpora una sola vez y no se puede usar el servicio en otro EDP. Sólo la categoría de disposición suma toneladas para el cobro en UF/ton. La fecha del servicio puede diferir del mes del encabezado, tal como ocurre en el formato recibido; administración verifica qué período contractual corresponde.
+5. Agrega los cobros según contrato. No se copia automáticamente un importe desde el servicio: para UF registra valor y fecha de la UF utilizada, y para CLP revisa tarifa y cantidad.
+6. Revisa la vista imprimible, el neto, el IVA y el total; imprime o guarda en PDF desde el navegador.
+7. Marca **enviado**. Un documento enviado se puede **aprobar** u **observar**; un observado vuelve a ser editable. El aprobado queda cerrado. Operaciones puede consultar, administración puede editar y cambiar estados.
 
 ## Publicación
 
 Las migraciones de Neon van en orden: `020_stock_materiales_y_recepcion_directa.sql`, luego `021_estados_pago_eyj.sql`. Se registran en `schema_migrations`; `npm run db:migrate` omite las ya aplicadas. La pantalla de RERCHAR conserva un panel de lectura mientras falta la 020, con stock pendiente, y E y J muestra EDP pendiente mientras falta la 021.
+
+El vínculo del respaldo a servicios requiere también `037_resultado_diario.sql` y `040_edp_servicios.sql`. Si aún falta esta última, el EDP anterior sigue abriendo y la opción de incorporar un servicio aparece tras ejecutar la migración.
