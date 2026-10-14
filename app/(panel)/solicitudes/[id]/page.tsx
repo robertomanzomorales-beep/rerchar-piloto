@@ -1,3 +1,4 @@
+import {randomUUID} from "node:crypto";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, CalendarDays, CheckCircle2, ClipboardCheck, FileText, MapPin, PackageCheck, Truck, Weight } from "lucide-react";
@@ -13,6 +14,8 @@ import { SubmitButton } from "@/components/Transition";
 import ServiceDocuments from "@/components/ServiceDocuments";
 import {listServiceDays,resultLabel} from "@/lib/service-day";
 import {reportServiceDayAction} from "@/app/actions";
+import {serviceExtraCharges,extraChargeLabels} from "@/lib/extra-charges";
+import {proposeExtraChargeAction} from "@/app/extra-charge-actions";
 
 function localInput(value: Date | string | null) {
   if (!value) return "";
@@ -27,7 +30,7 @@ export default async function ServiceDetail({ params, searchParams }: { params: 
   let service;
   try { service = await getService(actor, id); }
   catch (error) { if (error instanceof PilotError) notFound(); throw error; }
-  const [timeline, evidence, checks, assets, ramps, drivers, externalDrivers, containerMoves, wasteRecord, certificate, sourceQuotes, sourceLines, requestMaterials, checklistIncidents, dayReports] = await Promise.all([
+  const [timeline, evidence, checks, assets, ramps, drivers, externalDrivers, containerMoves, wasteRecord, certificate, sourceQuotes, sourceLines, requestMaterials, checklistIncidents, dayReports, extraCharges] = await Promise.all([
     db.query<{ id: string; description: string; kind: string; created_at: Date; actor_name: string }>(
       `SELECT e.id,e.description,e.kind,e.created_at,u.name AS actor_name FROM service_events e
        LEFT JOIN users u ON u.id=e.actor_id WHERE e.service_id=$1 ORDER BY e.created_at DESC,e.id DESC`, [id],
@@ -55,6 +58,7 @@ export default async function ServiceDetail({ params, searchParams }: { params: 
     db.query<{id:string;status:string;description:string}>(
       "SELECT id,status,description FROM fleet_incidents WHERE source_service_id=$1 ORDER BY reported_at DESC",[id]),
     listServiceDays(actor,id),
+    canPlan(actor)?serviceExtraCharges(actor,id):Promise.resolve([]),
   ]);
   const checklist = checks[0];
   const paramsQuery = await searchParams;
@@ -116,6 +120,19 @@ export default async function ServiceDetail({ params, searchParams }: { params: 
           <p className="helper-text">Registre cada jornada como realizada, incompleta o suspendida, con la causa observada. Este parte no cierra el servicio ni reemplaza las guías y el pesaje.</p>
           {dayReports.length>0&&<ul className="service-day-history">{dayReports.map(r=><li key={day(r.day)}><strong>{day(r.day)} · {resultLabel[r.outcome]}</strong><span>{r.driver_name||"Conductor sin informar"}</span>{r.observation&&<p>{r.observation}</p>}</li>)}</ul>}
           {canReport&&<form action={reportServiceDayAction} className="form-grid detail-form"><input type="hidden" name="id" value={id}/><label>Fecha del trabajo<input name="day" type="date" min={programmedDay} max={todayChile} defaultValue={todayChile} required/></label><label>Resultado<select name="outcome" defaultValue="completado"><option value="completado">Realizado</option><option value="incompleto">Incompleto</option><option value="suspendido">Suspendido</option></select></label><label className="field-full">Observación o causa<textarea name="observation" rows={3} maxLength={1000} placeholder="Explique lo pendiente o el motivo de suspensión"/></label><div className="field-full form-footer"><SubmitButton className="button button-outline">Guardar parte del día</SubmitButton></div></form>}
+        </section>}
+        {canPlan(actor)&&dayReports.length>0&&<section className="section-card"><div className="section-heading"><div><div className="eyebrow">EXCEPCIONES COMERCIALES</div><h2>Flete falso y sobreestadía</h2></div><Link href={`/cobros-extraordinarios?empresa=${service.operating_company??"rerchar"}`}>Ver control →</Link></div>
+          <p className="helper-text">Proponga un cobro desde el parte de ese día, incluso si el viaje quedó incompleto. Administración decide el monto o deja constancia de «no cobrar». No se agregará a la factura del servicio.</p>
+          <form action={proposeExtraChargeAction} className="form-grid detail-form"><input type="hidden" name="service_id" value={id}/><input type="hidden" name="submission_key" value={randomUUID()}/>
+            <label>Parte del día<select name="service_day" defaultValue="" required><option value="">Seleccione</option>{dayReports.map(r=><option key={day(r.day)} value={day(r.day)}>{day(r.day)} · {resultLabel[r.outcome]}</option>)}</select></label>
+            <label>Concepto<select name="kind" defaultValue="flete_falso"><option value="flete_falso">Flete falso</option><option value="sobrestadia">Sobreestadía</option><option value="otro">Otro cargo</option></select></label>
+            <label className="field-full">Motivo y respaldo<textarea name="reason" rows={2} required minLength={5} maxLength={1000} placeholder="Qué ocurrió, acuerdo del cliente y respaldo disponible"/></label>
+            <label>Monto neto propuesto (CLP; opcional)<input name="amount_clp" type="number" min="0.01" step="0.01"/></label>
+            <label>Cotización (opcional)<input name="quote_reference" maxLength={80}/></label>
+            <label>OC del cliente (opcional)<input name="client_order_reference" maxLength={80}/></label>
+            <div className="field-full form-footer"><SubmitButton className="button button-outline" disabled={!service.operating_company}>Proponer para revisión</SubmitButton></div>
+          </form>
+          {extraCharges.length>0&&<ul className="record-list">{extraCharges.map(x=><li key={x.id}><strong>{extraChargeLabels[x.kind]} · {day(x.service_day)} · {x.status==="descartado"?"No cobrar":x.status==="propuesto"?"Por revisar":x.status==="aprobado"?"Aprobado":"Factura registrada"}</strong><small>{x.reason} · {x.amount_clp?`$${Number(x.amount_clp).toLocaleString("es-CL")}`:"Monto por acordar"}{x.invoice_number?` · Factura ${x.invoice_number}`:""}</small></li>)}</ul>}
         </section>}
         {!rental&&canWork && service.status === "programada" && <section className="section-card"><div className="section-heading"><div><div className="eyebrow">CONTROL PREVIO</div><h2><ClipboardCheck size={19}/> Checklist antes de salir</h2></div></div><form action={saveChecklistAction} className="form-stack"><input type="hidden" name="id" value={service.id}/><div className="check-grid"><label className="check-row"><input type="checkbox" name="vehicle_ok" defaultChecked={checklist?.vehicle_ok}/><span>Vehículo inspeccionado</span></label><label className="check-row"><input type="checkbox" name="documents_ok" defaultChecked={checklist?.documents_ok}/><span>Documentos y guía revisados</span></label><label className="check-row"><input type="checkbox" name="containment_ok" defaultChecked={checklist?.containment_ok}/><span>Carga y contención verificada</span></label><label className="check-row"><input type="checkbox" name="ppe_ok" defaultChecked={checklist?.ppe_ok}/><span>Elementos de protección disponibles</span></label></div><label className="check-row"><input name="vehicle_failure" type="checkbox"/> Detecté una falla del camión que requiere mantenimiento</label><label>Observaciones<textarea name="comment" rows={3} defaultValue={checklist?.comment ?? ""} placeholder="Si el camión presenta una falla, descríbala aquí"/></label><p className="helper-text">Si detectó una falla del camión, márquela arriba, desmarque «Vehículo inspeccionado» y describa el hallazgo: se enviará a Mantenimiento y detendrá la salida hasta resolverlo. Puede adjuntar fotos abajo, en Documentación del servicio.</p><SubmitButton className="button button-outline">Guardar checklist</SubmitButton></form>
           {checklistIncidents.map(incident=><p key={incident.id} className="helper-text">Avería del checklist: <strong>{incident.status==="abierta"?"Abierta en Mantenimiento":"Resuelta"}</strong> · {incident.description}{canManage(actor)&&<> · <Link href="/mantenimiento">Ver mantenimiento</Link></>}</p>)}

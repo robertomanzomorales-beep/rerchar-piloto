@@ -25,7 +25,7 @@ export default function Shell({ actor, children }: { actor: Actor; children: Rea
     else {const saved=localStorage.getItem("rerchar-selected-company");setSelectedCompany(saved==="rerchar"||saved==="e_y_j"?saved:null);}
   },[pathname]);
   const selectedName=selectedCompany==="e_y_j"?"E y J":selectedCompany==="rerchar"?"RERCHAR":null;
-  const companyHref=(href:string)=>selectedCompany&&["/cotizaciones","/solicitudes","/agenda","/seguimiento-guias","/facturas-recibidas","/finanzas"].includes(href)?`${href}?empresa=${selectedCompany}`:selectedCompany&&href==="/reportes"?`${href}?company=${selectedCompany}`:href;
+  const companyHref=(href:string)=>selectedCompany&&["/cotizaciones","/solicitudes","/agenda","/seguimiento-guias","/facturas-recibidas","/finanzas","/cobros-extraordinarios"].includes(href)?`${href}?empresa=${selectedCompany}`:selectedCompany&&href==="/reportes"?`${href}?company=${selectedCompany}`:href;
   const links = [
     { group:"Comercial", href: "/cotizaciones", text: "Cotizaciones", icon: FileText, visible: actor.role !== "conductor" },
     { group:"Comercial", href: "/clientes", text: "Clientes y documentos", icon: Building2, visible: actor.role !== "conductor" },
@@ -36,6 +36,7 @@ export default function Shell({ actor, children }: { actor: Actor; children: Rea
     { group:"Operación", href: "/ingresos", text: "Ingreso de material", icon: Boxes, visible: selectedCompany!=="e_y_j" && actor.role !== "conductor" },
     { group:"Operación", href: "/materiales-stock", text: "Stock de materiales", icon: Warehouse, visible: selectedCompany!=="e_y_j" && (actor.role === "admin" || actor.role === "operaciones") },
     { group:"Cierre y control", href: "/finanzas", text: "Contratos y finanzas", icon: Banknote, visible: actor.role === "admin" },
+    { group:"Cierre y control", href: "/cobros-extraordinarios", text: "Cobros extraordinarios", icon: ReceiptText, visible: actor.role === "admin" || actor.role === "operaciones" },
     { group:"Cierre y control", href: "/estados-pago", text: "Estados de pago · E y J", icon: ReceiptText, visible: selectedCompany==="e_y_j" && (actor.role === "admin" || actor.role === "operaciones") },
     { group:"Cierre y control", href: "/estados-pago/calendario", text: "Calendario de EDP", icon: CalendarDays, visible: selectedCompany==="e_y_j" && (actor.role === "admin" || actor.role === "operaciones") },
     { group:"Cierre y control", href: "/certificados", text: "Certificados", icon: FileBadge2, visible: actor.role !== "conductor" },
