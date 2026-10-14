@@ -10,7 +10,7 @@ import {SubmitButton} from "@/components/Transition";
 import {moduleReady} from "@/lib/schema-readiness";
 import ModuleUnavailable from "@/components/ModuleUnavailable";
 
-export default async function NewStatement({searchParams}:{searchParams:Promise<{error?:string;cliente?:string;periodo?:string;formato?:string}>}){
+export default async function NewStatement({searchParams}:{searchParams:Promise<{error?:string;cliente?:string;periodo?:string;formato?:string;ciclo?:string}>}){
   const actor=await requireActor();if(actor.role!=="admin")redirect("/estados-pago");
   if(!await moduleReady("edp"))return <ModuleUnavailable title="Nuevo estado de pago" company="e_y_j"/>;
   const [clients,query]=await Promise.all([db.query<{id:string;name:string;tax_id:string|null;address:string|null;email:string|null}>(
@@ -19,8 +19,11 @@ export default async function NewStatement({searchParams}:{searchParams:Promise<
   const clientId=clients.some(c=>c.id===query.cliente)?query.cliente:"";
   const period=query.periodo&&/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(query.periodo)?query.periodo:today;
   const statementType=query.formato==="arriendo"?"arriendo":"residuos";
-  return <><Link href="/estados-pago" className="back-link">← Estados de pago</Link><div className="page-title-row"><div><div className="eyebrow">E Y J · NUEVO DOCUMENTO</div><h1>Crear estado de pago</h1><p className="page-intro">El encabezado identifica el período y al cliente. Luego agregará las operaciones y los conceptos valorizados.</p></div></div><Notice error={query.error}/>
+  const cycleId=query.ciclo&&/^[0-9a-f-]{36}$/i.test(query.ciclo)?query.ciclo:"";
+  return <><Link href={cycleId?`/estados-pago/calendario/${cycleId}`:"/estados-pago"} className="back-link">← {cycleId?"Período del calendario":"Estados de pago"}</Link><div className="page-title-row"><div><div className="eyebrow">E Y J · NUEVO DOCUMENTO</div><h1>Crear estado de pago</h1><p className="page-intro">El encabezado identifica el período y al cliente. Luego agregará las operaciones y los conceptos valorizados.</p></div></div><Notice error={query.error}/>
+    {cycleId&&<p className="helper-text">Al crear este borrador quedará vinculado al período. Después volverá al calendario para incorporar los respaldos de los servicios ejecutados.</p>}
     <section className="section-card"><form action={createStatementAction} className="form-grid"><input type="hidden" name="submission_key" value={randomUUID()}/>
+      <input type="hidden" name="cycle_id" value={cycleId}/>
       <label>Formato<select name="statement_type" defaultValue={statementType}><option value="residuos">Transporte y disposición final</option><option value="arriendo">Arriendo de excavadora u otro equipo</option></select></label>
       <label>N° estado de pago<input name="number" required maxLength={40} placeholder="01"/></label>
       <label>Período<input name="period_on" type="date" defaultValue={period} required/></label>

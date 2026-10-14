@@ -22,7 +22,7 @@ Los archivos son referencias de formato. La migración no crea EDP históricos n
 ## Flujo
 
 1. Seleccionar **E y J** y abrir **Estados de pago** en **Cierre y control**.
-2. Administración crea el encabezado y elige **Transporte y disposición** o **Arriendo**.
+2. Administración crea el encabezado y elige **Transporte y disposición** o **Arriendo**. Si lo crea desde **Calendario de cortes y envíos**, el borrador queda vinculado al período en la misma transacción y vuelve al calendario para incorporar los respaldos. Se verifica cliente, formato y fecha del período; un reenvío no genera un segundo EDP. También se puede crear sin calendario y vincularlo después.
 3. En un borrador, **Incorporar servicio ejecutado** ofrece los servicios completados de E y J para el mismo cliente y el formato correcto. Copia fecha real de cierre, peso neto (bruto menos tara), guía, ticket, hoja y SIDREP, o las fechas de arriendo. La fuente queda vinculada y el ítem conserva una copia editable para revisión. Si falta el cierre o pesaje, se corrige primero en Operaciones. También puede agregar una operación manual respaldada.
 4. El mismo servicio de residuos puede originar un ítem de transporte y uno de disposición final, como en la planilla: cada categoría se incorpora una sola vez y no se puede usar el servicio en otro EDP. Sólo la categoría de disposición suma toneladas para el cobro en UF/ton. La fecha del servicio puede diferir del mes del encabezado, tal como ocurre en el formato recibido; administración verifica qué período contractual corresponde.
 5. Agrega los cobros según contrato. No se copia automáticamente un importe desde el servicio: para UF registra valor y fecha de la UF utilizada, y para CLP revisa tarifa y cantidad.

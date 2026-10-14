@@ -293,10 +293,24 @@ export async function createPaymentStatement(actor:Actor,input:unknown){
     statement_type:z.enum(["residuos","arriendo"]),client_name:z.string().trim().min(2).max(200),
     client_tax_id:z.string().trim().min(5).max(30),client_address:z.string().trim().min(5).max(300),
     client_contact:z.string().trim().min(5).max(160),issuer_contact:optional(160),contract_manager:optional(160),
-    contract_reference:optional(100),notes:optional(1000)}).parse(input);
+    contract_reference:optional(100),notes:optional(1000),cycle_id:z.union([uuid,z.literal("")]).default("")}).parse(input);
   return transaction(async tx=>{
+    // El bloqueo del ciclo serializa dos envíos del formulario y evita crear un EDP huérfano.
+    const [cycle]=data.cycle_id?await tx.query<{id:string;client_id:string;statement_type:Statement["statement_type"];
+      period_from:Date|string;period_to:Date|string;statement_id:string|null}>(
+      "SELECT id,client_id,statement_type,period_from,period_to,statement_id FROM payment_statement_cycles WHERE id=$1 AND issuer='e_y_j' FOR UPDATE",
+      [data.cycle_id]):[];
+    if(data.cycle_id&&!cycle)reject("El período del calendario no existe.");
+    if(cycle&&(cycle.client_id!==data.client_id||cycle.statement_type!==data.statement_type||
+      data.period_on<day(cycle.period_from)||data.period_on>day(cycle.period_to)))
+      reject("El EDP debe ser del mismo cliente, formato y período que el calendario.");
     const [existing]=await tx.query<{id:string;created_by:string}>("SELECT id,created_by FROM payment_statements WHERE submission_key=$1",[data.submission_key]);
-    if(existing){if(existing.created_by!==actor.id)reject("Clave de formulario en uso.");return existing.id;}
+    if(existing){
+      if(existing.created_by!==actor.id)reject("Clave de formulario en uso.");
+      if(cycle&&cycle.statement_id!==existing.id)reject("Este formulario ya creó un EDP distinto del vinculado al período.");
+      return existing.id;
+    }
+    if(cycle?.statement_id)reject("Este período ya tiene un EDP vinculado.");
     const [client]=await tx.query("SELECT id FROM clients WHERE id=$1 AND deleted_at IS NULL",[data.client_id]);
     if(!client)reject("Seleccione un cliente activo.");
     const [row]=await tx.query<{id:string}>(`INSERT INTO payment_statements
@@ -307,6 +321,10 @@ export async function createPaymentStatement(actor:Actor,input:unknown){
         data.client_tax_id,data.client_address,data.client_contact,data.issuer_contact,data.contract_manager,
         data.contract_reference,data.notes,actor.id]);
     await audit(tx,actor,"create","payment_statement",row.id,data);
+    if(cycle){
+      await tx.query("UPDATE payment_statement_cycles SET statement_id=$2,updated_at=now() WHERE id=$1",[cycle.id,row.id]);
+      await audit(tx,actor,"link_statement","payment_statement_cycle",cycle.id,{statement_id:row.id});
+    }
     return row.id;
   });
 }

@@ -23,10 +23,11 @@ async function run(target:string,fn:()=>Promise<unknown>):Promise<never>{
 export async function createStatementAction(form:FormData){
   const actor=await requireActor();let id:string;
   const fields=["submission_key","client_id","number","period_on","statement_type","client_name","client_tax_id",
-    "client_address","client_contact","issuer_contact","contract_manager","contract_reference","notes"];
+    "client_address","client_contact","issuer_contact","contract_manager","contract_reference","notes","cycle_id"];
+  const cycleId=val(form,"cycle_id");
   try{id=await createPaymentStatement(actor,select(form,fields));}
-  catch(error){redirect(`/estados-pago/nuevo?error=${encodeURIComponent(message(error))}`);}
-  revalidatePath("/","layout");redirect(`${path(id)}?ok=1`);
+  catch(error){redirect(`/estados-pago/nuevo?${/^[0-9a-f-]{36}$/i.test(cycleId)?`ciclo=${encodeURIComponent(cycleId)}&`:""}error=${encodeURIComponent(message(error))}`);}
+  revalidatePath("/","layout");redirect(cycleId?`/estados-pago/calendario/${encodeURIComponent(cycleId)}?ok=1`:`${path(id)}?ok=1`);
 }
 export async function saveStatementOperationAction(form:FormData){
   const actor=await requireActor(),id=val(form,"statement_id");

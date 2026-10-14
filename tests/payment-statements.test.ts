@@ -102,6 +102,27 @@ test("panel RERCHAR no cae entre migraciones y E y J calcula los dos formatos ED
   await assert.rejects(()=>calendar.createBillingCycle(owner,{...input,send_on:"2026-01-30"}),/envío no puede preceder/);
   const cycleId=await calendar.createBillingCycle(owner,input);
   await assert.rejects(()=>calendar.createBillingCycle(owner,{...input,period_from:"2026-01-15"}),/período que se cruza/);
+  const autoCycle=await calendar.createBillingCycle(owner,{...input,period_from:"2026-03-01",period_to:"2026-03-31",
+    cutoff_on:"2026-04-01",send_on:"2026-04-03"});
+  const fromCalendar={...base,submission_key:randomUUID(),number:"02",period_on:"2026-03-01",cycle_id:autoCycle};
+  await assert.rejects(()=>edp.createPaymentStatement(viewer,fromCalendar),edp.PaymentStatementError);
+  await assert.rejects(()=>edp.createPaymentStatement(owner,{...fromCalendar,client_id:randomUUID()}),
+    /mismo cliente, formato y período/);
+  await assert.rejects(()=>edp.createPaymentStatement(owner,{...fromCalendar,statement_type:"arriendo"}),
+    /mismo cliente, formato y período/);
+  await assert.rejects(()=>edp.createPaymentStatement(owner,{...fromCalendar,period_on:"2026-04-01"}),
+    /mismo cliente, formato y período/);
+  assert.equal((await edp.listPaymentStatements(owner)).length,2,"un formulario inválido no deja EDP huérfano");
+  const autoId=await edp.createPaymentStatement(owner,fromCalendar);
+  assert.equal((await calendar.getBillingCycle(owner,autoCycle)).cycle.statement_id,autoId);
+  assert.equal(await edp.createPaymentStatement(owner,fromCalendar),autoId,"el reenvío vuelve al EDP vinculado");
+  await assert.rejects(()=>edp.createPaymentStatement(owner,{...fromCalendar,submission_key:randomUUID(),number:"03"}),
+    /ya tiene un EDP vinculado/);
+  await assert.rejects(()=>edp.createPaymentStatement(owner,{...fromCalendar,submission_key:base.submission_key}),
+    /formulario ya creó un EDP distinto/);
+  assert.equal((await edp.listPaymentStatements(owner)).length,3,"no duplica el borrador del calendario");
+  const [linkAudit]=await db.query<{count:string}>("SELECT count(*)::text AS count FROM audit_events WHERE entity_type='payment_statement_cycle' AND entity_id=$1 AND action='link_statement'",[autoCycle]);
+  assert.equal(linkAudit.count,"1","el reenvío no repite la auditoría");
   const [site]=await db.query<{id:string}>("INSERT INTO client_sites(client_id,name) VALUES($1,'Faena de prueba') RETURNING id",[client.id]);
   for(const [company,close] of [["e_y_j","2026-02-01T02:30:00Z"],["rerchar","2026-01-20T15:00:00Z"]]){
     await db.query(`INSERT INTO service_requests(submission_key,client_id,site_id,service_type,waste_type,
