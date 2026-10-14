@@ -3,6 +3,7 @@ import {resolve} from "node:path";
 import fontkit from "@pdf-lib/fontkit";
 import {PDFDocument,rgb,type PDFFont,type PDFPage} from "pdf-lib";
 import {issuers,quoteFolio,type Quote,type QuoteLine,quoteTotals} from "./quotes";
+import {quotePrincipalLabel,quoteSegmentLabel} from "./quote-catalog";
 
 export async function renderQuotePdf(quote:Quote,lines:QuoteLine[]){
   const doc=await PDFDocument.create();doc.registerFontkit(fontkit);
@@ -62,10 +63,12 @@ export async function renderQuotePdf(quote:Quote,lines:QuoteLine[]){
   tableHeader();
   lines.forEach((line,index)=>{
     const desc=wrap(line.description,regular,8,260).slice(0,3);
-    const height=Math.max(30,desc.length*13+9);
+    const classified=Boolean(line.segment);
+    const height=Math.max(30,desc.length*13+9+(classified?13:0));
     if(y-height<145){page=doc.addPage([595.28,841.89]);pages.push(page);header(true);y=684;tableHeader();}
     if(index%2===0)page.drawRectangle({x:45,y:y-height+5,width:505,height,color:pale});
-    desc.forEach((part,i)=>write(part,54,y-i*13,8));
+    if(classified)write(fit(`${quotePrincipalLabel(line.principal)} · ${quoteSegmentLabel(line.segment)}`,bold,7.2,260),54,y,7.2,bold,green);
+    desc.forEach((part,i)=>write(part,54,y-(classified?13:0)-i*13,8));
     write(fit(`${Number(line.quantity).toLocaleString("es-CL",{maximumFractionDigits:3})} ${line.unit}`,regular,8,69),324,y,8);
     right(money(Number(line.unit_price_clp)),480,y,8);
     right(money(totals.lines[index]),544,y,8,bold);

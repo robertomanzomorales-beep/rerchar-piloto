@@ -23,19 +23,26 @@ test("cotización del cliente, PDF y guía de tres pesos respetan totales y perm
   const owner:Actor={id:admin.id,name:"Admin",email:"admin@demo.cl",role:"admin",client_id:null};
   const viewer:Actor={id:customer.id,name:"Cliente",email:"cliente@demo.cl",role:"cliente",client_id:clientA.id};
   const stranger:Actor={id:outsider.id,name:"Otro",email:"otro@demo.cl",role:"cliente",client_id:clientB.id};
-  const quoteId=await quotes.createQuote(owner,{submission_key:randomUUID(),client_id:clientA.id,issuer:"rerchar",title:"Retiro de material",issued_on:"2026-09-25",valid_until:"2026-10-25",vat_rate:"0.19",line:{description:"Transporte",quantity:"2",unit:"viaje",unit_price_clp:"10000",taxable:true}});
-  await quotes.addQuoteLine(owner,quoteId,{description:"Material exento",quantity:"1",unit:"unidad",unit_price_clp:"5000",taxable:false});
+  const quoteId=await quotes.createQuote(owner,{submission_key:randomUUID(),client_id:clientA.id,issuer:"rerchar",title:"Retiro de material",issued_on:"2026-09-25",valid_until:"2026-10-25",vat_rate:"0.19",line:{description:"Transporte",principal:"retiro",segment:"retiro_chatarra",quantity:"2",unit:"viaje",unit_price_clp:"10000",taxable:true}});
+  await quotes.addQuoteLine(owner,quoteId,{description:"Material exento",principal:"compra",segment:"compra_metal",quantity:"1",unit:"tonelada",unit_price_clp:"5000",taxable:false});
   const {quote,lines,totals}=await quotes.getQuote(owner,quoteId);
   assert.equal(quote.client_name,"Cliente A");assert.equal(quote.client_tax_id,"12.345.678-9");
+  assert.deepEqual(lines.map(line=>[line.principal,line.segment]),[["retiro","retiro_chatarra"],["compra","compra_metal"]]);
+  assert.deepEqual((await quotes.listQuotes(owner,"","rerchar","retiro","retiro_chatarra")).map(q=>q.id),[quoteId]);
+  assert.deepEqual((await quotes.listQuotes(owner,"","rerchar","transporte")).map(q=>q.id),[]);
+  assert.deepEqual((await quotes.reportQuoteLines(owner,"rerchar","retiro","retiro_chatarra")).map(line=>line.description),["Transporte"]);
+  await assert.rejects(()=>quotes.addQuoteLine(owner,quoteId,{description:"Opción cruzada",principal:"arriendo",segment:"retiro_chatarra",quantity:"1",unit:"viaje",unit_price_clp:"10"}),quotes.QuoteError);
+  await assert.rejects(()=>quotes.addQuoteLine(owner,quoteId,{description:"Sin clase",quantity:"1",unit:"servicio",unit_price_clp:"10"}),quotes.QuoteError);
   assert.deepEqual(totals,{net:25000,vat:3800,total:28800,lines:[20000,5000]});
   const pdf=await renderQuotePdf(quote,lines);
   assert.equal((await PDFDocument.load(pdf)).getPageCount(),1);
   assert.ok(pdf.length>7000);
-  await quotes.updateQuoteLine(owner,quoteId,lines[0].id,{description:"Transporte corregido",quantity:"3",unit:"viaje",unit_price_clp:"12000",taxable:true});
+  await quotes.updateQuoteLine(owner,quoteId,lines[0].id,{description:"Transporte corregido",principal:"retiro",segment:"retiro_reciclable",quantity:"3",unit:"viaje",unit_price_clp:"12000",taxable:true});
   assert.equal((await quotes.getQuote(owner,quoteId)).totals.total,47840,"la corrección actualiza neto e IVA sin cambiar el folio");
+  assert.deepEqual((await quotes.listQuotes(owner,"","rerchar","retiro","retiro_chatarra")).map(q=>q.id),[],"el filtro refleja la corrección");
   await quotes.removeQuoteLine(owner,quoteId,lines[0].id);
   await assert.rejects(()=>quotes.removeQuoteLine(owner,quoteId,lines[1].id),quotes.QuoteError,"el borrador conserva al menos un concepto");
-  await quotes.addQuoteLine(owner,quoteId,{description:"Nuevo material",quantity:"2",unit:"kg",unit_price_clp:"100",taxable:false});
+  await quotes.addQuoteLine(owner,quoteId,{description:"Nuevo material",principal:"compra",segment:"compra_metal",quantity:"2",unit:"kg",unit_price_clp:"100",taxable:false});
   assert.deepEqual((await quotes.getQuote(owner,quoteId)).lines.map(line=>line.position),[2,3],"agregar después de quitar una línea no reutiliza su posición");
   assert.equal((await quotes.listQuotes(viewer)).length,0,"el borrador no se muestra al cliente");
   await assert.rejects(()=>quotes.getQuote(stranger,quoteId),quotes.QuoteError);
@@ -52,6 +59,17 @@ test("cotización del cliente, PDF y guía de tres pesos respetan totales y perm
   assert.equal((await quotes.getQuote(viewer,quoteId)).quote.status,"enviada");
   await assert.rejects(()=>quotes.updateQuoteLine(owner,quoteId,lines[1].id,{description:"Cambio tardío",quantity:"1",unit:"kg",unit_price_clp:"10",taxable:false}),quotes.QuoteError);
   await assert.rejects(()=>quotes.recordManualQuoteDelivery(owner,quoteId,{channel:"correo",recipient:"compras@cliente.cl",reference:"Enviado otra vez"}),quotes.QuoteError);
+
+  const legacyId=await quotes.createQuote(owner,{submission_key:randomUUID(),client_id:clientA.id,issuer:"rerchar",title:"Cotización anterior",issued_on:"2026-09-25",valid_until:"2026-10-25",line:{description:"Concepto previo",principal:"compra",segment:"compra_metal",quantity:"1",unit:"servicio",unit_price_clp:"5000"}});
+  const legacyLine=(await quotes.getQuote(owner,legacyId)).lines[0];
+  await db.query("UPDATE client_quote_lines SET principal=NULL,segment=NULL,unit='unidad' WHERE id=$1",[legacyLine.id]);
+  const old=await quotes.getQuote(owner,legacyId);
+  assert.equal(old.lines[0].segment,null,"la migración admite conceptos históricos sin clasificación");
+  await quotes.updateQuoteLine(owner,legacyId,legacyLine.id,{description:"Concepto anterior corregido",quantity:"1",unit:"unidad",unit_price_clp:"5000"});
+  assert.equal((await quotes.getQuote(owner,legacyId)).lines[0].segment,null);
+  assert.ok((await renderQuotePdf(old.quote,old.lines)).length>7000);
+  assert.deepEqual((await quotes.listQuotes(owner,"","rerchar","compra","compra_metal")).map(q=>q.id),[quoteId]);
+  await assert.rejects(()=>db.query("UPDATE client_quote_lines SET principal='transporte',segment='compra_metal' WHERE id=$1",[legacyLine.id]),"la base de datos bloquea pares incompatibles");
 
   const [service]=await db.query<{id:string}>(`INSERT INTO service_requests(submission_key,client_id,site_id,service_type,waste_type,origin,destination,created_by)
     VALUES ($1,$2,$3,'retiro','Chatarra','Faena','Receptor',$4) RETURNING id`,[randomUUID(),clientA.id,site.id,owner.id]);

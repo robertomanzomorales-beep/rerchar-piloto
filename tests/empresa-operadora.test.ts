@@ -22,7 +22,7 @@ test("RERCHAR y E y J mantienen servicios, cotizaciones y facturas en su empresa
   const [site]=await db.query<{id:string}>("INSERT INTO client_sites(client_id,name) VALUES($1,'Faena') RETURNING id",[client.id]);
   const [admin]=await db.query<{id:string}>("INSERT INTO users(email,name,password_hash,role) VALUES('admin@demo.cl','Admin','hash','admin') RETURNING id");
   const actor:Actor={id:admin.id,name:"Admin",email:"admin@demo.cl",role:"admin",client_id:null};
-  const quoteId=await quotes.createQuote(actor,{submission_key:randomUUID(),client_id:client.id,issuer:"e_y_j",title:"Transporte de residuos",issued_on:"2026-10-13",valid_until:"2026-11-13",line:{description:"Viaje",quantity:"1",unit:"viaje",unit_price_clp:"10000",taxable:true}});
+  const quoteId=await quotes.createQuote(actor,{submission_key:randomUUID(),client_id:client.id,issuer:"e_y_j",title:"Transporte de residuos",issued_on:"2026-10-13",valid_until:"2026-11-13",line:{description:"Viaje",principal:"transporte",segment:"transporte_batea",quantity:"1",unit:"viaje",unit_price_clp:"10000",taxable:true}});
   await db.query("UPDATE client_quotes SET status='aceptada' WHERE id=$1",[quoteId]);
   const input={submission_key:randomUUID(),client_id:client.id,site_id:site.id,quote_id:quoteId,
     operating_company:"e_y_j",service_type:"traslado",waste_type:"Metal",origin:"Faena",destination:"Planta",priority:"normal",notes:""};
