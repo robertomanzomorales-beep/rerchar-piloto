@@ -134,7 +134,7 @@ export async function cancelServiceAction(form: FormData) {
 export async function reportFleetIncidentAction(form: FormData) {
   const actor = await requireActor();
   await run("/flota", () => reportFleetIncident(actor, {
-    asset_id: value(form,"asset_id"), description: value(form,"description"), severity: value(form,"severity"),
+    asset_id: value(form,"asset_id"), description: value(form,"description"), severity: value(form,"severity"),observed_on:value(form,"observed_on"),
   }));
 }
 export async function resolveFleetIncidentAction(form: FormData) {

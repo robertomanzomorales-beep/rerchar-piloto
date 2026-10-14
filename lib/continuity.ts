@@ -65,7 +65,7 @@ export type MaintenancePlan = { id: string; asset_id: string; asset_label: strin
   template_key: string | null; procedure: string | null };
 export type WorkOrder = { id: string; folio: string; asset_id: string; asset_label: string; asset_code: string; plan_id: string | null; incident_id: string | null; source_service_id:string|null;
   kind: string; title: string; description: string | null; status: string; blocks_asset: boolean; scheduled_for: Date | string | null; started_at: Date | null;
-  closed_at: Date | null; reading_at_close: string | null; labor_cost: string; parts_cost: string; supplier: string | null;
+  closed_at: Date | null; performed_on: Date|string|null; history_only: boolean; reading_at_close: string | null; labor_cost: string; parts_cost: string; supplier: string | null;
   resolution: string | null; created_at: Date; created_by_name: string; closed_by_name: string | null };
 export type Tire = { id: string; code: string; brand: string | null; size: string | null; status: string; asset_id: string | null;
   position: string | null; asset_label: string | null };
@@ -235,7 +235,7 @@ export async function closeWorkOrder(actor: Actor, orderId: string, input: unkno
         VALUES ($1,$2,'consumo',$3,$3,$4,$5,$6)`,[reservation.item_id,reservation.warehouse_id,`-${reservation.quantity}`,`Consumo OT ${id.slice(0,8)}`,reservation.id,actor.id]);
       await audit(tx,actor,"consume","inventory_reservation",reservation.id,{work_order_id:id,quantity:reservation.quantity});
     }
-    await tx.query(`UPDATE work_orders SET status='cerrada',closed_at=now(),closed_by=$2,resolution=$3,supplier=NULLIF($4,''),
+    await tx.query(`UPDATE work_orders SET status='cerrada',closed_at=now(),performed_on=(now() AT TIME ZONE 'America/Santiago')::date,closed_by=$2,resolution=$3,supplier=NULLIF($4,''),
       labor_cost=$5,parts_cost=$6,reading_at_close=$7 WHERE id=$1`,[id,actor.id,data.resolution,data.supplier,data.labor_cost,data.parts_cost,asset.reading_unit==="sin" ? null : finalReading]);
     if (order.plan_id) {
       const [plan] = await tx.query<{frequency_kind:string;template_key:string|null}>("SELECT frequency_kind,template_key FROM maintenance_plans WHERE id=$1 FOR UPDATE",[order.plan_id]);

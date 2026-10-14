@@ -432,16 +432,18 @@ export async function cancelService(actor: Actor, id: string, reason: string) {
   });
 }
 
-export type FleetAsset = { id: string; code: string; label: string; kind: string; plate: string | null; available: boolean; open_incidents: string; current_reading: string; reading_unit: string };
-export type FleetIncident = { id: string; asset_id: string; asset_label: string; code: string; description: string; severity: string; reported_at: Date; reported_by_name: string };
+export type FleetAsset = { id: string; code: string; label: string; kind: string; plate: string | null; available: boolean; open_incidents: string; equipment_alerts: string; current_reading: string; reading_unit: string };
+export type FleetIncident = { id: string; asset_id: string; asset_label: string; code: string; description: string; severity: string; reported_at: Date; observed_on: Date|string|null; source_service_id: string|null; reported_by_name: string };
 
 export async function listFleet(actor: Actor) {
   if (!canManage(actor)) reject("No tiene permiso para revisar flota y averías.");
   const [assets, incidents] = await Promise.all([
-    db.query<FleetAsset>(`SELECT a.id,a.code,a.label,a.kind,a.plate,a.available,a.current_reading,a.reading_unit,count(i.id)::text AS open_incidents
+    db.query<FleetAsset>(`SELECT a.id,a.code,a.label,a.kind,a.plate,a.available,a.current_reading,a.reading_unit,count(i.id)::text AS open_incidents,
+      (SELECT count(*)::text FROM asset_equipment_inventory e WHERE e.asset_id=a.id AND e.active=true
+        AND (e.condition<>'operativo' OR e.expires_on <= (now() AT TIME ZONE 'America/Santiago')::date+30)) AS equipment_alerts
       FROM assets a LEFT JOIN fleet_incidents i ON i.asset_id=a.id AND i.status='abierta'
       WHERE a.deleted_at IS NULL GROUP BY a.id ORDER BY a.kind,a.label`),
-    db.query<FleetIncident>(`SELECT i.id,i.asset_id,i.description,i.severity,i.reported_at,a.label AS asset_label,a.code,u.name AS reported_by_name
+    db.query<FleetIncident>(`SELECT i.id,i.asset_id,i.description,i.severity,i.reported_at,i.observed_on,i.source_service_id,a.label AS asset_label,a.code,u.name AS reported_by_name
       FROM fleet_incidents i JOIN assets a ON a.id=i.asset_id JOIN users u ON u.id=i.reported_by
       WHERE i.status='abierta' ORDER BY i.reported_at DESC LIMIT 100`),
   ]);
@@ -450,13 +452,14 @@ export async function listFleet(actor: Actor) {
 
 export async function reportFleetIncident(actor: Actor, input: unknown) {
   needManage(actor);
-  const data = z.object({ asset_id: uuid, description: z.string().trim().min(5).max(1000), severity: z.enum(["baja","media","alta","critica"]) }).parse(input);
+  const data = z.object({ asset_id: uuid, description: z.string().trim().min(5).max(1000), severity: z.enum(["baja","media","alta","critica"]),
+    observed_on:z.union([z.literal(""),z.iso.date()]).default("") }).parse(input);
   return transaction(async (tx) => {
     const [asset] = await tx.query("SELECT id FROM assets WHERE id=$1 AND deleted_at IS NULL FOR UPDATE", [data.asset_id]);
     if (!asset) reject("Seleccione un activo registrado.");
     const [created] = await tx.query<{ id: string }>(
-      "INSERT INTO fleet_incidents (asset_id,description,severity,reported_by) VALUES ($1,$2,$3,$4) RETURNING id",
-      [data.asset_id,data.description,data.severity,actor.id],
+      "INSERT INTO fleet_incidents (asset_id,description,severity,observed_on,reported_by) VALUES ($1,$2,$3,NULLIF($4,'')::date,$5) RETURNING id",
+      [data.asset_id,data.description,data.severity,data.observed_on,actor.id],
     );
     await tx.query("UPDATE assets SET available=false WHERE id=$1", [data.asset_id]);
     await tx.query("INSERT INTO audit_events (actor_id,action,entity_type,entity_id,next_value) VALUES ($1,'incident_reported','fleet_incident',$2,$3)",
