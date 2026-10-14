@@ -12,11 +12,16 @@ test("certificado PDF/QR conserva versión, permisos y revocación de ficha obse
   const {db,transaction}=await import("../lib/db");
   const certificates=await import("../lib/certificates");
   const compliance=await import("../lib/compliance");
+  const {moduleReady}=await import("../lib/schema-readiness");
   const {renderCertificatePdf}=await import("../lib/certificate-pdf");
   for(const name of ["001_piloto.sql","002_flota_y_despacho.sql","003_abastecimiento.sql","004_mantenimiento_combustible.sql","005_contenedores.sql","006_acreditacion.sql","007_finanzas.sql","008_trazabilidad_ambiental.sql","009_certificados.sql","010_evidencia_persistente.sql","011_operacion_real_2026.sql","018_empresa_operadora.sql","023_conductores_terceros.sql"]){
     const sql=await readFile(resolve(process.cwd(),`db/${name}`),"utf8");
     await transaction(async tx=>{for(const part of sql.split(/;\s*(?:\n|$)/).map(s=>s.trim()).filter(Boolean))await tx.query(part);});
   }
+  assert.equal(await moduleReady("certificados_borradores"),false);
+  const draftSql=await readFile(resolve(process.cwd(),"db/042_certificados_borradores.sql"),"utf8");
+  await transaction(async tx=>{for(const part of draftSql.split(/;\s*(?:\n|$)/).map(s=>s.trim()).filter(Boolean))await tx.query(part);});
+  assert.equal(await moduleReady("certificados_borradores"),true);
   const [client,other]=await db.query<{id:string}>("INSERT INTO clients (name) VALUES ('Cliente del certificado'),('Otra empresa') RETURNING id");
   const [site]=await db.query<{id:string}>("INSERT INTO client_sites (client_id,name) VALUES ($1,'Planta Norte') RETURNING id",[client.id]);
   const [admin,ops]=await db.query<{id:string}>(`INSERT INTO users (email,name,password_hash,role)
@@ -39,7 +44,9 @@ test("certificado PDF/QR conserva versión, permisos y revocación de ficha obse
   assert.match(preparation[0].reason??"",/Falta preparar la ficha/);
   assert.equal(preparation[0].nextHref,`/cumplimiento?service_id=${service.id}`);
   await assert.rejects(()=>certificates.listCertificatePreparation(clientActor),certificates.CertificateError);
-  await assert.rejects(()=>certificates.issueCertificate(owner,service.id),certificates.CertificateError);
+  await assert.rejects(()=>certificates.listCertificateDrafts(clientActor),certificates.CertificateError);
+  await assert.rejects(()=>certificates.saveCertificateDraft(owner,service.id),certificates.CertificateError);
+  await assert.rejects(()=>certificates.issueCertificate(owner,service.id,"EMITIR"),certificates.CertificateError);
   const waste=await compliance.saveWasteRecord(operator,{service_id:service.id,category:"no_peligroso",classification:"Metal limpio",
     generator_name:"Empresa cliente",transporter_name:"RERCHAR",receiver_name:"Receptor de prueba",
     treatment:"Reciclaje",guide_number:"GUIA-01"});
@@ -51,10 +58,21 @@ test("certificado PDF/QR conserva versión, permisos y revocación de ficha obse
   preparation=await certificates.listCertificatePreparation(owner);
   assert.equal(preparation[0].ready,true);
   assert.equal(preparation[0].reason,null);
-  await assert.rejects(()=>certificates.issueCertificate(operator,service.id),certificates.CertificateError);
-  const first=await certificates.issueCertificate(owner,service.id);
+  await assert.rejects(()=>certificates.saveCertificateDraft(operator,service.id),certificates.CertificateError);
+  await assert.rejects(()=>certificates.issueCertificate(operator,service.id,"EMITIR"),certificates.CertificateError);
+  await assert.rejects(()=>certificates.issueCertificate(owner,service.id,"EMITIR"),/Primero guarde/);
+  await certificates.saveCertificateDraft(owner,service.id);
+  assert.equal((await certificates.listCertificateDrafts(owner)).length,1);
+  assert.equal((await certificates.listCertificates(clientActor)).length,0);
+  assert.equal((await db.query("SELECT id FROM service_certificates WHERE service_id=$1",[service.id])).length,0);
+  await assert.rejects(()=>certificates.issueCertificate(owner,service.id,""),/Escriba EMITIR/);
+  await db.query("UPDATE clients SET name='Cliente corregido' WHERE id=$1",[client.id]);
+  await assert.rejects(()=>certificates.issueCertificate(owner,service.id,"EMITIR"),/El servicio cambió/);
+  await certificates.saveCertificateDraft(owner,service.id);
+  const first=await certificates.issueCertificate(owner,service.id,"EMITIR");
+  assert.equal((await certificates.listCertificateDrafts(owner)).length,0);
   assert.equal((await certificates.listCertificatePreparation(owner)).length,0);
-  assert.equal(await certificates.issueCertificate(owner,service.id),first);
+  assert.equal(await certificates.issueCertificate(owner,service.id,"EMITIR"),first);
   let row=await certificates.getCertificate(owner,first);
   assert.equal(row.version,1);
   assert.equal(row.snapshot.quantity_kg,"50.00");
@@ -78,7 +96,8 @@ test("certificado PDF/QR conserva versión, permisos y revocación de ficha obse
     generator_name:"Empresa cliente",transporter_name:"RERCHAR",receiver_name:"Receptor de prueba",
     treatment:"Destino documentado",guide_number:"GUIA-01"});
   await compliance.reviewWasteRecord(owner,waste);
-  const second=await certificates.issueCertificate(owner,service.id);
+  await certificates.saveCertificateDraft(owner,service.id);
+  const second=await certificates.issueCertificate(owner,service.id,"EMITIR");
   row=await certificates.getCertificate(owner,second);
   assert.equal(row.version,2);
   await assert.rejects(()=>certificates.revokeCertificate(operator,second,"Motivo de prueba"),certificates.CertificateError);

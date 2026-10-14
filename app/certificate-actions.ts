@@ -4,7 +4,7 @@ import {revalidatePath} from "next/cache";
 import {redirect} from "next/navigation";
 import {ZodError} from "zod";
 import {requireActor} from "@/lib/auth";
-import {CertificateError,issueCertificate,revokeCertificate} from "@/lib/certificates";
+import {CertificateError,issueCertificate,saveCertificateDraft,revokeCertificate} from "@/lib/certificates";
 
 const value=(form:FormData,key:string)=>String(form.get(key)??"");
 function errorText(error:unknown){
@@ -16,10 +16,17 @@ function errorText(error:unknown){
 export async function issueCertificateAction(form:FormData){
   const actor=await requireActor();
   let id:string;
-  try{id=await issueCertificate(actor,value(form,"service_id"));}
+  try{id=await issueCertificate(actor,value(form,"service_id"),value(form,"confirmation"));}
   catch(error){redirect(`/certificados?error=${encodeURIComponent(errorText(error))}`);}
   revalidatePath("/","layout");
   redirect(`/certificados?ok=1&certificado=${id}`);
+}
+export async function saveCertificateDraftAction(form:FormData){
+  const actor=await requireActor();
+  try{await saveCertificateDraft(actor,value(form,"service_id"));}
+  catch(error){redirect(`/certificados?error=${encodeURIComponent(errorText(error))}`);}
+  revalidatePath("/","layout");
+  redirect("/certificados?borrador=1");
 }
 export async function revokeCertificateAction(form:FormData){
   const actor=await requireActor();

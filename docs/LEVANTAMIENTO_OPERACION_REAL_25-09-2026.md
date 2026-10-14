@@ -45,7 +45,7 @@ La migración posterior de movimientos históricos al registro activo exigirá c
 | Nuevas solicitudes Servicios/Compra/Venta/Otro | Implementado conservando subtipo retiro/traslado | Revisar usos del subtipo y permisos con usuarios reales |
 | Control de tres pesajes y retorno | Implementado por guía y asociado al servicio | Conciliar excepciones de libros y definir alertas de tolerancia |
 | Carpeta del cliente y sus documentos | Implementada con resumen imprimible, guías, hojas, facturas adjuntas, certificados y cotizaciones | Cargar respaldos verificados desde cada servicio |
-| Certificado con QR y tabla | Implementado para servicios cerrados con ficha ambiental revisada y evidencia | Aprobar texto y datos legales del certificado de uso externo |
+| Certificado con QR y tabla | Administración guarda un borrador revisable desde un servicio cerrado con ficha ambiental revisada y evidencia; emisión separada con confirmación `EMITIR`. El borrador no crea versión, PDF ni QR; si cambian datos, se debe actualizar antes de emitir | Aprobar texto y datos legales del certificado de uso externo |
 | Personal RERCHAR o E y J | Campo de empleador incorporado | Validar nómina real y eventuales subcontratistas |
 | Kilometraje y mantenciones en tolvas/arriendos | Registro con fecha, detalle, costo, km y servicio opcional | Confirmar si el dato es km del vehículo que transporta la tolva o un acumulado de la unidad |
 | Orden de compra imprimible/PDF | Borrador desde solicitud aprobada con proveedor, descuentos, IVA, contacto y centro de costo; emisión separada y explícita | Verificar correlativo, domicilio, firma y condiciones comerciales |
@@ -53,6 +53,8 @@ La migración posterior de movimientos históricos al registro activo exigirá c
 | SII facturas recibidas | Registro manual de facturas de proveedor por empresa, con adjuntos y pagos; sin conexión SII | Seleccionar XML DTE recibido/exportación RCV o canal de recepción, y conciliar con RCV oficial |
 | Shell Tarjeta Transporte | Módulo de combustible manual existente; API aún no conectada | Confirmar acceso contratado para Chile, credenciales, tarjetas y convenio de API |
 | Tracklite GPS | Flota y despachos existentes; API aún no conectada | Solicitar documentación técnica/credenciales y correspondencia de patentes |
+
+La preparación separada de certificados requiere la migración `042_certificados_borradores.sql`. Hasta que se aplique en la base del despliegue, el historial de certificados emitidos sigue visible y la pantalla informa que la preparación está pendiente, sin intentar consultar la tabla nueva.
 
 ## Criterios para el piloto del 28 de septiembre
 

@@ -7,7 +7,7 @@ import type {CertificateSnapshot} from "./certificate-pdf";
 const uuid=z.uuid();
 export class CertificateError extends Error {}
 function reject(message:string):never{throw new CertificateError(message);}
-function admin(actor:Actor){if(actor.role!=="admin")reject("Sólo administración puede emitir o revocar certificados.");}
+function admin(actor:Actor){if(actor.role!=="admin")reject("Sólo administración puede preparar, emitir o revocar certificados.");}
 export type Certificate={id:string;service_id:string;client_id:string;client_name:string;site_name:string;
   folio:string;version:number;code:string;status:string;snapshot:CertificateSnapshot;issued_at:Date;
   revoked_at:Date|null;revocation_reason:string|null;downloads:string};
@@ -72,6 +72,18 @@ export async function getCertificate(actor:Actor,id:string){
   return row;
 }
 
+export type CertificateDraft={service_id:string;folio:string;client_name:string;site_name:string;
+  snapshot:CertificateSnapshot;prepared_at:Date};
+export async function listCertificateDrafts(actor:Actor){
+  admin(actor);
+  return db.query<CertificateDraft>(`SELECT d.service_id,s.folio,c.name AS client_name,cs.name AS site_name,
+    d.snapshot,d.prepared_at FROM service_certificate_drafts d
+    JOIN service_requests s ON s.id=d.service_id JOIN clients c ON c.id=s.client_id
+    JOIN client_sites cs ON cs.id=s.site_id WHERE s.deleted_at IS NULL
+    AND NOT EXISTS (SELECT 1 FROM service_certificates x WHERE x.service_id=s.id AND x.status='vigente')
+    ORDER BY d.prepared_at DESC LIMIT 100`);
+}
+
 export function verificationBaseUrl(){
   const value=process.env.APP_BASE_URL || (process.env.NODE_ENV!=="production"?"http://localhost:3000":"");
   if(!value)throw new CertificateError("Configure APP_BASE_URL para emitir enlaces verificables.");
@@ -84,10 +96,7 @@ export function verificationBaseUrl(){
 }
 export function verificationUrl(code:string){return `${verificationBaseUrl()}/verificar/${code}`;}
 
-export async function issueCertificate(actor:Actor,serviceId:string){
-  admin(actor);uuid.parse(serviceId);
-  verificationBaseUrl();
-  return transaction(async(tx)=>{
+async function certificateSnapshot(tx:Db,serviceId:string){
     const [service]=await tx.query<{id:string;folio:string;status:string;operating_company:string|null;client_name:string;site_name:string;
       service_type:string;waste_type:string;gross_kg:string;tare_kg:string;closed_at:Date}>(`
       SELECT s.id,s.folio,s.status,s.operating_company,c.name AS client_name,cs.name AS site_name,s.service_type,s.waste_type,
@@ -95,8 +104,6 @@ export async function issueCertificate(actor:Actor,serviceId:string){
       JOIN client_sites cs ON cs.id=s.site_id WHERE s.id=$1 AND s.deleted_at IS NULL FOR UPDATE OF s`,[serviceId]);
     if(!service||service.status!=="completada"||!service.closed_at)reject("Sólo se certifican servicios cerrados.");
     if(service.operating_company!=="rerchar")reject("Este formato de certificado pertenece a RERCHAR. Confirme la empresa o valide un formato para E y J.");
-    const [active]=await tx.query<{id:string}>("SELECT id FROM service_certificates WHERE service_id=$1 AND status='vigente'",[serviceId]);
-    if(active)return active.id;
     const [record]=await tx.query<{status:string;category:string;classification:string;quantity_kg:string;guide_number:string;
       generator_name:string;transporter_name:string;receiver_name:string;treatment:string}>(`
       SELECT status,category,classification,quantity_kg,guide_number,generator_name,transporter_name,
@@ -128,12 +135,46 @@ export async function issueCertificate(actor:Actor,serviceId:string){
       movement_date:guide?.movement_date instanceof Date?guide.movement_date.toISOString():guide?.movement_date??null,
       valued_guide_number:guide?.valued_guide_number??null,weight_ticket:guide?.weight_ticket??null,
       plate:asset?.plate??null,invoice_number:invoice?.invoice_number??null};
+    return snapshot;
+}
+
+export async function saveCertificateDraft(actor:Actor,serviceId:string){
+  admin(actor);uuid.parse(serviceId);
+  return transaction(async tx=>{
+    const snapshot=await certificateSnapshot(tx,serviceId);
+    const [active]=await tx.query<{id:string}>("SELECT id FROM service_certificates WHERE service_id=$1 AND status='vigente'",[serviceId]);
+    if(active)reject("Este servicio ya tiene un certificado vigente.");
+    await tx.query(`INSERT INTO service_certificate_drafts (service_id,snapshot,prepared_by)
+      VALUES ($1,$2,$3) ON CONFLICT (service_id) DO UPDATE SET snapshot=EXCLUDED.snapshot,
+      prepared_by=EXCLUDED.prepared_by,prepared_at=now()`,[serviceId,JSON.stringify(snapshot),actor.id]);
+    await tx.query(`INSERT INTO audit_events (actor_id,action,entity_type,entity_id,next_value)
+      VALUES ($1,'prepare','service_certificate', $2,$3)`,[actor.id,serviceId,JSON.stringify({folio:snapshot.folio})]);
+    return serviceId;
+  });
+}
+
+export async function issueCertificate(actor:Actor,serviceId:string,confirmation:unknown){
+  admin(actor);uuid.parse(serviceId);
+  if(confirmation!=="EMITIR")reject("Escriba EMITIR para confirmar la emisión.");
+  verificationBaseUrl();
+  return transaction(async(tx)=>{
+    // Se bloquea el servicio antes de comparar el borrador con el registro vigente.
+    const snapshot=await certificateSnapshot(tx,serviceId);
+    const [active]=await tx.query<{id:string}>("SELECT id FROM service_certificates WHERE service_id=$1 AND status='vigente'",[serviceId]);
+    if(active)return active.id;
+    const [draft]=await tx.query<{snapshot:CertificateSnapshot}>(
+      "SELECT snapshot FROM service_certificate_drafts WHERE service_id=$1 FOR UPDATE",[serviceId]);
+    if(!draft)reject("Primero guarde y revise el borrador del certificado.");
+    const keys=Object.keys(snapshot) as (keyof CertificateSnapshot)[];
+    if(keys.length!==Object.keys(draft.snapshot).length||keys.some(key=>snapshot[key]!==draft.snapshot[key]))
+      reject("El servicio cambió desde que se preparó el borrador. Actualícelo antes de emitir.");
     const [last]=await tx.query<{version:number}>("SELECT version FROM service_certificates WHERE service_id=$1 ORDER BY version DESC LIMIT 1",[serviceId]);
     const version=(last?.version??0)+1;
     const code=randomBytes(24).toString("hex");
     const [certificate]=await tx.query<{id:string}>(`INSERT INTO service_certificates
       (service_id,version,code,snapshot,issued_by) VALUES ($1,$2,$3,$4,$5) RETURNING id`,
       [serviceId,version,code,JSON.stringify(snapshot),actor.id]);
+    await tx.query("DELETE FROM service_certificate_drafts WHERE service_id=$1",[serviceId]);
     await tx.query(`INSERT INTO audit_events (actor_id,action,entity_type,entity_id,next_value)
       VALUES ($1,'issue','service_certificate',$2,$3)`,[actor.id,certificate.id,JSON.stringify({service_id:serviceId,version})]);
     await tx.query(`INSERT INTO service_events (service_id,kind,description,actor_id)

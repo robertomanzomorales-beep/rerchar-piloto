@@ -147,7 +147,7 @@ export default async function ServiceDetail({ params, searchParams }: { params: 
           {actor.role==="admin"&&<Link className="button button-outline" href={`/finanzas/${id}`}>Valorizar y registrar cobros →</Link>}
           {!rental&&canPlan(actor)&&<Link className="button button-outline" href={wasteRecord[0]?`/cumplimiento/${wasteRecord[0].id}`:`/cumplimiento?service_id=${id}`}>{wasteRecord[0]?`Registro ambiental · ${wasteRecord[0].status}`:"Preparar ficha ambiental para el certificado"} →</Link>}
           {!rental&&certificate[0]&&<Link className="button button-outline" href={`/api/certificados/${certificate[0].id}/pdf`}>Descargar certificado PDF + QR</Link>}
-          {!rental&&actor.role==="admin"&&!certificate[0]&&certificateReady&&<Link className="button button-outline" href="/certificados">Emitir certificado →</Link>}
+          {!rental&&actor.role==="admin"&&!certificate[0]&&certificateReady&&<Link className="button button-outline" href={`/certificados?service_id=${id}`}>Preparar certificado →</Link>}
           {!rental&&actor.role==="admin"&&!certificate[0]&&!certificateReady&&<p className="certificate-step-hint">Para emitir el certificado, prepare y revise primero la ficha ambiental de este servicio.</p>}
         </section>}
       </div>
