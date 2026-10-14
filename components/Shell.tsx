@@ -19,7 +19,7 @@ export default function Shell({ actor, children }: { actor: Actor; children: Rea
     event.preventDefault();setSearchOpen(true);
   }};window.addEventListener("keydown",onKey);return()=>window.removeEventListener("keydown",onKey);},[]);
   useEffect(()=>{
-    const company=pathname.startsWith("/empresa/rerchar")?"rerchar":pathname.startsWith("/empresa/e_y_j")?"e_y_j":null;
+    const company=pathname.startsWith("/empresa/rerchar")?"rerchar":pathname.startsWith("/empresa/e_y_j")||pathname.startsWith("/estados-pago")?"e_y_j":null;
     if(company){localStorage.setItem("rerchar-selected-company",company);setSelectedCompany(company);}
     else if(pathname==="/"){localStorage.removeItem("rerchar-selected-company");setSelectedCompany(null);}
     else {const saved=localStorage.getItem("rerchar-selected-company");setSelectedCompany(saved==="rerchar"||saved==="e_y_j"?saved:null);}
@@ -38,8 +38,8 @@ export default function Shell({ actor, children }: { actor: Actor; children: Rea
     { group:"Cierre y control", href: "/finanzas", text: "Contratos y finanzas", icon: Banknote, visible: actor.role === "admin" },
     { group:"Cierre y control", href: "/cobros-extraordinarios", text: "Cobros extraordinarios", icon: ReceiptText, visible: actor.role === "admin" || actor.role === "operaciones" },
     { group:"Cierre y control", href: "/cobranzas", text: "Cobranza clientes", icon: Banknote, visible: actor.role === "admin" },
-    { group:"Cierre y control", href: "/estados-pago", text: "Estados de pago · E y J", icon: ReceiptText, visible: selectedCompany==="e_y_j" && (actor.role === "admin" || actor.role === "operaciones") },
-    { group:"Cierre y control", href: "/estados-pago/calendario", text: "Calendario de EDP", icon: CalendarDays, visible: selectedCompany==="e_y_j" && (actor.role === "admin" || actor.role === "operaciones") },
+    { group:"Cierre y control", href: "/estados-pago", text: "Estados de pago · E y J", icon: ReceiptText, visible: actor.role === "admin" || actor.role === "operaciones" },
+    { group:"Cierre y control", href: "/estados-pago/calendario", text: "Calendario de EDP · E y J", icon: CalendarDays, visible: actor.role === "admin" || actor.role === "operaciones" },
     { group:"Cierre y control", href: "/certificados", text: "Certificados", icon: FileBadge2, visible: actor.role !== "conductor" },
     { group:"Cierre y control", href: "/cumplimiento", text: "Registro ambiental", icon: FileCheck2, visible: actor.role === "admin" || actor.role === "operaciones" },
     { group:"Cierre y control", href: "/reportes", text: "Reportes", icon: FileBarChart2, visible: true },
