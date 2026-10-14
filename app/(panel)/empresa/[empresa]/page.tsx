@@ -8,6 +8,7 @@ import { listServices } from "@/lib/pilot";
 import { listQuotes, quoteFolio } from "@/lib/quotes";
 import { ServiceTable, chileDate } from "@/components/UI";
 import {rercharMaterialDashboard,rercharReceiptGuideDashboard,rercharReceiptClosureDashboard,eyjPaymentDashboard} from "@/lib/company-dashboard";
+import {eyjBillingCalendarDashboard} from "@/lib/payment-calendar";
 
 type ServiceMetrics = { total:string; requested:string; scheduled:string; in_route:string; pending_review:string; completed:string; critical:string };
 type QuoteMetrics = { total:string; draft:string; sent:string; accepted:string; expired:string };
@@ -22,7 +23,7 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
   const company = companies[selected];
   const showQuotes = actor.role !== "conductor";
   const today = new Intl.DateTimeFormat("sv-SE",{timeZone:"America/Santiago",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
-  const [quotes,services,serviceStats,quoteStats,months,guideAlerts,invoiceAlerts,unclassified,materials,payments,receiptGuides,receiptClosure] = await Promise.all([
+  const [quotes,services,serviceStats,quoteStats,months,guideAlerts,invoiceAlerts,unclassified,materials,payments,receiptGuides,receiptClosure,billingCalendar] = await Promise.all([
     showQuotes ? listQuotes(actor,"",selected) : Promise.resolve([]),
     listServices(actor,"","",selected),
     db.query<ServiceMetrics>(`SELECT count(*)::text AS total,
@@ -58,6 +59,7 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
     selected==="e_y_j"&&canManage(actor) ? eyjPaymentDashboard() : Promise.resolve(null),
     selected==="rerchar"&&canManage(actor) ? rercharReceiptGuideDashboard() : Promise.resolve(null),
     selected==="rerchar"&&canManage(actor) ? rercharReceiptClosureDashboard() : Promise.resolve(null),
+    selected==="e_y_j"&&canManage(actor) ? eyjBillingCalendarDashboard() : Promise.resolve(null),
   ]);
   const s=serviceStats[0],q=quoteStats[0];
   const maxMonth=Math.max(1,...months.map(m=>value(m.total)));
@@ -83,6 +85,11 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
     ]:[]),
     ...(selected==="rerchar"&&canManage(actor)&&materials?.stock_ready?[{label:"Guías anteriores con salida de stock por conciliar",count:value(materials.guides.stock_pending),href:"/control-guias"}]:[]),
     ...(selected==="e_y_j"&&canManage(actor)&&payments?.ready?[{label:"Estados de pago por completar o corregir",count:value(payments.pending),href:"/estados-pago"}]:[]),
+    ...(selected==="e_y_j"&&canManage(actor)&&billingCalendar?.ready?[
+      {label:"Cortes de EDP en los próximos 7 días",count:value(billingCalendar.cutoffs),href:"/estados-pago/calendario"},
+      {label:"Envíos de EDP en los próximos 7 días",count:value(billingCalendar.sends),href:"/estados-pago/calendario"},
+      {label:"Envíos de EDP atrasados",count:value(billingCalendar.overdue),href:"/estados-pago/calendario"},
+    ]:[]),
     ...(actor.role==="admin"?[{label:"Facturas de proveedores vencidas con saldo",count:value(invoiceAlerts[0]?.total),href:`/facturas-recibidas?empresa=${selected}`}]:[]),
   ];
   return <>
@@ -108,8 +115,9 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
       <Link href={`/cotizaciones?empresa=${selected}`}>1. Cotizaciones <ArrowRight size={16}/></Link>
       {selected==="rerchar"&&canManage(actor)?<Link href="/control-guias">2. Control de guía y salida de material <ArrowRight size={16}/></Link>:<Link href={`/solicitudes?empresa=${selected}`}>2. Solicitudes y planificación <ArrowRight size={16}/></Link>}
       {selected==="rerchar"?<Link href="/ingresos">3. Recepción y stock de material <ArrowRight size={16}/></Link>:<Link href={`/seguimiento-guias?empresa=${selected}`}>3. Guías y seguimiento <ArrowRight size={16}/></Link>}
-      {selected==="e_y_j"&&canManage(actor)&&<Link href="/estados-pago">4. Estados de pago de servicios y arriendos <ArrowRight size={16}/></Link>}
-      <Link href={`/finanzas?empresa=${selected}`}>{selected==="e_y_j"?"5.":"4."} Valorización y cobros <ArrowRight size={16}/></Link>
+      {selected==="e_y_j"&&canManage(actor)&&<Link href="/estados-pago/calendario">4. Calendario de cortes y envíos <ArrowRight size={16}/></Link>}
+      {selected==="e_y_j"&&canManage(actor)&&<Link href="/estados-pago">5. Estados de pago de servicios y arriendos <ArrowRight size={16}/></Link>}
+      <Link href={`/finanzas?empresa=${selected}`}>{selected==="e_y_j"?"6.":"4."} Valorización y cobros <ArrowRight size={16}/></Link>
     </div><p className="helper-text">Los estados de pago de E y J registran respaldo y valorización administrativa; la factura tributaria y la conciliación del cobro se gestionan por separado.</p></section>
     {showQuotes && <section className="section-card"><div className="section-heading"><div><div className="eyebrow">COMERCIAL · {company.short}</div><h2>Cotizaciones recientes</h2></div><Link href={`/cotizaciones?empresa=${selected}`} className="text-link">Ver todas <ArrowRight size={16}/></Link></div>{quotes.length ? <div className="table-wrap"><table className="data-table"><thead><tr><th>Folio</th><th>Cliente</th><th>Asunto</th><th>Estado</th><th>Fecha</th></tr></thead><tbody>{quotes.slice(0,5).map(item=><tr key={item.id}><td><Link href={`/cotizaciones/${item.id}`}><strong>{quoteFolio(item)}</strong></Link></td><td>{item.client_name}</td><td>{item.title}</td><td>{item.status}</td><td>{chileDate(item.created_at)}</td></tr>)}</tbody></table></div> : <p className="muted">Aún no hay cotizaciones registradas para {company.short}.</p>}</section>}
     <section className="section-card"><div className="section-heading"><div><div className="eyebrow">OPERACIÓN · {company.short}</div><h2>Solicitudes recientes</h2></div><Link href={`/solicitudes?empresa=${selected}`} className="text-link">Ver todas <ArrowRight size={16}/></Link></div><ServiceTable services={services.slice(0,8)}/></section>

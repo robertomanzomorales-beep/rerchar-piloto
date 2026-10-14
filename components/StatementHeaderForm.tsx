@@ -3,9 +3,11 @@
 import {useState} from "react";
 
 type Client={id:string;name:string;tax_id:string|null;address:string|null;email:string|null};
-export default function StatementHeaderForm({clients}:{clients:Client[]}){
-  const [clientId,setClientId]=useState("");
-  const [name,setName]=useState(""),[taxId,setTaxId]=useState(""),[address,setAddress]=useState(""),[contact,setContact]=useState("");
+export default function StatementHeaderForm({clients,defaultClientId=""}:{clients:Client[];defaultClientId?:string}){
+  const initial=clients.find(c=>c.id===defaultClientId);
+  const [clientId,setClientId]=useState(initial?.id??"");
+  const [name,setName]=useState(initial?.name??""),[taxId,setTaxId]=useState(initial?.tax_id??""),
+    [address,setAddress]=useState(initial?.address??""),[contact,setContact]=useState(initial?.email??"");
   return <>
     <label>Cliente<select name="client_id" required value={clientId} onChange={event=>{
       const id=event.target.value,client=clients.find(c=>c.id===id);setClientId(id);

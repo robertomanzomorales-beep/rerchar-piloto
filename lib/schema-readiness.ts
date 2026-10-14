@@ -1,6 +1,6 @@
 import {db} from "./db";
 
-export type ModuleKey="guias"|"ingresos"|"stock"|"edp";
+export type ModuleKey="guias"|"ingresos"|"stock"|"edp"|"edp_calendar";
 
 // Sólo se consultan nombres fijos del esquema. Detectar la tabla sin sus columnas
 // evita mostrar un módulo parcialmente migrado como si estuviera operativo.
@@ -12,6 +12,8 @@ const requirements:Record<ModuleKey,{tables:string[];columns:[string,string][]}>
   stock:{tables:["material_catalog","material_stock_balances","material_stock_movements"],columns:[]},
   edp:{tables:["payment_statements","payment_statement_operations","payment_statement_charges"],
     columns:[["payment_statements","issuer_contact"],["payment_statements","contract_manager"]]},
+  edp_calendar:{tables:["payment_statement_cycles","payment_statements","service_valuations"],
+    columns:[["payment_statement_cycles","contact_email"],["payment_statement_cycles","statement_id"]]},
 };
 
 export async function moduleReady(key:ModuleKey){

@@ -11,6 +11,7 @@ test("panel RERCHAR no cae entre migraciones y E y J calcula los dos formatos ED
   const {rercharMaterialDashboard,rercharReceiptGuideDashboard,eyjPaymentDashboard}=await import("../lib/company-dashboard");
   const {moduleReady}=await import("../lib/schema-readiness");
   const edp=await import("../lib/payment-statements");
+  const calendar=await import("../lib/payment-calendar");
   const migrations=(await readdir(resolve(process.cwd(),"db"))).filter(n=>/^\d+.*\.sql$/.test(n)).sort();
   async function apply(name:string){
     const sql=await readFile(resolve(process.cwd(),`db/${name}`),"utf8");
@@ -21,6 +22,7 @@ test("panel RERCHAR no cae entre migraciones y E y J calcula los dos formatos ED
   assert.equal(await moduleReady("ingresos"),false);
   assert.equal(await moduleReady("stock"),false);
   assert.equal(await moduleReady("edp"),false);
+  assert.equal(await moduleReady("edp_calendar"),false);
   await apply("019_control_guias_material.sql");
   assert.equal(await moduleReady("guias"),false,"el módulo espera también la salida de stock 020");
   assert.equal((await rercharMaterialDashboard()).stock_ready,false,"la ausencia de tabla 020 no deja pantalla negra");
@@ -88,4 +90,45 @@ test("panel RERCHAR no cae entre migraciones y E y J calcula los dos formatos ED
   await assert.rejects(()=>edp.setPaymentStatementStatus(owner,rental,"borrador"),edp.PaymentStatementError);
   await assert.rejects(()=>edp.deletePaymentStatementLine(owner,rental,"charge",second.charges[0].id),edp.PaymentStatementError);
   assert.equal((await edp.listPaymentStatements(viewer)).length,2);
+
+  assert.equal((await calendar.eyjBillingCalendarDashboard("2026-01-29")).ready,false,
+    "el panel no cae si el código se despliega antes de la agenda");
+  await apply("026_agenda_estados_pago.sql");
+  assert.equal(await moduleReady("edp_calendar"),true);
+  const input={client_id:client.id,statement_type:"residuos",period_from:"2026-01-01",period_to:"2026-01-31",
+    cutoff_on:"2026-02-01",send_on:"2026-02-03",contact_email:"cliente@empresa.cl",notes:"Corte acordado"};
+  await assert.rejects(()=>calendar.createBillingCycle(viewer,input),calendar.PaymentCalendarError);
+  await assert.rejects(()=>calendar.createBillingCycle(owner,{...input,send_on:"2026-01-30"}),/envío no puede preceder/);
+  const cycleId=await calendar.createBillingCycle(owner,input);
+  await assert.rejects(()=>calendar.createBillingCycle(owner,{...input,period_from:"2026-01-15"}),/período que se cruza/);
+  const [site]=await db.query<{id:string}>("INSERT INTO client_sites(client_id,name) VALUES($1,'Faena de prueba') RETURNING id",[client.id]);
+  for(const [company,close] of [["e_y_j","2026-02-01T02:30:00Z"],["rerchar","2026-01-20T15:00:00Z"]]){
+    await db.query(`INSERT INTO service_requests(submission_key,client_id,site_id,service_type,waste_type,
+      origin,destination,status,closed_at,created_by,operating_company)
+      VALUES($1,$2,$3,'traslado','industrial','Faena','Planta','completada',$4,$5,$6)`,
+      [randomUUID(),client.id,site.id,close,owner.id,company]);
+  }
+  const [eyjService]=await db.query<{id:string}>("SELECT id FROM service_requests WHERE operating_company='e_y_j' AND client_id=$1",[client.id]);
+  const [contract]=await db.query<{id:string}>(`INSERT INTO client_contracts(client_id,code,starts_on,created_by,operating_company)
+    VALUES($1,'EDP-TEST','2026-01-01',$2,'e_y_j') RETURNING id`,[client.id,owner.id]);
+  const [tariff]=await db.query<{id:string}>(`INSERT INTO service_tariffs(contract_id,service_type,unit,unit_price_clp,valid_from,created_by)
+    VALUES($1,'traslado','servicio',900000,'2026-01-01',$2) RETURNING id`,[contract.id,owner.id]);
+  await db.query(`INSERT INTO service_valuations(service_id,tariff_id,quantity,unit_price_clp,total_clp,created_by)
+    VALUES($1,$2,2,900000,1800000,$3)`,[eyjService.id,tariff.id,owner.id]);
+  const cycle=await calendar.getBillingCycle(viewer,cycleId);
+  assert.equal(cycle.services.length,1,"sólo agrupa servicios E y J del cliente en el período");
+  assert.equal(cycle.services[0].closed_on,"2026-01-31","el día de cierre es la fecha local de Chile");
+  assert.equal(cycle.services[0].quantity,"2.00");
+  assert.equal(cycle.services[0].total_clp,"1800000.00","muestra el valor registrado sin convertirlo en EDP");
+  assert.equal((await calendar.eyjBillingCalendarDashboard("2026-01-26")).cutoffs,"1");
+  assert.equal((await calendar.eyjBillingCalendarDashboard("2026-01-26")).sends,"0");
+  await assert.rejects(()=>calendar.linkBillingStatement(owner,cycleId,rental),/mismo cliente, formato y período/);
+  await calendar.linkBillingStatement(owner,cycleId,id);
+  assert.equal((await calendar.eyjBillingCalendarDashboard("2026-02-04")).overdue,"1",
+    "vincular un EDP observado no resuelve la alerta");
+  await assert.rejects(()=>calendar.updateBillingCycle(owner,cycleId,{...input,period_from:"2026-01-02"}),
+    /debe quedar dentro del período/);
+  await edp.setPaymentStatementStatus(owner,id,"enviado");
+  assert.equal((await calendar.eyjBillingCalendarDashboard("2026-02-04")).overdue,"0");
+  assert.equal((await calendar.listBillingCycles(viewer))[0].statement_status,"enviado");
 });

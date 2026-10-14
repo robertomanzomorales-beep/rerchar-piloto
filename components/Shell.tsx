@@ -37,6 +37,7 @@ export default function Shell({ actor, children }: { actor: Actor; children: Rea
     { group:"Operación", href: "/materiales-stock", text: "Stock de materiales", icon: Warehouse, visible: selectedCompany!=="e_y_j" && (actor.role === "admin" || actor.role === "operaciones") },
     { group:"Cierre y control", href: "/finanzas", text: "Contratos y finanzas", icon: Banknote, visible: actor.role === "admin" },
     { group:"Cierre y control", href: "/estados-pago", text: "Estados de pago · E y J", icon: ReceiptText, visible: selectedCompany==="e_y_j" && (actor.role === "admin" || actor.role === "operaciones") },
+    { group:"Cierre y control", href: "/estados-pago/calendario", text: "Calendario de EDP", icon: CalendarDays, visible: selectedCompany==="e_y_j" && (actor.role === "admin" || actor.role === "operaciones") },
     { group:"Cierre y control", href: "/certificados", text: "Certificados", icon: FileBadge2, visible: actor.role !== "conductor" },
     { group:"Cierre y control", href: "/cumplimiento", text: "Registro ambiental", icon: FileCheck2, visible: actor.role === "admin" || actor.role === "operaciones" },
     { group:"Cierre y control", href: "/reportes", text: "Reportes", icon: FileBarChart2, visible: true },
@@ -54,10 +55,12 @@ export default function Shell({ actor, children }: { actor: Actor; children: Rea
   ];
   const searchItems=[{href:selectedCompany?`/empresa/${selectedCompany}`:"/",text:"Panel de empresa",group:"Inicio"},
     ...links.filter(link=>link.visible).map(link=>({href:companyHref(link.href),text:link.text,group:link.group}))];
+  const activeHref=links.filter(link=>link.visible&&(pathname===link.href||pathname.startsWith(`${link.href}/`)))
+    .sort((a,b)=>b.href.length-a.href.length)[0]?.href;
   const nav = <nav className="nav-items" aria-label="Navegación principal"><Link href={selectedCompany?`/empresa/${selectedCompany}`:"/"} className={`nav-link ${pathname==="/"||pathname.startsWith("/empresa/")?"active":""}`}><LayoutDashboard size={18}/> Panel de empresa <NavPendingHint/></Link>{["Comercial","Operación","Cierre y control","Abastecimiento","Recursos compartidos","Configuración"].map(group=>{
     const groupLinks=links.filter(link=>link.group===group&&link.visible);
     const isOpen=expanded[group]??groupLinks.some(link=>pathname===link.href||pathname.startsWith(`${link.href}/`));
-    return groupLinks.length?<div className={`nav-group ${isOpen?"expanded":""}`} key={group}><button type="button" className="nav-group-toggle" aria-expanded={isOpen} onClick={()=>setExpanded(old=>({...old,[group]:!isOpen}))}><span>{group}</span><ChevronDown size={16}/></button><div className="nav-group-panel" inert={!isOpen}><div className="nav-group-inner">{groupLinks.map(link=><Link key={link.href} href={companyHref(link.href)} className={`nav-link ${pathname===link.href||pathname.startsWith(`${link.href}/`)?"active":""}`}><link.icon size={18} strokeWidth={1.9}/>{link.text}<NavPendingHint/></Link>)}</div></div></div>:null;
+    return groupLinks.length?<div className={`nav-group ${isOpen?"expanded":""}`} key={group}><button type="button" className="nav-group-toggle" aria-expanded={isOpen} onClick={()=>setExpanded(old=>({...old,[group]:!isOpen}))}><span>{group}</span><ChevronDown size={16}/></button><div className="nav-group-panel" inert={!isOpen}><div className="nav-group-inner">{groupLinks.map(link=><Link key={link.href} href={companyHref(link.href)} className={`nav-link ${activeHref===link.href?"active":""}`}><link.icon size={18} strokeWidth={1.9}/>{link.text}<NavPendingHint/></Link>)}</div></div></div>:null;
   })}</nav>;
   return <div className="app-shell">
     <aside className="sidebar">
