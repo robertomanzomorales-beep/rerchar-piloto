@@ -3,6 +3,7 @@ import type {Actor} from "./auth";
 import {canPlan} from "./auth";
 import {db,transaction} from "./db";
 import type {Company} from "./companies";
+import {moduleReady} from "./schema-readiness";
 
 export class ExtraChargeError extends Error {}
 const reject=(message:string):never=>{throw new ExtraChargeError(message);};
@@ -171,17 +172,23 @@ export async function voidExtraReceivableInvoice(actor:Actor,invoiceId:string,in
   admin(actor);
   if(!uuid.safeParse(invoiceId).success)reject("Factura inválida.");
   const reason=z.string().trim().min(5).max(500).parse(input);
+  const billingReady=await moduleReady("edp_billing");
   await transaction(async tx=>{
     const [invoice]=await tx.query<{status:string}>("SELECT status FROM extra_receivable_invoices WHERE id=$1 FOR UPDATE",[invoiceId]);
     if(!invoice||invoice.status!=="emitida")reject("Factura no vigente.");
     const [paid]=await tx.query("SELECT id FROM extra_receivable_payments WHERE invoice_id=$1 LIMIT 1",[invoiceId]);
     if(paid)reject("No se puede anular una factura que registra pagos.");
     const charges=await tx.query<{id:string}>("SELECT id FROM service_extra_charges WHERE receivable_invoice_id=$1 FOR UPDATE",[invoiceId]);
+    const statements=billingReady?await tx.query<{id:string}>("SELECT id FROM payment_statements WHERE receivable_invoice_id=$1 FOR UPDATE",[invoiceId]):[];
     await tx.query("UPDATE extra_receivable_invoices SET status='anulada' WHERE id=$1",[invoiceId]);
     await tx.query(`UPDATE service_extra_charges SET status='aprobado',invoice_number=NULL,invoiced_on=NULL,
       receivable_invoice_id=NULL WHERE receivable_invoice_id=$1`,[invoiceId]);
     for(const charge of charges)await tx.query("INSERT INTO audit_events(actor_id,action,entity_type,entity_id,next_value) VALUES($1,'unlink_void_invoice','service_extra_charge',$2,$3)",
       [actor.id,charge.id,JSON.stringify({invoice_id:invoiceId,reason})]);
+    if(billingReady)await tx.query(`UPDATE payment_statements SET receivable_invoice_id=NULL,invoice_variance_note=NULL,updated_at=now()
+      WHERE receivable_invoice_id=$1`,[invoiceId]);
+    for(const statement of statements)await tx.query("INSERT INTO audit_events(actor_id,action,entity_type,entity_id,next_value) VALUES($1,'unlink_void_invoice','payment_statement',$2,$3)",
+      [actor.id,statement.id,JSON.stringify({invoice_id:invoiceId,reason})]);
     await tx.query("INSERT INTO audit_events(actor_id,action,entity_type,entity_id,next_value) VALUES($1,'void','extra_receivable_invoice',$2,$3)",
       [actor.id,invoiceId,JSON.stringify({reason})]);
   });

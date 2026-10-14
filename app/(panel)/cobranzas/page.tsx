@@ -40,8 +40,9 @@ export default async function Receivables({searchParams}:{searchParams:Promise<{
         const balance=Number(invoice.total_clp)-Number(invoice.paid_clp),due=day(invoice.due_on);
         return <article key={`${invoice.source}-${invoice.id}`} className="note-block">
           <strong>{invoice.invoice_number} · {invoice.client_name} · {balance<=0?"Pagada":due<today?"Vencida":due<=seven?"Vence pronto":"Pendiente"}</strong>
-          <p>{invoice.source==="servicio"?"Factura de servicio":"Factura de cobro extraordinario"} · Emisión {day(invoice.issued_on)} · Vencimiento {due}{Number(invoice.extra_count)>0?` · ${invoice.extra_count} cargo(s) asociados`:""}</p>
+          <p>{invoice.source==="servicio"?"Factura de servicio":invoice.source==="edp"?"Factura asociada a EDP":"Factura de cobro extraordinario"} · Emisión {day(invoice.issued_on)} · Vencimiento {due}{Number(invoice.edp_count)>0?` · ${invoice.edp_count} EDP vinculado(s)`:""}{Number(invoice.extra_count)>0?` · ${invoice.extra_count} cargo(s) asociados`:""}</p>
           <p>Total <strong>${money(invoice.total_clp)}</strong> · Abonado ${money(invoice.paid_clp)} · Saldo <strong>${money(balance)}</strong></p>
+          {invoice.statement_id&&<Link href={`/estados-pago/${invoice.statement_id}`}>Ver EDP asociado →</Link>}
           {invoice.source==="servicio"?<Link href={`/finanzas/${invoice.service_id}`}>Ver factura y registrar abono →</Link>:<>
             {invoice.service_id&&<Link href={`/solicitudes/${invoice.service_id}`}>Ver servicio asociado →</Link>}
             {balance>0&&<details className="reference-control"><summary>Registrar abono comprobado</summary><form action={registerExtraReceivablePaymentAction} className="form-grid detail-form">

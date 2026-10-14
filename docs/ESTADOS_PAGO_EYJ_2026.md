@@ -28,9 +28,13 @@ Los archivos son referencias de formato. La migración no crea EDP históricos n
 5. Agrega los cobros según contrato. No se copia automáticamente un importe desde el servicio: para UF registra valor y fecha de la UF utilizada, y para CLP revisa tarifa y cantidad.
 6. Revisa la vista imprimible, el neto, el IVA y el total; imprime o guarda en PDF desde el navegador.
 7. Marca **enviado**. Un documento enviado se puede **aprobar** u **observar**; un observado vuelve a ser editable. El aprobado queda cerrado. Operaciones puede consultar, administración puede editar y cambiar estados.
+8. Sobre un EDP **aprobado**, Administración vincula el folio, emisión, vencimiento y total real de la factura emitida fuera del sistema. Se revisa si el folio ya existe para el mismo cliente y E y J en Finanzas o Cobranza; en ese caso se reutiliza la cuenta y no se suma otro saldo. Si el total real difiere del EDP o de la suma de varios EDP vinculados al folio, se exige una explicación registrada en Auditoría. La vista del EDP muestra factura, abonos y saldo; Cobranza permite registrar abonos y conserva los filtros de vencimiento. No se crea un DTE.
+9. Si la factura externa se anula sin pagos, se desvincula del EDP y el EDP aprobado vuelve a la alerta **sin factura asociada**. Una factura con pagos no puede anularse desde el sistema.
 
 ## Publicación
 
 Las migraciones de Neon van en orden: `020_stock_materiales_y_recepcion_directa.sql`, luego `021_estados_pago_eyj.sql`. Se registran en `schema_migrations`; `npm run db:migrate` omite las ya aplicadas. La pantalla de RERCHAR conserva un panel de lectura mientras falta la 020, con stock pendiente, y E y J muestra EDP pendiente mientras falta la 021.
 
 El vínculo del respaldo a servicios requiere también `037_resultado_diario.sql` y `040_edp_servicios.sql`. Si aún falta esta última, el EDP anterior sigue abriendo y la opción de incorporar un servicio aparece tras ejecutar la migración.
+
+La asociación con la factura y Cobranza requiere `039_cobranzas.sql` y `041_edp_factura_cobranza.sql`. Antes de la 041, las pantallas anteriores continúan visibles; tras aplicarla, se habilitan el formulario de factura y la alerta de EDP aprobados pendientes de vínculo. Los ejemplos de EDP sirven como formato y no se cargan como documentos históricos reales.

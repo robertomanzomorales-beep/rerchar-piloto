@@ -1,8 +1,8 @@
 import Link from "next/link";
 import {notFound,redirect} from "next/navigation";
 import {requireActor,canManage} from "@/lib/auth";
-import {PaymentStatementError,getPaymentStatement,listStatementServices,type Operation,type Charge} from "@/lib/payment-statements";
-import {saveStatementOperationAction,addStatementServiceAction,saveStatementChargeAction,deleteStatementLineAction,setStatementStatusAction} from "@/app/payment-statement-actions";
+import {PaymentStatementError,getPaymentStatement,getStatementInvoice,listStatementServices,type Operation,type Charge} from "@/lib/payment-statements";
+import {saveStatementOperationAction,addStatementServiceAction,saveStatementChargeAction,deleteStatementLineAction,setStatementStatusAction,linkStatementInvoiceAction} from "@/app/payment-statement-actions";
 import {Notice} from "@/components/UI";
 import {SubmitButton} from "@/components/Transition";
 import PrintButton from "@/components/PrintButton";
@@ -51,6 +51,8 @@ export default async function StatementDetail({params,searchParams}:{params:Prom
   const edit=actor.role==="admin"&&["borrador","observado"].includes(s.status);
   const importReady=edit&&await moduleReady("edp_service_import");
   const available=importReady?await listStatementServices(actor,id):[];
+  const billingReady=await moduleReady("edp_billing");
+  const invoice=billingReady?await getStatementInvoice(actor,s):null;
   const nextOperation=Math.max(0,...operations.map(o=>o.line_number))+1;
   return <>
     <div className="order-actions print-hide"><Link href="/estados-pago" className="back-link">← Estados de pago</Link><PrintButton label="Imprimir EDP / guardar PDF"/></div>
@@ -68,6 +70,21 @@ export default async function StatementDetail({params,searchParams}:{params:Prom
       <p className="helper-text">Un borrador se envía después de registrar operaciones y cobros. «Aprobado» cierra el documento interno; las facturas y pagos se gestionan aparte.</p>
       {actor.role==="admin"&&<div className="edp-status-actions">{(["borrador","observado"].includes(s.status))&&<form action={setStatementStatusAction}><input type="hidden" name="statement_id" value={id}/><input type="hidden" name="status" value="enviado"/><SubmitButton className="button button-primary">Marcar enviado</SubmitButton></form>}{s.status==="enviado"&&<><form action={setStatementStatusAction}><input type="hidden" name="statement_id" value={id}/><input type="hidden" name="status" value="aprobado"/><SubmitButton className="button button-primary">Marcar aprobado</SubmitButton></form><form action={setStatementStatusAction}><input type="hidden" name="statement_id" value={id}/><input type="hidden" name="status" value="observado"/><SubmitButton className="button button-outline">Marcar observado</SubmitButton></form></>}{s.status==="observado"&&<form action={setStatementStatusAction}><input type="hidden" name="statement_id" value={id}/><input type="hidden" name="status" value="borrador"/><SubmitButton className="button button-outline">Volver a borrador</SubmitButton></form>}</div>}
     </section>
+    {billingReady&&<section className="section-card"><div className="section-heading"><div><div className="eyebrow">FACTURA EXTERNA · E Y J</div><h2>EDP a cobranza</h2></div></div>
+      {invoice?<><p>Factura <strong>{invoice.invoice_number}</strong> · {invoice.status} · Emisión {date(invoice.issued_on)} · Vencimiento {date(invoice.due_on)}</p>
+        <p>Total de factura <strong>{money(Number(invoice.total_clp))}</strong> · Abonado {money(Number(invoice.paid_clp))} · Saldo <strong>{money(Math.max(0,Number(invoice.total_clp)-Number(invoice.paid_clp)))}</strong></p>
+        {s.invoice_variance_note&&<p className="helper-text">Diferencia respecto del EDP: {s.invoice_variance_note}</p>}
+        <Link className="text-link" href={invoice.source==="servicio"&&invoice.service_id?`/finanzas/${invoice.service_id}`:"/cobranzas?empresa=e_y_j"}>Abrir cobranza y pagos →</Link></>:
+      s.status==="aprobado"&&actor.role==="admin"?<><p className="helper-text">Registre el folio, fechas y total real del documento emitido fuera del sistema. Si ya existe en Finanzas o Cobranza para este cliente, se vinculará el mismo folio sin sumar otra factura. Si el monto difiere del EDP ({money(totals.total_clp)}) o de la suma de EDP vinculados, explique el motivo.</p>
+        <form action={linkStatementInvoiceAction} className="form-grid"><input type="hidden" name="statement_id" value={id}/>
+          <label>Folio factura<input name="invoice_number" required minLength={2} maxLength={80}/></label>
+          <label>Emisión<input name="issued_on" type="date" required/></label>
+          <label>Vencimiento<input name="due_on" type="date" required/></label>
+          <label>Total real factura CLP<input name="total_clp" type="number" min="0.01" step="0.01" required/></label>
+          <label className="field-full">Motivo de diferencia con EDP, si corresponde<input name="variance_note" maxLength={500}/></label>
+          <div className="field-full form-footer"><SubmitButton className="button button-primary">Vincular factura externa</SubmitButton></div>
+        </form></>:<p className="helper-text">Este EDP todavía no tiene una factura asociada. Se habilita al aprobarlo.</p>}
+    </section>}
     {edit&&<>{importReady&&<section className="section-card"><div className="section-heading"><div><div className="eyebrow">DESDE OPERACIONES</div><h2>Incorporar servicio ejecutado</h2></div></div>
       <p className="helper-text">Se copian fecha, peso y respaldos del servicio de E y J para revisión. El transporte y la disposición pueden ser dos ítems del mismo servicio. Los valores comerciales se registran en «Cobro».</p>
       {available.length?<form action={addStatementServiceAction} className="form-grid"><input type="hidden" name="statement_id" value={id}/>

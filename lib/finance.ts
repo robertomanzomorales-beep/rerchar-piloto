@@ -2,6 +2,7 @@ import {z} from "zod";
 import type {Actor} from "./auth";
 import {db,transaction,type Db} from "./db";
 import type {Company} from "./companies";
+import {moduleReady} from "./schema-readiness";
 
 const uuid=z.uuid();
 const optionalId=z.union([uuid,z.literal("")]).default("");
@@ -243,15 +244,20 @@ export async function voidInvoice(actor:Actor,invoiceId:string,reason:unknown){
   admin(actor);
   const id=uuid.parse(invoiceId);
   const explanation=z.string().trim().min(5).max(500).parse(reason);
+  const billingReady=await moduleReady("edp_billing");
   await transaction(async(tx)=>{
     const [invoice]=await tx.query<{status:string}>("SELECT status FROM service_invoices WHERE id=$1 FOR UPDATE",[id]);
     if(!invoice||invoice.status!=="emitida")reject("La factura interna no está vigente.");
     const [payment]=await tx.query("SELECT id FROM invoice_payments WHERE invoice_id=$1 LIMIT 1",[id]);
     if(payment)reject("No anule una factura que registra pagos; requiere revisión administrativa.");
     const charges=await tx.query<{id:string}>("SELECT id FROM service_extra_charges WHERE linked_service_invoice_id=$1 FOR UPDATE",[id]);
+    const statements=billingReady?await tx.query<{id:string}>("SELECT id FROM payment_statements WHERE service_invoice_id=$1 FOR UPDATE",[id]):[];
     await tx.query(`UPDATE service_extra_charges SET status='aprobado',invoice_number=NULL,invoiced_on=NULL,
       linked_service_invoice_id=NULL WHERE linked_service_invoice_id=$1`,[id]);
     for(const charge of charges)await audit(tx,actor,"unlink_void_invoice","service_extra_charge",charge.id,{invoice_id:id,reason:explanation});
+    if(billingReady)await tx.query(`UPDATE payment_statements SET service_invoice_id=NULL,invoice_variance_note=NULL,updated_at=now()
+      WHERE service_invoice_id=$1`,[id]);
+    for(const statement of statements)await audit(tx,actor,"unlink_void_invoice","payment_statement",statement.id,{invoice_id:id,reason:explanation});
     await tx.query("UPDATE service_invoices SET status='anulada' WHERE id=$1",[id]);
     await audit(tx,actor,"void","service_invoice",id,{reason:explanation});
   });

@@ -27,7 +27,8 @@ async function audit(tx:Db,actor:Actor,action:string,type:string,id:string,next:
 export type Statement={id:string;client_id:string;client_name:string;client_tax_id:string;client_address:string;client_contact:string;
   issuer_contact:string|null;contract_manager:string|null;number:string;period_on:Date|string;
   statement_type:"residuos"|"arriendo";contract_reference:string|null;notes:string|null;
-  status:"borrador"|"enviado"|"aprobado"|"observado";created_at:Date|string};
+  status:"borrador"|"enviado"|"aprobado"|"observado";created_at:Date|string;
+  receivable_invoice_id:string|null;service_invoice_id:string|null;invoice_variance_note:string|null};
 export type Operation={id:string;statement_id:string;service_id:string|null;line_number:number;description:string;operation_on:Date|string|null;
   weight_kg:string|null;weighing_ticket:string|null;service_sheet:string|null;guide_number:string|null;sidrep:string|null;
   rental_from:Date|string|null;rental_to:Date|string|null;is_disposal:boolean};
@@ -37,6 +38,8 @@ export type StatementService={id:string;folio:string;service_type:string;waste_t
   weight_kg:string|null;rental_from:Date|string|null;rental_to:Date|string|null;
   guide_number:string|null;service_sheet:string|null;sidrep:string|null;weighing_ticket:string|null;
   transport_used:boolean;disposal_used:boolean};
+export type StatementInvoice={id:string;source:"servicio"|"edp";invoice_number:string;issued_on:Date|string;
+  due_on:Date|string;total_clp:string;paid_clp:string;status:"emitida"|"anulada";service_id:string|null};
 export type StatementTotals={lines:{charge:Charge;quantity:number|null;total_clp:number|null}[];net_clp:number|null;
   vat_clp:number|null;total_clp:number|null;disposal_tons:number|null};
 
@@ -66,6 +69,97 @@ export async function getPaymentStatement(actor:Actor,id:string){
     db.query<Charge>("SELECT * FROM payment_statement_charges WHERE statement_id=$1 ORDER BY line_number",[id]),
   ]);
   return {statement,operations,charges,totals:statementTotals(operations,charges)};
+}
+
+export async function getStatementInvoice(actor:Actor,statement:Statement):Promise<StatementInvoice|null>{
+  read(actor);
+  if(statement.service_invoice_id){
+    const [invoice]=await db.query<StatementInvoice>(`SELECT f.id,'servicio'::text AS source,f.invoice_number,
+      f.issued_on,f.due_on,f.total_clp,f.status,v.service_id,
+      COALESCE((SELECT sum(p.amount_clp) FROM invoice_payments p WHERE p.invoice_id=f.id),0)::text AS paid_clp
+      FROM service_invoices f JOIN service_valuations v ON v.id=f.valuation_id WHERE f.id=$1`,[statement.service_invoice_id]);
+    return invoice??null;
+  }
+  if(statement.receivable_invoice_id){
+    const [invoice]=await db.query<StatementInvoice>(`SELECT i.id,'edp'::text AS source,i.invoice_number,
+      i.issued_on,i.due_on,i.total_clp,i.status,NULL::uuid AS service_id,
+      COALESCE((SELECT sum(p.amount_clp) FROM extra_receivable_payments p WHERE p.invoice_id=i.id),0)::text AS paid_clp
+      FROM extra_receivable_invoices i WHERE i.id=$1`,[statement.receivable_invoice_id]);
+    return invoice??null;
+  }
+  return null;
+}
+
+export async function linkStatementInvoice(actor:Actor,statementId:string,input:unknown){
+  admin(actor);uuid.parse(statementId);
+  const data=z.object({invoice_number:z.string().trim().min(2).max(80),issued_on:z.iso.date(),due_on:z.iso.date(),
+    total_clp:amount,variance_note:optional(500)}).parse(input);
+  if(Number(data.total_clp)<=0)reject("Ingrese el total real positivo de la factura externa.");
+  if(data.due_on<data.issued_on)reject("El vencimiento no puede anteceder a la emisión de la factura.");
+  const today=new Intl.DateTimeFormat("sv-SE",{timeZone:"America/Santiago",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
+  if(data.issued_on>today)reject("La fecha de emisión de la factura no puede ser futura.");
+  await transaction(async tx=>{
+    const [statement]=await tx.query<Statement>("SELECT * FROM payment_statements WHERE id=$1 AND issuer='e_y_j' FOR UPDATE",[statementId]);
+    if(!statement||statement.status!=="aprobado")reject("Apruebe el EDP antes de registrar su factura externa.");
+    if(statement.receivable_invoice_id||statement.service_invoice_id)reject("Este EDP ya tiene una factura vinculada.");
+    const [operations,charges]=await Promise.all([
+      tx.query<Operation>("SELECT * FROM payment_statement_operations WHERE statement_id=$1",[statementId]),
+      tx.query<Charge>("SELECT * FROM payment_statement_charges WHERE statement_id=$1",[statementId]),
+    ]);
+    const edpTotal=statementTotals(operations,charges).total_clp;
+    if(edpTotal==null)reject("El EDP no tiene una valorización completa.");
+    const sameDay=(value:Date|string,expected:string)=>(value instanceof Date?value.toISOString().slice(0,10):String(value).slice(0,10))===expected;
+    const [main]=await tx.query<{id:string;client_id:string;operating_company:string;status:string;total_verified:boolean;
+      issued_on:Date|string;due_on:Date|string;total_clp:string}>(`SELECT f.id,s.client_id,s.operating_company,f.status,f.total_verified,f.issued_on,f.due_on,f.total_clp
+      FROM service_invoices f JOIN service_valuations v ON v.id=f.valuation_id JOIN service_requests s ON s.id=v.service_id
+      WHERE f.invoice_number=$1 FOR UPDATE OF f`,[data.invoice_number]);
+    let invoiceId:string,source:"servicio"|"edp";
+    if(main){
+      const [otherReceivable]=await tx.query("SELECT id FROM extra_receivable_invoices WHERE issuer='e_y_j' AND invoice_number=$1 AND status='emitida'",[data.invoice_number]);
+      if(otherReceivable)reject("Ese folio también figura en Cobranza. Concílielo antes de vincular el EDP para no duplicarlo.");
+      if(main.status!=="emitida"||!main.total_verified||main.client_id!==statement.client_id||main.operating_company!=="e_y_j"||
+        !sameDay(main.issued_on,data.issued_on)||!sameDay(main.due_on,data.due_on)||Number(main.total_clp)!==Number(data.total_clp))
+        reject("El folio ya existe en Finanzas con otra empresa, cliente, fecha o total. Concílielo antes de vincularlo.");
+      invoiceId=main.id;source="servicio";
+    }else{
+      const [existing]=await tx.query<{id:string;status:string;client_id:string;issued_on:Date|string;due_on:Date|string;total_clp:string}>(
+        "SELECT * FROM extra_receivable_invoices WHERE issuer='e_y_j' AND invoice_number=$1 FOR UPDATE",[data.invoice_number]);
+      if(existing){
+        if(existing.status!=="emitida"||existing.client_id!==statement.client_id||!sameDay(existing.issued_on,data.issued_on)||
+          !sameDay(existing.due_on,data.due_on)||Number(existing.total_clp)!==Number(data.total_clp))
+          reject("El folio ya existe en Cobranza con otro cliente, fecha o total.");
+        invoiceId=existing.id;
+      }else{
+        const [created]=await tx.query<{id:string}>(`INSERT INTO extra_receivable_invoices
+          (issuer,client_id,invoice_number,issued_on,due_on,total_clp,created_by)
+          VALUES('e_y_j',$1,$2,$3,$4,$5,$6) RETURNING id`,
+          [statement.client_id,data.invoice_number,data.issued_on,data.due_on,data.total_clp,actor.id]);
+        invoiceId=created.id;
+      }
+      source="edp";
+    }
+    const linked=await tx.query<{id:string}>(`SELECT id FROM payment_statements WHERE id<>$1 AND
+      ${source==="edp"?"receivable_invoice_id":"service_invoice_id"}=$2 FOR UPDATE`,[statementId,invoiceId]);
+    let linkedTotal=edpTotal;
+    for(const other of linked){
+      const [otherOperations,otherCharges]=await Promise.all([
+        tx.query<Operation>("SELECT * FROM payment_statement_operations WHERE statement_id=$1",[other.id]),
+        tx.query<Charge>("SELECT * FROM payment_statement_charges WHERE statement_id=$1",[other.id]),
+      ]);
+      const total=statementTotals(otherOperations,otherCharges).total_clp;
+      if(total==null)reject("Otro EDP del mismo folio carece de valorización completa.");
+      linkedTotal+=total;
+    }
+    if(Number(data.total_clp)!==linkedTotal&&data.variance_note.length<8)
+      reject("Explique la diferencia entre el total de los EDP vinculados y el total real de la factura (mínimo 8 caracteres).");
+    await tx.query(`UPDATE payment_statements SET receivable_invoice_id=$2,service_invoice_id=$3,
+      invoice_variance_note=NULLIF($4,''),updated_at=now() WHERE id=$1`,
+      [statementId,source==="edp"?invoiceId:null,source==="servicio"?invoiceId:null,data.variance_note]);
+    await audit(tx,actor,"link_invoice","payment_statement",statementId,
+      {invoice_id:invoiceId,source,invoice_number:data.invoice_number,total_clp:data.total_clp,edp_total_clp:edpTotal,
+        linked_edp_total_clp:linkedTotal,
+        variance_note:data.variance_note});
+  });
 }
 
 const serviceSelect=`SELECT s.id,s.folio::text,s.service_type,s.waste_type,

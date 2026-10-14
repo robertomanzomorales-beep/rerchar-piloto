@@ -83,3 +83,16 @@ export async function eyjPaymentDashboard(){
     return {total:"0",pending:"0",ready:false};
   }
 }
+
+export async function eyjEdpInvoiceDashboard(){
+  try{
+    const [row]=await db.query<{unbilled:string}>(`SELECT count(*) FILTER (WHERE status='aprobado'
+      AND receivable_invoice_id IS NULL AND service_invoice_id IS NULL)::text AS unbilled
+      FROM payment_statements WHERE issuer='e_y_j'`);
+    return {unbilled:row?.unbilled??"0",ready:true};
+  }catch(error){
+    if(typeof error==="object"&&error!==null&&"code" in error&&["42P01","42703"].includes(String(error.code)))
+      return {unbilled:"0",ready:false};
+    throw error;
+  }
+}
