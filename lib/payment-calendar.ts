@@ -2,6 +2,7 @@ import {z} from "zod";
 import type {Actor} from "./auth";
 import {canManage} from "./auth";
 import {db,transaction} from "./db";
+import {moduleReady} from "./schema-readiness";
 
 const uuid=z.uuid();
 const dataSchema=z.object({client_id:uuid,statement_type:z.enum(["residuos","arriendo"]),
@@ -24,7 +25,8 @@ export type BillingCycle={id:string;client_id:string;client_name:string;statemen
   statement_status:"borrador"|"observado"|"enviado"|"aprobado"|null;created_at:Date|string};
 export type CompletedService={id:string;folio:string;closed_on:string;service_type:string;waste_type:string;
   guide_number:string|null;quantity:string|null;tariff_unit:string|null;unit_price_clp:string|null;
-  total_clp:string|null;invoice_number:string|null;status:string;partial_period:boolean};
+  total_clp:string|null;invoice_number:string|null;status:string;partial_period:boolean;
+  weight_kg:string|null;transport_used:boolean;disposal_used:boolean;used_elsewhere:boolean};
 const cycleSelect=`SELECT b.*,c.name AS client_name,p.number AS statement_number,p.status AS statement_status
   FROM payment_statement_cycles b JOIN clients c ON c.id=b.client_id
   LEFT JOIN payment_statements p ON p.id=b.statement_id`;
@@ -39,11 +41,18 @@ export async function getBillingCycle(actor:Actor,id:string){
   view(actor);if(!uuid.safeParse(id).success)reject("Período no encontrado.");
   const [cycle]=await db.query<BillingCycle>(`${cycleSelect} WHERE b.id=$1 AND b.issuer='e_y_j'`,[id]);
   if(!cycle)reject("Período no encontrado.");
+  const importReady=await moduleReady("edp_service_import");
+  const usage=importReady?`EXISTS(SELECT 1 FROM payment_statement_operations o WHERE o.service_id=s.id AND NOT o.is_disposal) AS transport_used,
+      EXISTS(SELECT 1 FROM payment_statement_operations o WHERE o.service_id=s.id AND o.is_disposal) AS disposal_used,
+      EXISTS(SELECT 1 FROM payment_statement_operations o WHERE o.service_id=s.id AND o.statement_id IS DISTINCT FROM $5::uuid) AS used_elsewhere`:
+    `false AS transport_used,false AS disposal_used,false AS used_elsewhere`;
   const [services,statements]=await Promise.all([
     db.query<CompletedService>(`SELECT s.id,s.folio::text,
       CASE WHEN s.service_type='arriendo' THEN to_char(s.rental_from,'YYYY-MM-DD') || ' al ' || to_char(s.rental_to,'YYYY-MM-DD')
         ELSE to_char(s.closed_at AT TIME ZONE 'America/Santiago','YYYY-MM-DD') END AS closed_on,
       s.service_type,s.waste_type,s.status,s.guide_number,
+      CASE WHEN s.gross_kg IS NOT NULL AND s.tare_kg IS NOT NULL THEN (s.gross_kg-s.tare_kg)::text END AS weight_kg,
+      ${usage},
       (s.service_type='arriendo' AND (s.rental_from<$2::date OR s.rental_to>$3::date)) AS partial_period,
       CASE WHEN s.service_type='arriendo' AND (s.rental_from<$2::date OR s.rental_to>$3::date) THEN NULL ELSE v.quantity::text END AS quantity,
       t.unit AS tariff_unit,v.unit_price_clp::text,
@@ -59,7 +68,7 @@ export async function getBillingCycle(actor:Actor,id:string){
             AND s.closed_at IS NOT NULL
             AND (s.closed_at AT TIME ZONE 'America/Santiago')::date BETWEEN $2::date AND $3::date))
       ORDER BY COALESCE(s.closed_at,s.scheduled_for),s.folio LIMIT 501`,
-      [cycle.client_id,cycle.period_from,cycle.period_to,cycle.statement_type]),
+      [cycle.client_id,cycle.period_from,cycle.period_to,cycle.statement_type,...(importReady?[cycle.statement_id]:[])]),
     db.query<{id:string;number:string;period_on:Date|string;statement_type:string;status:string}>(
       `SELECT id,number,period_on,statement_type,status FROM payment_statements
        WHERE issuer='e_y_j' AND client_id=$1 AND statement_type=$2

@@ -75,4 +75,46 @@ test("EDP copia respaldos de servicios E y J sin duplicar cliente, categoría ni
   assert.equal(date(rentalLine.rental_from),"2026-07-24");assert.equal(date(rentalLine.rental_to),"2026-08-23");
   assert.equal(rentalLine.weight_kg,null);
   await assert.rejects(()=>edp.addStatementService(actor,rentalEdp,{service_id:rental,line_number:2,is_disposal:"1"}),edp.PaymentStatementError);
+
+  const calendar=await import("../lib/payment-calendar");
+  const cycle=await calendar.createBillingCycle(actor,{client_id:client.id,statement_type:"residuos",
+    period_from:"2026-06-01",period_to:"2026-06-30",cutoff_on:"2026-07-01",send_on:"2026-07-03",
+    contact_email:"contacto@cliente.cl",notes:"Cierre mensual"});
+  const juneEdp=await edp.createPaymentStatement(actor,{...base,number:"04",period_on:"2026-06-30",
+    submission_key:randomUUID()});
+  await calendar.linkBillingStatement(actor,cycle,juneEdp);
+  const candidate=await service("e_y_j"),outside=await service("e_y_j");
+  await db.query("UPDATE service_requests SET closed_at='2026-07-02T15:00:00Z' WHERE id=$1",[outside]);
+  const report=await calendar.getBillingCycle(actor,cycle);
+  assert.equal(report.services.find(s=>s.id===source)?.used_elsewhere,true);
+  assert.equal(report.services.find(s=>s.id===candidate)?.weight_kg,"13710.00");
+  await assert.rejects(()=>edp.addBillingCycleServices(viewer,cycle,[{service_id:candidate,is_disposal:"0"}]),
+    edp.PaymentStatementError);
+  await assert.rejects(()=>edp.addBillingCycleServices(actor,cycle,[
+    {service_id:candidate,is_disposal:"0"},{service_id:outside,is_disposal:"1"}]),
+    /fuera del período/);
+  assert.equal((await edp.getPaymentStatement(actor,juneEdp)).operations.length,0,"el lote inválido se revierte entero");
+  await assert.rejects(()=>edp.addBillingCycleServices(actor,cycle,[{service_id:source,is_disposal:"0"}]),
+    /otro estado de pago/);
+  assert.equal(await edp.addBillingCycleServices(actor,cycle,[
+    {service_id:candidate,is_disposal:"0"},{service_id:candidate,is_disposal:"1"}]),2);
+  const imported=(await edp.getPaymentStatement(actor,juneEdp)).operations;
+  assert.deepEqual(imported.map(line=>line.line_number),[1,2]);
+  assert.deepEqual(imported.map(line=>line.is_disposal),[false,true]);
+  assert.equal(imported[1].weight_kg,"13710.00");
+  await assert.rejects(()=>edp.addBillingCycleServices(actor,cycle,[{service_id:candidate,is_disposal:"1"}]),
+    /ya fue incorporado/);
+  assert.equal((await edp.getPaymentStatement(actor,juneEdp)).operations.length,2);
+
+  const partial=await service("e_y_j",client.id,site.id,"completada","arriendo");
+  const rentalCycle=await calendar.createBillingCycle(actor,{client_id:client.id,statement_type:"arriendo",
+    period_from:"2026-07-01",period_to:"2026-07-31",cutoff_on:"2026-08-01",send_on:"2026-08-03",
+    contact_email:"contacto@cliente.cl",notes:"Revisar prorrateo"});
+  const julyEdp=await edp.createPaymentStatement(actor,{...base,number:"05",statement_type:"arriendo",
+    period_on:"2026-07-31",submission_key:randomUUID()});
+  await calendar.linkBillingStatement(actor,rentalCycle,julyEdp);
+  assert.equal((await calendar.getBillingCycle(actor,rentalCycle)).services.find(s=>s.id===partial)?.partial_period,true);
+  await assert.rejects(()=>edp.addBillingCycleServices(actor,rentalCycle,[{service_id:partial,is_disposal:"0"}]),
+    /prorrateo/);
+  assert.equal((await edp.getPaymentStatement(actor,julyEdp)).operations.length,0);
 });

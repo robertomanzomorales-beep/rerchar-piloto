@@ -35,7 +35,7 @@ export type Operation={id:string;statement_id:string;service_id:string|null;line
 export type Charge={id:string;statement_id:string;line_number:number;description:string;pricing:"clp_servicio"|"uf_ton"|"uf_unidad";
   unit_value:string;quantity:string|null;uf_value_clp:string|null;uf_on:Date|string|null};
 export type StatementService={id:string;folio:string;service_type:string;waste_type:string;operation_on:Date|string|null;
-  weight_kg:string|null;rental_from:Date|string|null;rental_to:Date|string|null;
+  closed_on:string|null;weight_kg:string|null;rental_from:Date|string|null;rental_to:Date|string|null;
   guide_number:string|null;service_sheet:string|null;sidrep:string|null;weighing_ticket:string|null;
   transport_used:boolean;disposal_used:boolean};
 export type StatementInvoice={id:string;source:"servicio"|"edp";invoice_number:string;issued_on:Date|string;
@@ -163,6 +163,7 @@ export async function linkStatementInvoice(actor:Actor,statementId:string,input:
 }
 
 const serviceSelect=`SELECT s.id,s.folio::text,s.service_type,s.waste_type,
+  (s.closed_at AT TIME ZONE 'America/Santiago')::date::text AS closed_on,
   COALESCE((SELECT max(d.day) FROM service_day_reports d WHERE d.service_id=s.id AND d.outcome='completado'),
     (s.closed_at AT TIME ZONE 'America/Santiago')::date)::text AS operation_on,
   CASE WHEN s.gross_kg IS NOT NULL AND s.tare_kg IS NOT NULL THEN (s.gross_kg-s.tare_kg)::text END AS weight_kg,
@@ -195,7 +196,13 @@ export async function addStatementService(actor:Actor,statementId:string,input:u
   admin(actor);uuid.parse(statementId);
   const data=z.object({service_id:uuid,line_number:z.coerce.number().int().min(1).max(200),
     is_disposal:z.enum(["0","1"])}).parse(input);
-  return transaction(async tx=>{
+  return transaction(tx=>addStatementServiceTx(tx,actor,statementId,data));
+}
+
+type CyclePeriod={period_from:Date|string;period_to:Date|string};
+const day=(value:Date|string)=>value instanceof Date?value.toISOString().slice(0,10):String(value).slice(0,10);
+async function addStatementServiceTx(tx:Db,actor:Actor,statementId:string,
+  data:{service_id:string;line_number:number;is_disposal:"0"|"1"},cycle?:CyclePeriod){
     const statement=await editable(tx,statementId);
     const [scope]=await tx.query<{client_id:string}>("SELECT client_id FROM payment_statements WHERE id=$1 AND issuer='e_y_j'",[statementId]);
     if(!scope)reject("Estado de pago no encontrado.");
@@ -216,6 +223,14 @@ export async function addStatementService(actor:Actor,statementId:string,input:u
       reject("Complete la fecha de cierre y el pesaje bruto/tara del servicio antes de incorporarlo.");
     if(statement.statement_type==="arriendo"&&(!service.rental_from||!service.rental_to))
       reject("Complete las fechas de arriendo del servicio antes de incorporarlo.");
+    if(cycle){
+      const from=day(cycle.period_from),to=day(cycle.period_to);
+      if(statement.statement_type==="arriendo"){
+        if(day(service.rental_from!)<from||day(service.rental_to!)>to)
+          reject("El arriendo cruza el período. Revise el prorrateo y cárguelo manualmente.");
+      }else if(!service.closed_on||service.closed_on<from||service.closed_on>to)
+        reject("El cierre del servicio está fuera del período en hora de Chile.");
+    }
     const [linked]=await tx.query("SELECT id FROM payment_statement_operations WHERE service_id=$1 AND statement_id<>$2 LIMIT 1",
       [data.service_id,statementId]);
     if(linked)reject("Este servicio ya respalda otro estado de pago.");
@@ -243,6 +258,32 @@ export async function addStatementService(actor:Actor,statementId:string,input:u
     await audit(tx,actor,"create","payment_statement_operation",line.id,
       {statement_id:statementId,service_id:service.id,is_disposal:disposal,line_number:data.line_number});
     return line.id;
+}
+
+export async function addBillingCycleServices(actor:Actor,cycleId:string,input:unknown){
+  admin(actor);uuid.parse(cycleId);
+  const selections=z.array(z.object({service_id:uuid,is_disposal:z.enum(["0","1"])})).min(1).max(200).parse(input);
+  if(new Set(selections.map(s=>`${s.service_id}:${s.is_disposal}`)).size!==selections.length)
+    reject("Hay servicios repetidos en la selección.");
+  return transaction(async tx=>{
+    const [cycle]=await tx.query<CyclePeriod&{statement_id:string|null;statement_type:Statement["statement_type"]}>(
+      "SELECT period_from,period_to,statement_id,statement_type FROM payment_statement_cycles WHERE id=$1 AND issuer='e_y_j' FOR UPDATE",[cycleId]);
+    if(!cycle||!cycle.statement_id)reject("Vincule primero un EDP de este período.");
+    const [statement]=await tx.query<{statement_type:Statement["statement_type"]}>(
+      "SELECT statement_type FROM payment_statements WHERE id=$1 AND issuer='e_y_j' FOR UPDATE",[cycle.statement_id]);
+    if(!statement||statement.statement_type!==cycle.statement_type)reject("El formato del EDP vinculado no corresponde al período.");
+    const [last]=await tx.query<{line_number:number}>(
+      "SELECT COALESCE(MAX(line_number),0)::int AS line_number FROM payment_statement_operations WHERE statement_id=$1",
+      [cycle.statement_id]);
+    if(last.line_number+selections.length>200)reject("El EDP admite como máximo 200 líneas de respaldo.");
+    // Orden fijo para evitar bloqueos cruzados entre importaciones simultáneas.
+    const ordered=[...selections].sort((a,b)=>a.service_id.localeCompare(b.service_id)||a.is_disposal.localeCompare(b.is_disposal));
+    for(const [index,selection] of ordered.entries())
+      await addStatementServiceTx(tx,actor,cycle.statement_id,
+        {...selection,line_number:last.line_number+index+1},cycle);
+    await audit(tx,actor,"import_services","payment_statement_cycle",cycleId,
+      {statement_id:cycle.statement_id,services:ordered});
+    return ordered.length;
   });
 }
 

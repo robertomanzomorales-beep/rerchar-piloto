@@ -5,11 +5,12 @@ import {revalidatePath} from "next/cache";
 import {ZodError} from "zod";
 import {requireActor} from "@/lib/auth";
 import {PaymentCalendarError,createBillingCycle,updateBillingCycle,linkBillingStatement} from "@/lib/payment-calendar";
+import {PaymentStatementError,addBillingCycleServices} from "@/lib/payment-statements";
 
 const value=(form:FormData,key:string)=>String(form.get(key)??"");
 function message(error:unknown){
-  if(error instanceof PaymentCalendarError)return error.message;
-  if(error instanceof ZodError)return "Revise período, fechas y correo de contacto.";
+  if(error instanceof PaymentCalendarError||error instanceof PaymentStatementError)return error.message;
+  if(error instanceof ZodError)return "Revise los datos y la selección de servicios (máximo 200 líneas).";
   if(typeof error==="object"&&error!==null&&"code" in error&&error.code==="23505")return "El período ya existe.";
   console.error("Agenda EDP",error);return "No fue posible guardar el calendario.";
 }
@@ -32,4 +33,12 @@ export async function updateBillingCycleAction(form:FormData){
 export async function linkBillingStatementAction(form:FormData){
   const actor=await requireActor(),id=value(form,"id"),path=`/estados-pago/calendario/${encodeURIComponent(id)}`;
   await run(path,()=>linkBillingStatement(actor,id,value(form,"statement_id")));
+}
+export async function importBillingCycleServicesAction(form:FormData){
+  const actor=await requireActor(),id=value(form,"id"),path=`/estados-pago/calendario/${encodeURIComponent(id)}`;
+  const selections=form.getAll("service").map(value=>{
+    const [service_id,is_disposal]=String(value).split(":");
+    return {service_id,is_disposal};
+  });
+  await run(path,()=>addBillingCycleServices(actor,id,selections));
 }
