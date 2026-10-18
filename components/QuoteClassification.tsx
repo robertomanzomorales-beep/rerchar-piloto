@@ -1,9 +1,9 @@
 "use client";
 
 import {useState} from "react";
-import {quotePrincipals,quoteUnits} from "@/lib/quote-catalog";
+import {quotePrincipals,quotePrincipalsFor,quoteUnits} from "@/lib/quote-catalog";
 
-export function QuoteClassification({principal="",segment="",unit,required=true,withUnit=true,filter=false,materials=[],materialId="",purchaseOnly=false,withTax=false,withDescription=false,description=""}:{principal?:string|null;segment?:string|null;unit?:string;required?:boolean;withUnit?:boolean;filter?:boolean;materials?:{id:string;name:string}[];materialId?:string|null;purchaseOnly?:boolean;withTax?:boolean;withDescription?:boolean;description?:string}){
+export function QuoteClassification({principal="",segment="",unit,required=true,withUnit=true,filter=false,materials=[],materialId="",purchaseOnly=false,withTax=false,withDescription=false,description="",company=""}:{principal?:string|null;segment?:string|null;unit?:string;required?:boolean;withUnit?:boolean;filter?:boolean;materials?:{id:string;name:string}[];materialId?:string|null;purchaseOnly?:boolean;withTax?:boolean;withDescription?:boolean;description?:string;company?:string}){
   const [current,setCurrent]=useState(principal??"");
   const [selected,setSelected]=useState(segment??"");
   const [selectedMaterial,setSelectedMaterial]=useState(materialId??"");
@@ -12,7 +12,7 @@ export function QuoteClassification({principal="",segment="",unit,required=true,
   return <>
     <label>Principal<select name="principal" value={current} required={required} onChange={event=>{setCurrent(event.target.value);setSelected("");}}>
       <option value="">{required?"Seleccione una categoría":filter?"Todas las categorías":"Sin clasificar (anterior)"}</option>
-      {quotePrincipals.filter(item=>!purchaseOnly||item.value==="compra").map(item=><option key={item.value} value={item.value}>{item.label}</option>)}
+      {quotePrincipalsFor(company).filter(item=>!purchaseOnly||item.value==="compra").map(item=><option key={item.value} value={item.value}>{item.label}</option>)}
     </select></label>
     <label>Segmentación<select name="segment" value={selected} required={required} disabled={!current} onChange={event=>setSelected(event.target.value)}>
       <option value="">{current?filter?"Todas las segmentaciones":"Seleccione un servicio":"Primero seleccione Principal"}</option>

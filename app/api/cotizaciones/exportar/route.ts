@@ -17,9 +17,10 @@ export async function GET(request:Request){
   if(actor.role==="conductor")return new Response("Sin permiso",{status:403});
   const params=new URL(request.url).searchParams;
   let rows;
-  try{rows=await reportQuoteLines(actor,params.get("empresa")??"",params.get("principal")??"",params.get("segment")??"");}
+  try{rows=await reportQuoteLines(actor,params.get("empresa")??"",params.get("principal")??"",params.get("segment")??"",params.get("cliente")??"",{
+    from:params.get("desde")??"",to:params.get("hasta")??"",creatorId:params.get("persona")??""});}
   catch(error){if(error instanceof QuoteError)return new Response(error.message,{status:400});throw error;}
-  const header=["Folio","Empresa emisora","Cliente","Propuesta","Estado","Emisión","Principal","Segmentación","Residuo","Destino final","Detalle","Material ID","Observación del ítem","Tipo comercial","Revisión IVA","Cantidad","Unidad","Unitario CLP","Neto línea CLP","IVA línea CLP","Total línea CLP"];
+  const header=["Folio","Empresa emisora","Cliente","Propuesta","Estado","Emisión","Principal","Segmentación","Residuo","Destino final","Detalle","Material ID","Observación del ítem","Tipo comercial","Revisión IVA","Cantidad","Unidad","Moneda","Unitario moneda original","Valor UF CLP","Fecha UF","Unitario CLP referencial","Neto línea CLP referencial","IVA línea CLP referencial","Total línea CLP referencial"];
   const lines=[header.map(csv).join(";")];
   for(const row of rows){
     const net=Math.round(Number(row.quantity)*Number(row.unit_price_clp));
@@ -28,7 +29,9 @@ export async function GET(request:Request){
       row.issued_on instanceof Date?row.issued_on.toISOString().slice(0,10):String(row.issued_on).slice(0,10),
       row.principal?quotePrincipalLabel(row.principal):"",row.segment?quoteSegmentLabel(row.segment):"",
       row.waste_category?categoryName(row.waste_category):"",row.destination_name,
-      row.description,row.material_id,row.line_note,row.commercial_kind,row.tax_review_status,row.quantity,row.unit,row.unit_price_clp,net,vat,net+vat].map(csv).join(";"));
+      row.description,row.material_id,row.line_note,row.commercial_kind,row.tax_review_status,row.quantity,row.unit,row.currency,row.currency==="UF"?row.unit_price_uf:row.unit_price_clp,
+      row.currency==="UF"?row.uf_rate_clp:"",row.currency==="UF"?(row.uf_rate_on instanceof Date?row.uf_rate_on.toISOString().slice(0,10):String(row.uf_rate_on).slice(0,10)):"",
+      row.unit_price_clp,net,vat,net+vat].map(csv).join(";"));
   }
   return new Response(`\uFEFF${lines.join("\r\n")}\r\n`,{headers:{
     "Content-Type":"text/csv; charset=utf-8",

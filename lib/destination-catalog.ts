@@ -17,4 +17,4 @@ export const segmentWasteCategory:Record<string,string>={
   transporte_respel:"respel",recepcion_chatarra:"chatarra",
 };
 export const categoryName=(key:string|null)=>wasteCategories.find(item=>item.value===key)?.label??"Sin categoría";
-export const destinationNeeded=(segment:string|null)=>Boolean(segment&&segmentWasteCategory[segment]);
+export const destinationNeeded=(segment:string|null)=>Boolean(segment&&(segmentWasteCategory[segment]||segment==="disposicion_final"));

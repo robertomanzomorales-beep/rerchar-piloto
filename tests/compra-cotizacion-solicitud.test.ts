@@ -77,16 +77,20 @@ test("compra de Carol conserva materiales, observaciones e IVA confirmado hasta 
   assert.equal(stored.service_id,serviceId);
 
   for(const issuer of ["rerchar","e_y_j"] as const){
-    const purchaseId=await quotes.createQuote(actor,{...input,submission_key:randomUUID(),issuer,vat_rate:"",title:`Compra ${issuer}`,
-      line:{...input.line,description:iron.name}});
-    const purchase=await quotes.getQuote(actor,purchaseId);
-    assert.equal(purchase.quote.issuer,issuer);
-    assert.equal(Number(purchase.quote.vat_rate),0);
-    assert.equal(purchase.lines[0].description,iron.name);
-    assert.ok((await renderQuotePdf(purchase.quote,purchase.lines)).length>7000);
-    assert.equal((await quotes.quoteDeliveryIssues(purchase.quote,purchase.lines)).length,0);
-    await quotes.recordManualQuoteDelivery(actor,purchaseId,{channel:"correo",recipient:"cliente@example.cl",reference:"Entrega manual del piloto según planilla"});
-    assert.equal((await quotes.getQuote(actor,purchaseId)).quote.status,"enviada");
+    if(issuer==="e_y_j")await assert.rejects(()=>quotes.createQuote(actor,{...input,submission_key:randomUUID(),issuer,
+      line:{...input.line,description:iron.name}}),quotes.QuoteError,"E y J no cotiza compra de material");
+    else{
+      const purchaseId=await quotes.createQuote(actor,{...input,submission_key:randomUUID(),issuer,vat_rate:"",title:`Compra ${issuer}`,
+        line:{...input.line,description:iron.name}});
+      const purchase=await quotes.getQuote(actor,purchaseId);
+      assert.equal(purchase.quote.issuer,issuer);
+      assert.equal(Number(purchase.quote.vat_rate),0);
+      assert.equal(purchase.lines[0].description,iron.name);
+      assert.ok((await renderQuotePdf(purchase.quote,purchase.lines)).length>7000);
+      assert.equal((await quotes.quoteDeliveryIssues(purchase.quote,purchase.lines)).length,0);
+      await quotes.recordManualQuoteDelivery(actor,purchaseId,{channel:"correo",recipient:"cliente@example.cl",reference:"Entrega manual del piloto según planilla"});
+      assert.equal((await quotes.getQuote(actor,purchaseId)).quote.status,"enviada");
+    }
 
     const generalId=await quotes.createQuote(actor,{...input,submission_key:randomUUID(),issuer,vat_rate:"0.19",title:`Servicio ${issuer}`,
       line:{description:"Arriendo de equipo",material_id:"",line_note:"Incluye operador",principal:"arriendo",segment:"arriendo_equipo",quantity:"2",unit:"día",unit_price_clp:"150000",taxable:true}});

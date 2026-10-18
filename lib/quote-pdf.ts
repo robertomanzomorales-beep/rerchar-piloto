@@ -16,6 +16,7 @@ export async function renderQuotePdf(quote:Quote,lines:QuoteLine[],warning="",ro
   const money=(n:number)=>`$${n.toLocaleString("es-CL")}`;
   const fmt=(d:Date|string)=>new Intl.DateTimeFormat("es-CL",{dateStyle:"long",timeZone:"UTC"}).format(new Date(d));
   const issuer=issuers[quote.issuer];const totals=quoteTotals(lines,Number(quote.vat_rate));
+  const includesUf=lines.some(line=>line.currency==="UF");
   const pages:PDFPage[]=[];let page=doc.addPage([595.28,841.89]);pages.push(page);
   function write(text:unknown,x:number,y:number,size=9,font:PDFFont=regular,color=dark){page.drawText(safe(text),{x,y,size,font,color});}
   function fit(text:unknown,font:PDFFont,size:number,width:number){
@@ -62,7 +63,7 @@ export async function renderQuotePdf(quote:Quote,lines:QuoteLine[],warning="",ro
   write("PROPUESTA",59,584,8,bold,green);
   for(const [i,line] of wrap(quote.title,bold,12,470).slice(0,2).entries())write(line,59,564-i*15,12,bold);
   let y=518;
-  function tableHeader(){page.drawRectangle({x:45,y:y-6,width:505,height:25,color:green});write(quote.commercial_kind==="compra_material"?"MATERIAL / OBSERVACIÓN":"DESCRIPCIÓN",54,y+2,8,bold,rgb(1,1,1));write(quote.commercial_kind==="compra_material"?"KG":"CANT.",324,y+2,8,bold,rgb(1,1,1));write(quote.commercial_kind==="compra_material"?"$/KG":"UNITARIO",400,y+2,8,bold,rgb(1,1,1));write("TOTAL",492,y+2,8,bold,rgb(1,1,1));y-=31;}
+  function tableHeader(){page.drawRectangle({x:45,y:y-6,width:505,height:25,color:green});write(quote.commercial_kind==="compra_material"?"MATERIAL / OBSERVACIÓN":"DESCRIPCIÓN",54,y+2,8,bold,rgb(1,1,1));write(quote.commercial_kind==="compra_material"?"KG":"CANT.",324,y+2,8,bold,rgb(1,1,1));write(quote.commercial_kind==="compra_material"?"$/KG":"UNITARIO",400,y+2,8,bold,rgb(1,1,1));write(includesUf?"CLP REF.":"TOTAL",492,y+2,8,bold,rgb(1,1,1));y-=31;}
   tableHeader();
   lines.forEach((line,index)=>{
     const desc=wrap(line.description,regular,8,260).slice(0,3);
@@ -77,7 +78,7 @@ export async function renderQuotePdf(quote:Quote,lines:QuoteLine[],warning="",ro
     destination.forEach((part,i)=>write(part,54,y-(classified?13:0)-desc.length*13-i*11,7,regular,gray));
     observation.forEach((part,i)=>write(part,54,y-(classified?13:0)-desc.length*13-destination.length*11-i*11,7,regular,gray));
     write(fit(`${Number(line.quantity).toLocaleString("es-CL",{maximumFractionDigits:3})} ${line.unit}`,regular,8,69),324,y,8);
-    right(money(Number(line.unit_price_clp)),480,y,8);
+    right(line.currency==="UF"?`${Number(line.unit_price_uf).toLocaleString("es-CL",{maximumFractionDigits:4})} UF`:money(Number(line.unit_price_clp)),480,y,8);
     right(money(totals.lines[index]),544,y,8,bold);
     y-=height;
   });
@@ -91,6 +92,12 @@ export async function renderQuotePdf(quote:Quote,lines:QuoteLine[],warning="",ro
   if(pending)write("Valores netos según planilla; tratamiento tributario por revisar.",45,y-48,7,regular,gray);
   else if(!taxable)write("IVA aplicado: 0% según revisión registrada.",45,y-48,8,regular,gray);
   let footerY=y-103;
+  if(includesUf){
+    const reference=`Valores UF pactados por concepto. Equivalencia referencial: 1 UF = ${money(Number(quote.uf_rate_clp))} CLP al ${fmt(quote.uf_rate_on!)}. Totales CLP de referencia.`;
+    const parts=wrap(reference,regular,8,490);
+    if(footerY-parts.length*12<60){page=doc.addPage([595.28,841.89]);pages.push(page);header(true);footerY=680;}
+    parts.forEach((part,i)=>write(part,45,footerY-i*12,8));footerY-=parts.length*12+17;
+  }
   if(route){
     const details=[`Origen: ${route.origin}`,`Retiro: ${route.pickup}`,`Destino final: ${route.destination}`,
       `Regreso: ${route.return_to}`,`Circuito revisado: ${Number(route.total_km).toLocaleString("es-CL",{maximumFractionDigits:2})} km`]

@@ -16,7 +16,7 @@ import {supplierTransferOverview} from "@/lib/supplier-transfers";
 import {moduleReady} from "@/lib/schema-readiness";
 
 type ServiceMetrics = { total:string; requested:string; scheduled:string; in_route:string; pending_review:string; completed:string; critical:string };
-type QuoteMetrics = { total:string; draft:string; sent:string; accepted:string; expired:string };
+type QuoteMetrics = { total:string; draft:string; sent:string; accepted:string; expired:string; awaiting_order:string; awaiting_service:string };
 type Month = { period:string; total:string };
 const value = (v:string|undefined) => Number(v ?? 0);
 
@@ -46,6 +46,9 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
       count(*) FILTER (WHERE status='enviada')::text AS sent,
       count(*) FILTER (WHERE status='aceptada')::text AS accepted,
       count(*) FILTER (WHERE status='enviada' AND valid_until < $4::date)::text AS expired
+      ,count(*) FILTER (WHERE status='aceptada' AND client_order_reference IS NULL)::text AS awaiting_order
+      ,count(*) FILTER (WHERE status='aceptada' AND client_order_reference IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM service_requests s WHERE s.quote_id=client_quotes.id AND s.deleted_at IS NULL))::text AS awaiting_service
       FROM client_quotes WHERE issuer=$1 AND ($2::text <> 'cliente' OR client_id=$3::uuid)`,[selected,actor.role,actor.client_id,today]) : Promise.resolve([]),
     db.query<Month>(`SELECT to_char(series.month,'YYYY-MM') AS period,count(s.id)::text AS total
       FROM generate_series(date_trunc('month',now())-interval '5 months',date_trunc('month',now()),interval '1 month') AS series(month)
@@ -92,6 +95,8 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
   const maxStatus=Math.max(1,...serviceBars.map(b=>b.count));
   const alerts=[
     ...(showQuotes?[{label:"Cotizaciones enviadas con vigencia vencida",count:value(q?.expired),href:`/cotizaciones?empresa=${selected}`}]:[]),
+    ...(canManage(actor)?[{label:"Cotizaciones aceptadas esperando OC del cliente",count:value(q?.awaiting_order),href:`/cotizaciones?empresa=${selected}`},
+      {label:"Cotizaciones con OC esperando solicitud de servicio",count:value(q?.awaiting_service),href:`/cotizaciones?empresa=${selected}`}]:[]),
     {label:"Servicios críticos aún abiertos",count:value(s?.critical),href:`/solicitudes?empresa=${selected}`},
     ...(canManage(actor)?[{label:"Compras con documentos por validar",count:value(s?.pending_review),href:`/solicitudes?empresa=${selected}&estado=pendiente_revision`}]:[]),
     ...(canManage(actor)?[{label:"Averías del checklist abiertas",count:value(checklistFaults[0]?.total),href:"/mantenimiento"}]:[]),

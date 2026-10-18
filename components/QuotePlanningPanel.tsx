@@ -87,7 +87,7 @@ export function QuotePlanningPanel({quote,lines,destinations,assets,route,cost,q
           <Numeric name="margin_pct" label="Margen deseado (%)" value={cost?.margin_pct??"0"}/>
           <div className="field-full form-footer"><SubmitButton className="button button-primary">Guardar cálculo interno</SubmitButton></div>
         </form></details>
-        {calculated&&lines.length===1&&Number(lines[0].quantity)===1&&lines[0].taxable&&route?.reviewed_for_truck&&<form action={applySuggestedPriceAction} className="form-footer"><input name="quote_id" type="hidden" value={quote.id}/><SubmitButton className="button button-outline">Aplicar neto sugerido al único concepto</SubmitButton></form>}
+        {calculated&&lines.length===1&&Number(lines[0].quantity)===1&&lines[0].taxable&&lines[0].currency!=="UF"&&route?.reviewed_for_truck&&<form action={applySuggestedPriceAction} className="form-footer"><input name="quote_id" type="hidden" value={quote.id}/><SubmitButton className="button button-outline">Aplicar neto sugerido al único concepto</SubmitButton></form>}
         <p className="helper-text">Si hay varios conceptos o cantidades, ajuste sus precios unitarios arriba según el alcance. El cálculo interno no se adjunta ni se exporta al cliente.</p>
       </>}
     </section>

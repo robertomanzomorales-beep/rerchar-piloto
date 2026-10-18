@@ -145,9 +145,10 @@ export async function applySuggestedQuotePrice(actor:Actor,quoteId:string){
     if(!route?.reviewed_for_truck)reject("Revise y confirme la ruta antes de aplicar el precio.");
     const [cost]=await tx.query<QuoteCosting>("SELECT * FROM client_quote_costings WHERE quote_id=$1",[id]);
     if(!cost)reject("Guarde primero el cálculo interno.");
-    const lines=await tx.query<{id:string;quantity:string;taxable:boolean}>("SELECT id,quantity,taxable FROM client_quote_lines WHERE quote_id=$1 ORDER BY position",[id]);
+    const lines=await tx.query<{id:string;quantity:string;taxable:boolean;currency:string}>("SELECT id,quantity,taxable,currency FROM client_quote_lines WHERE quote_id=$1 ORDER BY position",[id]);
     if(lines.length!==1||Number(lines[0].quantity)!==1||!lines[0].taxable)
       reject("El precio sugerido se aplica sólo a una cotización de un concepto, cantidad 1 y afecto a IVA. En otras cotizaciones ajuste los conceptos manualmente.");
+    if(lines[0].currency==="UF")reject("El precio interno está en CLP. Defina manualmente el precio de venta en UF del concepto.");
     const result=calculateQuoteCost(cost,Number(route.total_km),Number(quote.vat_rate));
     if(result.net<=0)reject("Ingrese los costos de la operación antes de aplicar el precio.");
     await tx.query("UPDATE client_quote_lines SET unit_price_clp=$2 WHERE id=$1",[lines[0].id,result.net]);

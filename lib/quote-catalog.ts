@@ -32,7 +32,14 @@ export const quotePrincipals = [
   {value:"instalacion",label:"Instalación",segments:[
     {value:"instalacion_desmovilizacion_tolva",label:"Instalación o Desmovilización de Tolva"},
   ]},
+  {value:"disposicion",label:"Disposición final",segments:[
+    {value:"disposicion_final",label:"Disposición final de residuos"},
+  ]},
 ] as const;
+
+export function quotePrincipalsFor(company?:string){
+  return company==="e_y_j"?quotePrincipals.filter(group=>group.value!=="compra"&&group.value!=="recepcion"):quotePrincipals;
+}
 
 export const quoteUnits=[
   {value:"viaje",label:"viaje"},{value:"día",label:"día"},{value:"mes",label:"mes"},
