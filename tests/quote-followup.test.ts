@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import {randomUUID} from "node:crypto";
+import {createHash} from "node:crypto";
 import {readdir,readFile} from "node:fs/promises";
 import {resolve} from "node:path";
 import test from "node:test";
@@ -40,6 +41,13 @@ test("E y J cotiza disposición, cliente responde y OC/respaldo siguen el mismo 
   await quotes.recordQuoteDecision(viewer,quoteId,"aceptada");
   await followup.recordQuoteClientOrder(staff,quoteId,{reference:"OC-325",received_on:"2026-10-19"});
   await assert.rejects(()=>followup.recordQuoteClientOrder(viewer,quoteId,{reference:"OC-326",received_on:"2026-10-19"}),followup.QuoteFollowupError);
+  const [site]=await db.query<{id:string}>("INSERT INTO client_sites(client_id,name) VALUES($1,'Faena piloto') RETURNING id",[client.id]);
+  const pilot=await import("../lib/pilot");
+  const service=await pilot.createService(staff,{submission_key:randomUUID(),client_id:client.id,site_id:site.id,
+    quote_id:quoteId,operating_company:"e_y_j",request_category:"servicios",service_type:"arriendo",waste_type:"Equipo industrial",
+    estimated_kg:"",origin:"Bodega Calama",destination:"Faena piloto",rental_from:"2026-10-20",rental_to:"2026-10-21",
+    priority:"normal",notes:"Cotización puntual"});
+  await assert.rejects(()=>pilot.scheduleRental(staff,service,{asset_id:""}),/Adjunte el respaldo de la OC/);
   const bytes=Buffer.from("%PDF-1.4\n1 0 obj\n<<>>\nendobj\n%%EOF");
   const docId=await followup.uploadQuoteDocument(staff,quoteId,"orden_compra",new File([bytes],"oc-cliente.pdf",{type:"application/pdf"}));
   assert.equal((await followup.getQuoteDocument(viewer,docId))?.filename,"oc-cliente.pdf");
@@ -47,7 +55,15 @@ test("E y J cotiza disposición, cliente responde y OC/respaldo siguen el mismo 
   const record=await followup.getQuoteFollowup(staff,quoteId);
   assert.equal(record.quote.client_order_reference,"OC-325");
   assert.equal(record.documents.length,1);
-  assert.equal(record.services.length,0);
+  assert.equal(record.services.length,1);
+  await pilot.scheduleRental(staff,service,{asset_id:""});
+  const [anotherQuote]=await db.query<{id:string}>("UPDATE client_quotes SET status='enviada' WHERE id=$1 RETURNING id",[quoteId]);
+  const token="a".repeat(64);
+  await db.query(`INSERT INTO quote_response_tokens(quote_id,token_hash,recipient,issued_by,expires_at)
+    VALUES($1,$2,'cliente@example.cl',$3,now()+interval '1 day')`,[anotherQuote.id,createHash("sha256").update(token).digest("hex"),staff.id]);
+  assert.equal((await quotes.getEmailQuoteResponse(token))?.quote_id,quoteId);
+  assert.equal((await quotes.respondToQuoteEmail(token,"rechazada")).ackSent,false);
+  await assert.rejects(()=>quotes.respondToQuoteEmail(token,"aceptada"),/ya se utilizó/);
   assert.deepEqual(quotes.quoteCcAddresses("jefe@example.cl; jefe@example.cl, cliente@example.cl"),["jefe@example.cl","cliente@example.cl"]);
   assert.throws(()=>quotes.quoteCcAddresses("malo\r\nBcc:otro@example.cl"),quotes.QuoteError);
 });

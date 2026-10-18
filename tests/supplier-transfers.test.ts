@@ -8,7 +8,7 @@ import type {Actor} from "../lib/auth";
 test("solicitud, aprobación, ejecución y verificación requieren personas y respaldos distintos y aplican un solo pago por empresa",async()=>{
   process.env.PGLITE_DATA_DIR="memory://";
   const {db,transaction}=await import("../lib/db");
-  const {createSupplierInvoice,getSupplierInvoice,registerSupplierPayment}=await import("../lib/supplier-invoices");
+  const {createSupplierInvoice,getSupplierInvoice,registerSupplierPayment,reviewSupplierInvoice}=await import("../lib/supplier-invoices");
   const {addOperationFile}=await import("../lib/operation-files");
   const counterparties=await import("../lib/counterparties");
   const transfers=await import("../lib/supplier-transfers");
@@ -42,6 +42,13 @@ test("solicitud, aprobación, ejecución y verificación requieren personas y re
   const other=await createSupplierInvoice(requester,{...data,issuer:"e_y_j",invoice_number:"E-1",supplier_profile_id:profileId});
   const request={submission_key:randomUUID(),amount_clp:"6000",bank_name:"Banco A",account_type:"corriente",account_number:"1234567890"};
   await assert.rejects(()=>transfers.requestSupplierTransfer(viewer,invoice,request),transfers.SupplierTransferError);
+  await assert.rejects(()=>transfers.requestSupplierTransfer(requester,invoice,request),/Revise y acepte/);
+  await reviewSupplierInvoice(approver,invoice,{decision:"disputada",note:"Monto no coincide con orden"});
+  await assert.rejects(()=>transfers.requestSupplierTransfer(requester,invoice,request),/Revise y acepte/);
+  const pdf=new File([Buffer.from("%PDF-1.4\nfactura")],"factura.pdf",{type:"application/pdf"});
+  await assert.rejects(()=>reviewSupplierInvoice(approver,invoice,{decision:"aceptada",note:""}),/factura original/);
+  await addOperationFile(requester,"invoice",invoice,"factura",pdf);
+  await reviewSupplierInvoice(approver,invoice,{decision:"aceptada",note:"Folio y montos correctos"});
   const id=await transfers.requestSupplierTransfer(requester,invoice,request);
   assert.equal((await transfers.invoiceSupplierTransfers(requester,invoice))[0].account_number,"9988776655",
     "la cuenta de la solicitud proviene de la ficha verificada, aunque el formulario envíe otro número");
@@ -49,9 +56,7 @@ test("solicitud, aprobación, ejecución y verificación requieren personas y re
   await assert.rejects(()=>transfers.requestSupplierTransfer(requester,invoice,{...request,submission_key:randomUUID(),amount_clp:"5000"}),/saldo disponible/);
   await assert.rejects(()=>registerSupplierPayment(requester,invoice,{submission_key:randomUUID(),amount_clp:"1",paid_on:"2026-10-13",reference:"Manual"}),/transferencias pendientes/);
   await assert.rejects(()=>transfers.decideSupplierTransfer(requester,id,"aprobada",""),/propia transferencia/);
-  await assert.rejects(()=>transfers.decideSupplierTransfer(approver,id,"aprobada",""),/factura original/);
-  const pdf=new File([Buffer.from("%PDF-1.4\nfactura")],"factura.pdf",{type:"application/pdf"});
-  await addOperationFile(requester,"invoice",invoice,"factura",pdf);
+  await assert.rejects(()=>reviewSupplierInvoice(approver,invoice,{decision:"disputada",note:"Nueva observación de importe"}),/transferencias en curso/);
   await transfers.decideSupplierTransfer(approver,id,"aprobada","Revisada");
   await assert.rejects(()=>transfers.executeSupplierTransfer(approver,id,{paid_on:"2026-10-13",bank_reference:"REF-100"},pdf),/otra persona/);
   await assert.rejects(()=>transfers.executeSupplierTransfer(requester,id,{paid_on:"2026-10-13",bank_reference:"REF-100"},new File(["mal"],"mal.pdf")),/válido/);
@@ -69,6 +74,8 @@ test("solicitud, aprobación, ejecución y verificación requieren personas y re
   assert.equal(rerchar.length,1);assert.equal(rerchar[0].verification,"verificada");assert.equal(rerchar[0].transfer_id,id);
   assert.equal((await listFinancialTransactions(requester,"e_y_j","salida")).length,0);
   assert.equal((await transfers.supplierTransferOverview(requester,"rerchar")).verificadas,"1");
+  await addOperationFile(requester,"invoice",other,"factura",pdf);
+  await reviewSupplierInvoice(approver,other,{decision:"aceptada",note:"Factura contrastada"});
   const second=await transfers.requestSupplierTransfer(requester,other,{...request,submission_key:randomUUID(),amount_clp:"3000"});
   await transfers.decideSupplierTransfer(approver,second,"rechazada","Cuenta incorrecta");
   assert.equal((await transfers.listSupplierTransfers(requester,"e_y_j"))[0].status,"rechazada");

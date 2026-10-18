@@ -75,6 +75,13 @@ test("destinos de Carol bloquean entrega inválida y conservan cotizaciones ante
     disposal_unit:"tonelada",disposal_unit_clp:"10000",stay_clp:"500",other_clp:"500",contingency_pct:"10",margin_pct:"20"};
   await assert.rejects(()=>planning.saveQuoteCosting(viewer,quoteId,costing),planning.QuotePlanningError);
   const estimate=await planning.saveQuoteCosting(owner,quoteId,costing);
+  await assert.rejects(()=>planning.saveQuoteCostRates(viewer,quoteId,{expected_version:0,rates:{}}),planning.QuotePlanningError);
+  const rates={km_per_liter:"2",fuel_price_clp:"1000",equipment_cost_clp:"10000",driver_hour_clp:"5000",
+    support_hour_clp:"2000",disposal_unit_clp:"10000",contingency_pct:"10",margin_pct:"20"};
+  await planning.saveQuoteCostRates(owner,quoteId,{expected_version:0,rates});
+  assert.equal((await planning.getQuoteCostRates(owner,"rerchar"))?.version,1);
+  await assert.rejects(()=>planning.saveQuoteCostRates(owner,quoteId,{expected_version:0,rates}),/cambiaron/);
+  assert.equal(Number((await planning.getQuotePlanning(owner,quoteId)).cost?.fuel_price_clp),1000,"el cálculo guardado no cambia con los valores compartidos");
   assert.deepEqual([estimate.fuel,estimate.direct,estimate.contingency,estimate.cost,estimate.net,estimate.vat,estimate.total],
     [46000,148000,14800,162800,203500,38665,242165]);
   await assert.rejects(()=>planning.getQuotePlanning(viewer,quoteId),planning.QuotePlanningError);

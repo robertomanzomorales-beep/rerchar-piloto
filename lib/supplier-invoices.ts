@@ -25,6 +25,7 @@ export function invoiceReconciliation(input:{net_clp:string|number|null;vat_clp:
 }
 export type SupplierInvoice={id:string;issuer:"rerchar"|"e_y_j";supplier_tax_id:string;supplier_name:string;
   supplier_profile_id?:string|null;
+  review_status:"pendiente_revision"|"aceptada"|"disputada";review_note:string|null;reviewed_at:Date|string|null;
   invoice_number:string;issued_on:Date|string;due_on:Date|string|null;description:string;net_clp:string|null;
   vat_clp:string|null;total_clp:string;cost_area:string|null;purchase_id:string|null;service_id:string|null;
   status:string;paid_clp:string;paid_on:Date|string|null;notes:string|null;created_at:Date};
@@ -93,6 +94,28 @@ export async function updateSupplierInvoiceDueDate(actor:Actor,id:string,input:u
       [actor.id,id,JSON.stringify({due_on:previous}),JSON.stringify({due_on:data.due_on,reason:data.reason})]);
   });
 }
+export async function reviewSupplierInvoice(actor:Actor,id:string,input:unknown){
+  admin(actor);uuid.parse(id);
+  const data=z.object({decision:z.enum(["aceptada","disputada"]),note:z.string().trim().max(500)}).parse(input);
+  if(data.decision==="disputada"&&data.note.length<8)reject("Explique la discrepancia de la factura (mínimo 8 caracteres).");
+  await transaction(async tx=>{
+    const [invoice]=await tx.query<{review_status:string;review_note:string|null;paid_clp:string}>(
+      "SELECT review_status,review_note,paid_clp FROM supplier_invoices WHERE id=$1 FOR UPDATE",[id]);
+    if(!invoice)reject("Factura no encontrada.");
+    if(Number(invoice.paid_clp)>0&&data.decision==="disputada")reject("La factura tiene pagos aplicados. Concilie esos pagos antes de disputarla.");
+    const [active]=await tx.query("SELECT id FROM supplier_transfer_requests WHERE invoice_id=$1 AND status IN ('solicitada','aprobada','ejecutada') LIMIT 1",[id]);
+    if(active)reject("Resuelva primero las transferencias en curso antes de cambiar la revisión de la factura.");
+    if(data.decision==="aceptada"){
+      const [proof]=await tx.query("SELECT id FROM operation_files WHERE invoice_id=$1 AND kind='factura' LIMIT 1",[id]);
+      if(!proof)reject("Adjunte la factura original antes de aceptarla.");
+    }
+    await tx.query("UPDATE supplier_invoices SET review_status=$2,review_note=$3,reviewed_by=$4,reviewed_at=now(),updated_at=now() WHERE id=$1",
+      [id,data.decision,data.note||null,actor.id]);
+    await tx.query(`INSERT INTO audit_events(actor_id,action,entity_type,entity_id,previous_value,next_value)
+      VALUES($1,'review','supplier_invoice',$2,$3,$4)`,[actor.id,id,
+      JSON.stringify({status:invoice.review_status,note:invoice.review_note}),JSON.stringify(data)]);
+  });
+}
 export async function createSupplierInvoice(actor:Actor,input:unknown){
   admin(actor);
   const data=z.object({issuer:z.enum(["rerchar","e_y_j"]),supplier_profile_id:z.union([uuid,z.literal("")]).default(""),
@@ -142,10 +165,11 @@ export async function registerSupplierPayment(actor:Actor,id:string,input:unknow
   if(Number(data.amount_clp)<=0)reject("El pago debe ser mayor que cero.");
   const transfersReady=await moduleReady("supplier_transfers");
   return transaction(async tx=>{
-    const [invoice]=await tx.query<{total_clp:string;paid_clp:string;status:string}>("SELECT total_clp,paid_clp,status FROM supplier_invoices WHERE id=$1 FOR UPDATE",[id]);
+    const [invoice]=await tx.query<{total_clp:string;paid_clp:string;status:string;review_status:string}>("SELECT total_clp,paid_clp,status,review_status FROM supplier_invoices WHERE id=$1 FOR UPDATE",[id]);
     if(!invoice)reject("Factura no encontrada.");
     const [existing]=await tx.query<{id:string;invoice_id:string}>("SELECT id,invoice_id FROM supplier_invoice_payments WHERE submission_key=$1",[data.submission_key]);
     if(existing){if(existing.invoice_id!==id)reject("Este pago corresponde a otra factura.");return existing.id;}
+    if(invoice.review_status!=="aceptada")reject("Acepte la factura del proveedor antes de registrar un pago.");
     if(transfersReady){const [active]=await tx.query("SELECT id FROM supplier_transfer_requests WHERE invoice_id=$1 AND status IN ('solicitada','aprobada','ejecutada') LIMIT 1",[id]);
       if(active)reject("Hay transferencias pendientes para esta factura. Resuélvalas antes de registrar un pago manual.");}
     const total=cents(invoice.total_clp),paid=cents(invoice.paid_clp)+cents(data.amount_clp);

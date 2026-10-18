@@ -6,7 +6,7 @@ import {ZodError} from "zod";
 import {requireActor} from "@/lib/auth";
 import {MaterialError,createMaterialReceipt,updateMaterialGuideFollowup,updateMaterialPayment,updateMaterialReferences,recordMaterialClosureNotification} from "@/lib/materials";
 import {MaterialStockError} from "@/lib/material-stock";
-import {SupplierInvoiceError,createSupplierInvoice,registerSupplierPayment,updateSupplierInvoiceDueDate} from "@/lib/supplier-invoices";
+import {SupplierInvoiceError,createSupplierInvoice,registerSupplierPayment,updateSupplierInvoiceDueDate,reviewSupplierInvoice} from "@/lib/supplier-invoices";
 import {LedgerError,saveGuideFollowup,saveCommercialDetails} from "@/lib/service-ledger";
 import {OperationFileError,addOperationFile} from "@/lib/operation-files";
 
@@ -65,6 +65,11 @@ export async function registerSupplierPaymentAction(form:FormData){
   const actor=await requireActor(),id=val(form,"id");
   await run(`/facturas-recibidas/${encodeURIComponent(id)}`,()=>registerSupplierPayment(actor,id,{
     submission_key:val(form,"submission_key"),amount_clp:val(form,"amount_clp"),paid_on:val(form,"paid_on"),reference:val(form,"reference")}));
+}
+export async function reviewSupplierInvoiceAction(form:FormData){
+  const actor=await requireActor(),id=val(form,"id");
+  await run(`/facturas-recibidas/${encodeURIComponent(id)}`,
+    ()=>reviewSupplierInvoice(actor,id,{decision:val(form,"decision"),note:val(form,"note")}));
 }
 export async function updateSupplierInvoiceDueDateAction(form:FormData){
   const actor=await requireActor(),id=val(form,"id");

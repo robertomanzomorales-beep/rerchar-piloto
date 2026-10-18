@@ -338,6 +338,18 @@ function parseChileDate(value: string) {
   return new Date(instant);
 }
 
+// Servicios puntuales vinculados a una cotización aceptada requieren OC previa.
+// Los contratos mensuales ingresan como solicitudes sin cotización puntual y siguen el EDP → OC.
+async function requireQuoteOrderForScheduling(tx:Db,service:{quote_id:string|null;request_category:string}){
+  if(!service.quote_id||service.request_category==="compra")return;
+  const [quote]=await tx.query<{status:string;client_order_reference:string|null;client_order_on:Date|string|null}>(
+    "SELECT status,client_order_reference,client_order_on FROM client_quotes WHERE id=$1",[service.quote_id]);
+  if(quote?.status!=="aceptada"||!quote.client_order_reference||!quote.client_order_on)
+    reject("Antes de programar el servicio puntual, registre número y fecha de la OC en la cotización aceptada.");
+  const [document]=await tx.query("SELECT id FROM client_quote_documents WHERE quote_id=$1 AND kind='orden_compra' LIMIT 1",[service.quote_id]);
+  if(!document)reject("Adjunte el respaldo de la OC en la cotización antes de programar este servicio.");
+}
+
 // Los arriendos se programan con sus fechas pactadas. No son una ruta de camión
 // ni generan un pesaje; un equipo propio se puede reservar si corresponde.
 export async function scheduleRental(actor:Actor,id:string,input:unknown){
@@ -345,9 +357,10 @@ export async function scheduleRental(actor:Actor,id:string,input:unknown){
   const data=z.object({asset_id:z.union([uuid,z.literal("")]).default("")}).parse(input);
   if(!uuid.safeParse(id).success)reject("Solicitud inválida.");
   return transaction(async tx=>{
-    const [service]=await tx.query<{service_type:string;status:string;rental_from:Date|string;rental_to:Date|string;assigned_asset_id:string|null}>(
-      "SELECT service_type,status,rental_from,rental_to,assigned_asset_id FROM service_requests WHERE id=$1 AND deleted_at IS NULL FOR UPDATE",[id]);
+    const [service]=await tx.query<{service_type:string;status:string;rental_from:Date|string;rental_to:Date|string;assigned_asset_id:string|null;quote_id:string|null;request_category:string}>(
+      "SELECT service_type,status,rental_from,rental_to,assigned_asset_id,quote_id,request_category FROM service_requests WHERE id=$1 AND deleted_at IS NULL FOR UPDATE",[id]);
     if(!service||service.service_type!=="arriendo"||!["solicitada","programada"].includes(service.status))reject("El arriendo no está disponible para programar.");
+    await requireQuoteOrderForScheduling(tx,service);
     if(data.asset_id){
       const [asset]=await tx.query("SELECT id FROM assets WHERE id=$1 AND kind='equipo' AND available=true AND deleted_at IS NULL FOR UPDATE",[data.asset_id]);
       if(!asset)reject("Seleccione un equipo disponible del inventario.");
@@ -387,11 +400,12 @@ export async function assignService(actor: Actor, id: string, input: unknown) {
   if(Boolean(data.driver_id)===Boolean(data.external_driver_id)) reject("Seleccione un solo conductor, de la empresa o tercero.");
   const date = parseChileDate(data.scheduled_for);
   return transaction(async (tx) => {
-    const [service] = await tx.query<{ service_type:string;status: string; client_id:string; site_id:string; assigned_asset_id: string | null; ramp_asset_id: string | null; driver_id: string | null; external_driver_id:string|null }>(
-      "SELECT service_type,status, client_id, site_id, assigned_asset_id, ramp_asset_id, driver_id, external_driver_id FROM service_requests WHERE id = $1 AND deleted_at IS NULL FOR UPDATE", [id],
+    const [service] = await tx.query<{ service_type:string;status: string; client_id:string; site_id:string; assigned_asset_id: string | null; ramp_asset_id: string | null; driver_id: string | null; external_driver_id:string|null;quote_id:string|null;request_category:string }>(
+      "SELECT service_type,status, client_id, site_id, assigned_asset_id, ramp_asset_id, driver_id, external_driver_id,quote_id,request_category FROM service_requests WHERE id = $1 AND deleted_at IS NULL FOR UPDATE", [id],
     );
     if (!service || !["solicitada", "programada"].includes(service.status)) reject("La solicitud no está disponible para planificación.");
     if(service.service_type==="arriendo")reject("Use la programación de arriendo, sin camión ni conductor.");
+    await requireQuoteOrderForScheduling(tx,service);
     // Lock the shared resources before checking collisions so concurrent planners serialize.
     const [asset] = await tx.query("SELECT id FROM assets WHERE id = $1 AND kind='camion' AND available = true AND deleted_at IS NULL FOR UPDATE", [data.asset_id]);
     const [ramp] = data.ramp_asset_id ? await tx.query("SELECT id FROM assets WHERE id=$1 AND kind='rampa' AND available=true AND deleted_at IS NULL FOR UPDATE", [data.ramp_asset_id]) : [];

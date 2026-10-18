@@ -44,6 +44,36 @@ export type QuoteCosting={quote_id:string;updated_at:Date|string;asset_id:string
 const fields=["trips","asset_id","equipment","capacity","capacity_unit","km_per_liter","fuel_price_clp","equipment_cost_clp",
   "tolls_clp","driver_hours","driver_hour_clp","support_hours","support_hour_clp","per_diem_clp","loading_clp",
   "disposal_quantity","disposal_unit","disposal_unit_clp","stay_clp","other_clp","contingency_pct","margin_pct"] as const;
+const rateFields=["km_per_liter","fuel_price_clp","equipment_cost_clp","driver_hour_clp","support_hour_clp",
+  "disposal_unit_clp","contingency_pct","margin_pct"] as const;
+const rateSchema=costingSchema.pick(Object.fromEntries(rateFields.map(key=>[key,true])) as Record<typeof rateFields[number],true>);
+export type QuoteCostRates=Partial<Record<typeof rateFields[number],number>>;
+export async function getQuoteCostRates(actor:Actor,issuer:"rerchar"|"e_y_j"){
+  staff(actor);
+  const [row]=await db.query<{values_json:QuoteCostRates;version:number;updated_at:Date|string}>(
+    "SELECT values_json,version,updated_at FROM quote_cost_rates WHERE issuer=$1",[issuer]);
+  return row??null;
+}
+export async function saveQuoteCostRates(actor:Actor,quoteId:string,input:unknown){
+  if(actor.role!=="admin")reject("Sólo administración puede actualizar los costos compartidos.");
+  const id=uuid.parse(quoteId);
+  const data=z.object({expected_version:z.coerce.number().int().min(0),rates:rateSchema}).parse(input);
+  if(Object.values(data.rates).every(value=>value===0))reject("Ingrese al menos un valor real antes de guardar tarifas compartidas.");
+  return transaction(async tx=>{
+    const [quote]=await tx.query<{issuer:"rerchar"|"e_y_j"}>("SELECT issuer FROM client_quotes WHERE id=$1",[id]);
+    if(!quote)reject("Cotización no encontrada.");
+    const [current]=await tx.query<{values_json:QuoteCostRates;version:number}>(
+      "SELECT values_json,version FROM quote_cost_rates WHERE issuer=$1 FOR UPDATE",[quote.issuer]);
+    if(Number(current?.version??0)!==data.expected_version)reject("Los costos compartidos cambiaron. Actualice la página antes de volver a guardar.");
+    if(current)await tx.query("UPDATE quote_cost_rates SET values_json=$2::jsonb,version=version+1,updated_by=$3,updated_at=now() WHERE issuer=$1",
+      [quote.issuer,JSON.stringify(data.rates),actor.id]);
+    else await tx.query("INSERT INTO quote_cost_rates(issuer,values_json,updated_by) VALUES($1,$2::jsonb,$3)",
+      [quote.issuer,JSON.stringify(data.rates),actor.id]);
+    await tx.query(`INSERT INTO audit_events(actor_id,action,entity_type,entity_id,previous_value,next_value)
+      VALUES($1,'update_rates','client_quote',$2,$3,$4)`,[actor.id,id,JSON.stringify(current??{}),
+      JSON.stringify({issuer:quote.issuer,version:data.expected_version+1,rates:data.rates})]);
+  });
+}
 
 export function calculateQuoteCost(input:z.infer<typeof costingSchema>|QuoteCosting,km:number,vatRate:number){
   const n=(key:keyof z.infer<typeof costingSchema>)=>Number(input[key]);

@@ -1,7 +1,7 @@
 import type {Quote,QuoteLine} from "@/lib/quotes";
 import type {QuoteDestination} from "@/lib/destinations";
-import {calculateQuoteCost,mapsConfigured,type QuoteRoute,type QuoteCosting} from "@/lib/quote-planning";
-import {saveQuoteRouteAction,calculateMapRouteAction,saveQuoteCostingAction,applySuggestedPriceAction} from "@/app/quote-planning-actions";
+import {calculateQuoteCost,mapsConfigured,type QuoteRoute,type QuoteCosting,type QuoteCostRates} from "@/lib/quote-planning";
+import {saveQuoteRouteAction,calculateMapRouteAction,saveQuoteCostingAction,applySuggestedPriceAction,saveQuoteCostRatesAction} from "@/app/quote-planning-actions";
 import {SubmitButton} from "@/components/Transition";
 
 type Asset={id:string;code:string;label:string;kind:string};
@@ -10,8 +10,9 @@ const km=(value:string|number)=>`${Number(value).toLocaleString("es-CL",{maximum
 function Numeric({name,label,value="0",step="0.01",min="0"}:{name:string;label:string;value?:string|number;step?:string;min?:string}){
   return <label>{label}<input name={name} type="number" step={step} min={min} defaultValue={value} required/></label>;
 }
-export function QuotePlanningPanel({quote,lines,destinations,assets,route,cost,quotedNet}:{quote:Quote;lines:QuoteLine[];
-  destinations:QuoteDestination[];assets:Asset[];route:QuoteRoute|null;cost:QuoteCosting|null;quotedNet:number}){
+export function QuotePlanningPanel({quote,lines,destinations,assets,route,cost,rates,admin,quotedNet}:{quote:Quote;lines:QuoteLine[];
+  destinations:QuoteDestination[];assets:Asset[];route:QuoteRoute|null;cost:QuoteCosting|null;
+  rates:{values_json:QuoteCostRates;version:number;updated_at:Date|string}|null;admin:boolean;quotedNet:number}){
   const editable=quote.status==="borrador";
   const first=destinations.find(d=>d.id===lines.find(line=>line.destination_id)?.destination_id);
   const address=(d:QuoteDestination|undefined)=>d?.address?[d.address,d.commune].filter(Boolean).join(", "):
@@ -21,6 +22,7 @@ export function QuotePlanningPanel({quote,lines,destinations,assets,route,cost,q
   const pickup=route?.pickup??quote.client_address??"";
   const destination=route?.destination??address(first);
   const back=route?.return_to??origin;
+  const rate=rates?.values_json;
   let calculated:ReturnType<typeof calculateQuoteCost>|null=null,calculationError="";
   if(cost){try{calculated=calculateQuoteCost(cost,Number(route?.total_km??0),Number(quote.vat_rate));}
     catch(error){calculationError=error instanceof Error?error.message:"Revise el cálculo interno.";}}
@@ -68,25 +70,34 @@ export function QuotePlanningPanel({quote,lines,destinations,assets,route,cost,q
           <label>Equipo o modalidad<input name="equipment" defaultValue={cost?.equipment??""} maxLength={120} placeholder="Camión tolva, pluma, batea..."/></label>
           <Numeric name="capacity" label="Capacidad por viaje" value={cost?.capacity??"0"}/>
           <label>Unidad de capacidad<select name="capacity_unit" defaultValue={cost?.capacity_unit??"tonelada"}><option value="tonelada">Tonelada</option><option value="m³">m³</option></select></label>
-          <Numeric name="km_per_liter" label="Rendimiento (km/L)" value={cost?.km_per_liter??"0"}/>
-          <Numeric name="fuel_price_clp" label="Combustible (CLP/L)" value={cost?.fuel_price_clp??"0"}/>
-          <Numeric name="equipment_cost_clp" label="Vehículo y equipo por viaje (CLP)" value={cost?.equipment_cost_clp??"0"}/>
+          <Numeric name="km_per_liter" label="Rendimiento (km/L)" value={cost?.km_per_liter??rate?.km_per_liter??"0"}/>
+          <Numeric name="fuel_price_clp" label="Combustible (CLP/L)" value={cost?.fuel_price_clp??rate?.fuel_price_clp??"0"}/>
+          <Numeric name="equipment_cost_clp" label="Vehículo y equipo por viaje (CLP)" value={cost?.equipment_cost_clp??rate?.equipment_cost_clp??"0"}/>
           <Numeric name="tolls_clp" label="Peajes por viaje (CLP)" value={cost?.tolls_clp??"0"}/>
           <Numeric name="driver_hours" label="Horas conductor por viaje" value={cost?.driver_hours??"0"}/>
-          <Numeric name="driver_hour_clp" label="Costo hora conductor (CLP)" value={cost?.driver_hour_clp??"0"}/>
+          <Numeric name="driver_hour_clp" label="Costo hora conductor (CLP)" value={cost?.driver_hour_clp??rate?.driver_hour_clp??"0"}/>
           <Numeric name="support_hours" label="Horas apoyo por viaje" value={cost?.support_hours??"0"}/>
-          <Numeric name="support_hour_clp" label="Costo hora apoyo (CLP)" value={cost?.support_hour_clp??"0"}/>
+          <Numeric name="support_hour_clp" label="Costo hora apoyo (CLP)" value={cost?.support_hour_clp??rate?.support_hour_clp??"0"}/>
           <Numeric name="per_diem_clp" label="Viáticos por viaje (CLP)" value={cost?.per_diem_clp??"0"}/>
           <Numeric name="loading_clp" label="Carga y descarga por viaje (CLP)" value={cost?.loading_clp??"0"}/>
           <Numeric name="disposal_quantity" label="Cantidad a disponer por viaje" value={cost?.disposal_quantity??"0"}/>
           <label>Unidad de disposición<select name="disposal_unit" defaultValue={cost?.disposal_unit??"tonelada"}><option value="tonelada">Tonelada</option><option value="m³">m³</option></select></label>
-          <Numeric name="disposal_unit_clp" label="Tarifa de disposición por unidad (CLP)" value={cost?.disposal_unit_clp??"0"}/>
+          <Numeric name="disposal_unit_clp" label="Tarifa de disposición por unidad (CLP)" value={cost?.disposal_unit_clp??rate?.disposal_unit_clp??"0"}/>
           <Numeric name="stay_clp" label="Estadía por viaje (CLP)" value={cost?.stay_clp??"0"}/>
           <Numeric name="other_clp" label="Otros costos por viaje (CLP)" value={cost?.other_clp??"0"}/>
-          <Numeric name="contingency_pct" label="Contingencia (%)" value={cost?.contingency_pct??"0"}/>
-          <Numeric name="margin_pct" label="Margen deseado (%)" value={cost?.margin_pct??"0"}/>
+          <Numeric name="contingency_pct" label="Contingencia (%)" value={cost?.contingency_pct??rate?.contingency_pct??"0"}/>
+          <Numeric name="margin_pct" label="Margen deseado (%)" value={cost?.margin_pct??rate?.margin_pct??"0"}/>
           <div className="field-full form-footer"><SubmitButton className="button button-primary">Guardar cálculo interno</SubmitButton></div>
         </form></details>
+        {admin&&<details className="quote-line-editor"><summary><span>Costos compartidos de {quote.issuer==="e_y_j"?"E y J":"RERCHAR"}</span><strong>{rates?`Versión ${rates.version}`:"Sin valores"}</strong></summary>
+          <p className="helper-text">Administración mantiene estos valores de referencia para futuros cálculos. Se copian sólo al abrir una cotización sin cálculo guardado; cada cotización conserva sus propios costos y su historial.</p>
+          <form action={saveQuoteCostRatesAction} className="form-grid"><input type="hidden" name="quote_id" value={quote.id}/><input type="hidden" name="expected_version" value={rates?.version??0}/>
+            <Numeric name="km_per_liter" label="Rendimiento km/L" value={rate?.km_per_liter??"0"}/><Numeric name="fuel_price_clp" label="Combustible CLP/L" value={rate?.fuel_price_clp??"0"}/>
+            <Numeric name="equipment_cost_clp" label="Equipo por viaje CLP" value={rate?.equipment_cost_clp??"0"}/><Numeric name="driver_hour_clp" label="Hora conductor CLP" value={rate?.driver_hour_clp??"0"}/>
+            <Numeric name="support_hour_clp" label="Hora apoyo CLP" value={rate?.support_hour_clp??"0"}/><Numeric name="disposal_unit_clp" label="Disposición por unidad CLP" value={rate?.disposal_unit_clp??"0"}/>
+            <Numeric name="contingency_pct" label="Contingencia %" value={rate?.contingency_pct??"0"}/><Numeric name="margin_pct" label="Margen %" value={rate?.margin_pct??"0"}/>
+            <div className="field-full form-footer"><SubmitButton className="button button-outline">Guardar valores para la empresa</SubmitButton></div>
+          </form></details>}
         {calculated&&lines.length===1&&Number(lines[0].quantity)===1&&lines[0].taxable&&lines[0].currency!=="UF"&&route?.reviewed_for_truck&&<form action={applySuggestedPriceAction} className="form-footer"><input name="quote_id" type="hidden" value={quote.id}/><SubmitButton className="button button-outline">Aplicar neto sugerido al único concepto</SubmitButton></form>}
         <p className="helper-text">Si hay varios conceptos o cantidades, ajuste sus precios unitarios arriba según el alcance. El cálculo interno no se adjunta ni se exporta al cliente.</p>
       </>}

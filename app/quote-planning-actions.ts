@@ -4,7 +4,7 @@ import {redirect} from "next/navigation";
 import {revalidatePath} from "next/cache";
 import {ZodError} from "zod";
 import {requireActor} from "@/lib/auth";
-import {QuotePlanningError,saveQuoteRoute,calculateMapRoute,saveQuoteCosting,applySuggestedQuotePrice} from "@/lib/quote-planning";
+import {QuotePlanningError,saveQuoteRoute,calculateMapRoute,saveQuoteCosting,applySuggestedQuotePrice,saveQuoteCostRates} from "@/lib/quote-planning";
 
 const v=(form:FormData,key:string)=>String(form.get(key)??"");
 function message(error:unknown){
@@ -33,6 +33,14 @@ export async function saveQuoteCostingAction(form:FormData){
     "driver_hours","driver_hour_clp","support_hours","support_hour_clp","per_diem_clp","loading_clp","disposal_quantity","disposal_unit",
     "disposal_unit_clp","stay_clp","other_clp","contingency_pct","margin_pct"];
   try{await saveQuoteCosting(actor,id,Object.fromEntries(keys.map(key=>[key,v(form,key)])));}
+  catch(error){redirect(`${path(id)}?error=${encodeURIComponent(message(error))}`);}
+  revalidatePath("/","layout");redirect(`${path(id)}?ok=1`);
+}
+export async function saveQuoteCostRatesAction(form:FormData){
+  const actor=await requireActor(),id=v(form,"quote_id");
+  const keys=["km_per_liter","fuel_price_clp","equipment_cost_clp","driver_hour_clp","support_hour_clp",
+    "disposal_unit_clp","contingency_pct","margin_pct"];
+  try{await saveQuoteCostRates(actor,id,{expected_version:v(form,"expected_version"),rates:Object.fromEntries(keys.map(key=>[key,v(form,key)]))});}
   catch(error){redirect(`${path(id)}?error=${encodeURIComponent(message(error))}`);}
   revalidatePath("/","layout");redirect(`${path(id)}?ok=1`);
 }

@@ -3,6 +3,7 @@ import type {Actor} from "./auth";
 import {canManage} from "./auth";
 import {db,transaction,type Db} from "./db";
 import nodemailer from "nodemailer";
+import {createHash,randomBytes} from "node:crypto";
 import {renderQuotePdf} from "./quote-pdf";
 import {quoteFolio} from "./companies";
 import {quotePrincipals,quoteUnits,validQuoteSegment} from "./quote-catalog";
@@ -375,12 +376,55 @@ export async function resolveQuoteSending(actor:Actor,quoteId:string,outcome:"bo
     const [row]=await tx.query<{status:string}>("SELECT status FROM client_quotes WHERE id=$1 FOR UPDATE",[id]);
     if(row?.status!=="enviando")reject("Esta cotización no necesita resolución de envío.");
     await tx.query("UPDATE client_quotes SET status=$2,sent_at=CASE WHEN $2='enviada' THEN now() ELSE NULL END WHERE id=$1",[id,outcome]);
+    if(outcome==="borrador")await tx.query("DELETE FROM quote_response_tokens WHERE quote_id=$1",[id]);
     await tx.query("INSERT INTO audit_events(actor_id,action,entity_type,entity_id,next_value) VALUES ($1,'resolve_send','client_quote',$2,$3)",
       [actor.id,id,JSON.stringify({outcome,reason:note})]);
   });
 }
 
 export function quoteMailConfigured(){return Boolean(process.env.SMTP_HOST&&process.env.SMTP_PORT&&process.env.SMTP_USER&&process.env.SMTP_PASSWORD&&process.env.SMTP_FROM);}
+function responseTokenHash(token:string){return createHash("sha256").update(token).digest("hex");}
+function quoteResponseBaseUrl(){
+  const configured=process.env.APP_BASE_URL?.trim();
+  const hostname=configured&&!(process.env.VERCEL&&/^http:\/\/localhost(?::\d+)?\/?$/.test(configured))?configured:
+    process.env.VERCEL_PROJECT_PRODUCTION_URL?`https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`:"";
+  try{const url=new URL(hostname);if(!["https:","http:"].includes(url.protocol)||process.env.VERCEL&&url.protocol!=="https:")throw Error();return url.origin;}
+  catch{reject("Configure APP_BASE_URL con el dominio público HTTPS para incluir la respuesta del cliente.");}
+}
+export async function getEmailQuoteResponse(token:string){
+  if(!/^[a-f0-9]{64}$/.test(token))return null;
+  const [row]=await db.query<{quote_id:string;recipient:string;expires_at:Date|string;used_at:Date|string|null;status:string;
+    client_name:string;title:string;issuer:Quote["issuer"];folio:string;display_folio:string|null}>(`SELECT t.quote_id,t.recipient,t.expires_at,t.used_at,q.status,q.client_name,q.title,q.issuer,q.folio,q.display_folio
+    FROM quote_response_tokens t JOIN client_quotes q ON q.id=t.quote_id WHERE t.token_hash=$1`,[responseTokenHash(token)]);
+  return row??null;
+}
+export async function respondToQuoteEmail(token:string,decision:"aceptada"|"rechazada"){
+  if(!/^[a-f0-9]{64}$/.test(token)||!["aceptada","rechazada"].includes(decision))reject("Enlace o respuesta inválida.");
+  const result=await transaction(async tx=>{
+    const [link]=await tx.query<{quote_id:string;recipient:string;issued_by:string;expires_at:Date|string;used_at:Date|string|null}>(
+      "SELECT quote_id,recipient,issued_by,expires_at,used_at FROM quote_response_tokens WHERE token_hash=$1 FOR UPDATE",[responseTokenHash(token)]);
+    if(!link||link.used_at||new Date(link.expires_at).getTime()<=Date.now())reject("El enlace ya se utilizó o venció. Contacte al emisor.");
+    const [quote]=await tx.query<{status:string;issuer:Quote["issuer"];folio:string;display_folio:string|null}>(
+      "SELECT status,issuer,folio,display_folio FROM client_quotes WHERE id=$1 FOR UPDATE",[link.quote_id]);
+    if(!quote||quote.status!=="enviada")reject("Esta cotización ya no admite una respuesta por correo.");
+    await tx.query("UPDATE client_quotes SET status=$2 WHERE id=$1",[link.quote_id,decision]);
+    await tx.query("UPDATE quote_response_tokens SET used_at=now() WHERE quote_id=$1",[link.quote_id]);
+    await tx.query("INSERT INTO audit_events(actor_id,action,entity_type,entity_id,next_value) VALUES($1,$2,'client_quote',$3,$4)",
+      [link.issued_by,decision,link.quote_id,JSON.stringify({status:decision,source:"enlace_correo",recipient:link.recipient,
+        identity:"posesion_enlace",issued_by:link.issued_by})]);
+    return {recipient:link.recipient,folio:quoteFolio(quote),issuer:quote.issuer};
+  });
+  if(!quoteMailConfigured())return {ackSent:false};
+  try{
+    const port=Number(process.env.SMTP_PORT);
+    const transport=nodemailer.createTransport({host:process.env.SMTP_HOST,port,secure:port===465,
+      auth:{user:process.env.SMTP_USER,pass:process.env.SMTP_PASSWORD}});
+    await transport.sendMail({from:process.env.SMTP_FROM,to:result.recipient,
+      subject:`Respuesta registrada · Cotización ${result.folio}`,
+      text:`Su respuesta (${decision}) a la cotización ${result.folio} de ${issuers[result.issuer].name} quedó registrada. Si necesita corregirla, comuníquese con la empresa emisora.`});
+    return {ackSent:true};
+  }catch(error){console.error("Acuse de cotización pendiente",error);return {ackSent:false};}
+}
 export function quoteDefaultCc(issuer:Quote["issuer"]){
   return issuer==="e_y_j"?process.env.QUOTE_CC_E_Y_J??"":process.env.QUOTE_CC_RERCHAR??"";
 }
@@ -393,6 +437,7 @@ export function quoteCcAddresses(input:string){
 export async function sendQuote(actor:Actor,quoteId:string,ccInput=""){
   canEdit(actor);
   if(!quoteMailConfigured())reject("Configure el correo remitente SMTP del sistema antes de enviar cotizaciones.");
+  const baseUrl=quoteResponseBaseUrl();
   const id=uuid.parse(quoteId);
   const {quote,lines,route}=await getQuote(actor,id);
   if(quote.status!=="borrador")reject("Esta cotización ya no está en borrador.");
@@ -403,14 +448,20 @@ export async function sendQuote(actor:Actor,quoteId:string,ccInput=""){
   const pdf=await renderQuotePdf(quote,lines,"",route);
   const [claimed]=await db.query<{id:string}>("UPDATE client_quotes SET status='enviando' WHERE id=$1 AND status='borrador' RETURNING id",[id]);
   if(!claimed)reject("La cotización cambió de estado. Recargue la pantalla.");
+  const token=randomBytes(32).toString("hex");
   try{
+    await db.query(`INSERT INTO quote_response_tokens(quote_id,token_hash,recipient,issued_by,expires_at)
+      VALUES($1,$2,$3,$4,LEAST(($5::date+1)::timestamptz,now()+interval '14 days'))
+      ON CONFLICT(quote_id) DO UPDATE SET token_hash=EXCLUDED.token_hash,recipient=EXCLUDED.recipient,
+        issued_by=EXCLUDED.issued_by,expires_at=EXCLUDED.expires_at,used_at=NULL,created_at=now()`,
+      [id,responseTokenHash(token),quote.client_email,actor.id,quote.valid_until]);
     const port=Number(process.env.SMTP_PORT);
     if(!Number.isInteger(port)||port<1||port>65535)throw new Error("Puerto SMTP inválido.");
     const transport=nodemailer.createTransport({host:process.env.SMTP_HOST,port,secure:port===465,
       auth:{user:process.env.SMTP_USER,pass:process.env.SMTP_PASSWORD}});
     await transport.sendMail({from:process.env.SMTP_FROM,to:quote.client_email,cc:cc.length?cc:undefined,
       subject:`Cotización ${quoteFolio(quote)} · ${issuers[quote.issuer].name}`,
-      text:`Estimada empresa ${quote.client_name}:\n\nAdjuntamos la cotización ${quoteFolio(quote)} por ${quote.title}.\n\nSaludos cordiales,\n${issuers[quote.issuer].name}`,
+      text:`Estimada empresa ${quote.client_name}:\n\nAdjuntamos la cotización ${quoteFolio(quote)} por ${quote.title}.\n\nPara aceptarla o rechazarla, responda desde este enlace antes de su vencimiento:\n${baseUrl}/cotizaciones/responder/${token}\n\nEl enlace es personal: cualquier persona que lo posea puede registrar una sola respuesta.\n\nSaludos cordiales,\n${issuers[quote.issuer].name}`,
       attachments:[{filename:`cotizacion-${quoteFolio(quote).toLowerCase()}.pdf`,content:Buffer.from(pdf),contentType:"application/pdf"}]});
   }catch(error){
     console.error("Fallo de envío de cotización",error);

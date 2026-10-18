@@ -8,6 +8,7 @@ import {GET as evidence} from "@/lib/api-downloads/evidence";
 import {GET as counterpartyDocument} from "@/lib/api-downloads/counterparty-document";
 import {GET as assetDocument} from "@/lib/api-downloads/asset-document";
 import {GET as transferProof} from "@/lib/api-downloads/transfer-proof";
+import {GET as edpConsolidated} from "@/lib/api-downloads/edp-consolidated";
 
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
@@ -20,6 +21,7 @@ const routes:{path:string[];handler:DownloadHandler}[]=[
   {path:["cotizaciones","documentos",":id"],handler:quoteDocument},
   {path:["destinos",":id","respaldo"],handler:destinationSupport},
   {path:["estados-pago",":id","pdf"],handler:paymentStatementPdf},
+  {path:["estados-pago","consolidado",":id"],handler:edpConsolidated},
   {path:["evidencia",":id"],handler:evidence},
   {path:["fichas","documentos",":id"],handler:counterpartyDocument},
   {path:["flota-documentos",":id"],handler:assetDocument},

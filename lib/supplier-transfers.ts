@@ -74,9 +74,10 @@ export async function requestSupplierTransfer(actor:Actor,invoiceId:string,input
   const data=requestSchema.parse(input);
   const profilesReady=await moduleReady("counterparty_profiles");
   return transaction(async tx=>{
-    const [invoice]=await tx.query<{id:string;total_clp:string;paid_clp:string;status:string;supplier_tax_id:string;supplier_profile_id?:string|null}>(
-      `SELECT id,total_clp,paid_clp,status,supplier_tax_id${profilesReady?",supplier_profile_id":""} FROM supplier_invoices WHERE id=$1 FOR UPDATE`,[invoiceId]);
+    const [invoice]=await tx.query<{id:string;total_clp:string;paid_clp:string;status:string;review_status:string;supplier_tax_id:string;supplier_profile_id?:string|null}>(
+      `SELECT id,total_clp,paid_clp,status,review_status,supplier_tax_id${profilesReady?",supplier_profile_id":""} FROM supplier_invoices WHERE id=$1 FOR UPDATE`,[invoiceId]);
     if(!invoice||invoice.status==="pagada")reject("La factura no tiene saldo disponible.");
+    if(invoice.review_status!=="aceptada")reject("Revise y acepte la factura recibida antes de solicitar su transferencia.");
     const [existing]=await tx.query<{id:string;invoice_id:string}>(
       "SELECT id,invoice_id FROM supplier_transfer_requests WHERE submission_key=$1",[data.submission_key]);
     if(existing){if(existing.invoice_id!==invoiceId)reject("La clave de solicitud corresponde a otra factura.");return existing.id;}
@@ -132,8 +133,9 @@ export async function decideSupplierTransfer(actor:Actor,id:string,decision:"apr
     if(before.requested_by===actor.id)reject("La persona que solicitó no puede aprobar o rechazar su propia transferencia.");
     if(decision==="aprobada"){
       if(profilesReady)await assertCurrentBank(tx,id);
-      const [invoice]=await tx.query<{total_clp:string;paid_clp:string}>(
-        "SELECT total_clp,paid_clp FROM supplier_invoices WHERE id=$1 FOR UPDATE",[before.invoice_id]);
+      const [invoice]=await tx.query<{total_clp:string;paid_clp:string;review_status:string}>(
+        "SELECT total_clp,paid_clp,review_status FROM supplier_invoices WHERE id=$1 FOR UPDATE",[before.invoice_id]);
+      if(invoice.review_status!=="aceptada")reject("La factura debe permanecer aceptada para aprobar esta transferencia.");
       const [proof]=await tx.query("SELECT id FROM operation_files WHERE invoice_id=$1 AND kind='factura' LIMIT 1",[before.invoice_id]);
       if(!proof)reject("Adjunte la factura original antes de aprobar la transferencia.");
       const [reserved]=await tx.query<{amount:string}>(`SELECT COALESCE(sum(amount_clp),0)::text AS amount FROM supplier_transfer_requests

@@ -57,6 +57,8 @@ test("ingresos, facturas y seguimiento conservan cálculos, permisos y respaldos
     "SELECT previous_value,next_value FROM audit_events WHERE entity_id=$1 AND action='update_due_date'",[invoice]);
   assert.equal(dueAudit.previous_value.due_on,"2026-10-20");
   assert.equal(dueAudit.next_value.reason,"Corrección de digitación");
+  await files.addOperationFile(owner,"invoice",invoice,"factura",pdf);
+  await invoices.reviewSupplierInvoice(owner,invoice,{decision:"aceptada",note:"Factura original cotejada"});
   const key=randomUUID();
   const payment=await invoices.registerSupplierPayment(owner,invoice,{submission_key:key,amount_clp:"5000",paid_on:"2026-09-25",reference:"Transferencia 123"});
   assert.equal(await invoices.registerSupplierPayment(owner,invoice,{submission_key:key,amount_clp:"5000",paid_on:"2026-09-25",reference:"Transferencia 123"}),payment);
@@ -72,6 +74,8 @@ test("ingresos, facturas y seguimiento conservan cálculos, permisos y respaldos
   await makeInvoice("e_y_j","V-OCHO","2026-10-22","900");
   const undated=await makeInvoice("e_y_j","V-SIN-FECHA","","700");
   const paid=await makeInvoice("e_y_j","V-PAGADA","2026-10-10","300");
+  await files.addOperationFile(owner,"invoice",paid,"factura",pdf);
+  await invoices.reviewSupplierInvoice(owner,paid,{decision:"aceptada",note:"Factura original cotejada"});
   await invoices.registerSupplierPayment(owner,paid,{submission_key:randomUUID(),amount_clp:"300",paid_on:"2026-10-14",reference:"Transferencia completa"});
   const otherCompany=await makeInvoice("rerchar","V-RERCHAR","2026-10-13","600");
   const asOf="2026-10-14";
