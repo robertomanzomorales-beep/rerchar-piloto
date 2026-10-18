@@ -4,7 +4,7 @@ import {redirect} from "next/navigation";
 import {revalidatePath} from "next/cache";
 import {ZodError} from "zod";
 import {requireActor} from "@/lib/auth";
-import {PaymentStatementError,createPaymentStatement,saveStatementCharge,saveStatementOperation,addStatementService,linkStatementInvoice,deletePaymentStatementLine,setPaymentStatementStatus} from "@/lib/payment-statements";
+import {PaymentStatementError,createPaymentStatement,saveStatementCharge,saveStatementOperation,addStatementService,linkStatementInvoice,saveStatementClientOrder,deletePaymentStatementLine,setPaymentStatementStatus} from "@/lib/payment-statements";
 
 const val=(form:FormData,key:string)=>String(form.get(key)??"");
 const select=(form:FormData,fields:readonly string[])=>Object.fromEntries(fields.map(key=>[key,val(form,key)]));
@@ -56,4 +56,9 @@ export async function linkStatementInvoiceAction(form:FormData){
   const actor=await requireActor(),id=val(form,"statement_id");
   await run(path(id),()=>linkStatementInvoice(actor,id,select(form,
     ["invoice_number","issued_on","due_on","total_clp","variance_note"])));
+}
+export async function saveStatementClientOrderAction(form:FormData){
+  const actor=await requireActor(),id=val(form,"statement_id");
+  await run(path(id),()=>saveStatementClientOrder(actor,id,select(form,
+    ["client_order_reference","client_order_on","client_order_exception"])));
 }

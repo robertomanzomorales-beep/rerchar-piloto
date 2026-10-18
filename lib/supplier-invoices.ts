@@ -24,6 +24,7 @@ export function invoiceReconciliation(input:{net_clp:string|number|null;vat_clp:
   return (cents(input.net_clp)+cents(input.vat_clp)-cents(input.total_clp))/100;
 }
 export type SupplierInvoice={id:string;issuer:"rerchar"|"e_y_j";supplier_tax_id:string;supplier_name:string;
+  supplier_profile_id?:string|null;
   invoice_number:string;issued_on:Date|string;due_on:Date|string|null;description:string;net_clp:string|null;
   vat_clp:string|null;total_clp:string;cost_area:string|null;purchase_id:string|null;service_id:string|null;
   status:string;paid_clp:string;paid_on:Date|string|null;notes:string|null;created_at:Date};
@@ -94,8 +95,8 @@ export async function updateSupplierInvoiceDueDate(actor:Actor,id:string,input:u
 }
 export async function createSupplierInvoice(actor:Actor,input:unknown){
   admin(actor);
-  const data=z.object({issuer:z.enum(["rerchar","e_y_j"]),supplier_tax_id:z.string().trim().min(5).max(25),
-    supplier_name:z.string().trim().min(2).max(180),invoice_number:z.string().trim().min(1).max(80),
+  const data=z.object({issuer:z.enum(["rerchar","e_y_j"]),supplier_profile_id:z.union([uuid,z.literal("")]).default(""),
+    supplier_tax_id:optional(25),supplier_name:optional(180),invoice_number:z.string().trim().min(1).max(80),
     issued_on:z.iso.date(),due_on:z.union([z.iso.date(),z.literal("")]).default(""),
     description:z.string().trim().min(3).max(500),net_clp:optionalAmount,vat_clp:optionalAmount,total_clp:amount,
     cost_area:optional(160),purchase_id:z.union([uuid,z.literal("")]).default(""),
@@ -103,22 +104,35 @@ export async function createSupplierInvoice(actor:Actor,input:unknown){
   if(data.due_on&&data.due_on<data.issued_on)reject("La fecha de vencimiento debe ser posterior a la emisión.");
   if(data.net_clp!==""&&data.vat_clp!==""&&Math.abs(invoiceReconciliation({net_clp:data.net_clp,vat_clp:data.vat_clp,total_clp:data.total_clp})??0)>0.01)
     reject("Neto más IVA no coincide con el total informado.");
+  const profilesReady=await moduleReady("counterparty_profiles");
+  if(data.supplier_profile_id&&!profilesReady)reject("La ficha de proveedor todavía no está disponible.");
+  if(!data.supplier_profile_id&&(data.supplier_tax_id.length<5||data.supplier_name.length<2))
+    reject("Indique el proveedor o seleccione una ficha verificada.");
   return transaction(async tx=>{
+    let supplierTaxId=data.supplier_tax_id,supplierName=data.supplier_name;
+    if(data.supplier_profile_id){
+      const [profile]=await tx.query<{tax_id:string;legal_name:string;status:string;kind:string}>(
+        "SELECT tax_id,legal_name,status,kind FROM counterparty_profiles WHERE id=$1",[data.supplier_profile_id]);
+      if(!profile||profile.status!=="verificada"||profile.kind==="cliente")reject("Seleccione una ficha de proveedor verificada.");
+      supplierTaxId=profile.tax_id;supplierName=profile.legal_name;
+    }
     if(data.purchase_id){const [purchase]=await tx.query<{issuer:string}>("SELECT issuer FROM purchase_requests WHERE id=$1",[data.purchase_id]);
       if(!purchase||purchase.issuer!==data.issuer)reject("La orden de compra debe corresponder a la empresa receptora.");}
     if(data.service_id){const [service]=await tx.query<{operating_company:string|null}>("SELECT operating_company FROM service_requests WHERE id=$1 AND deleted_at IS NULL",[data.service_id]);
       if(!service||service.operating_company!==data.issuer)reject("El servicio debe tener confirmada la misma empresa receptora.");}
     const [duplicate]=await tx.query("SELECT id FROM supplier_invoices WHERE issuer=$1 AND supplier_tax_id=$2 AND invoice_number=$3",
-      [data.issuer,data.supplier_tax_id,data.invoice_number]);
+      [data.issuer,supplierTaxId,data.invoice_number]);
     if(duplicate)reject("Esta factura del proveedor ya está registrada para la empresa emisora.");
     const [row]=await tx.query<{id:string}>(`INSERT INTO supplier_invoices(issuer,supplier_tax_id,supplier_name,invoice_number,issued_on,due_on,
-      description,net_clp,vat_clp,total_clp,cost_area,purchase_id,service_id,notes,recorded_by)
+      description,net_clp,vat_clp,total_clp,cost_area,purchase_id,service_id,notes,recorded_by${profilesReady?",supplier_profile_id":""})
       VALUES($1,$2,$3,$4,$5,NULLIF($6,'')::date,$7,NULLIF($8::text,'')::numeric,NULLIF($9::text,'')::numeric,
-        $10,NULLIF($11,''),NULLIF($12,'')::uuid,NULLIF($13,'')::uuid,NULLIF($14,''),$15) RETURNING id`,
-      [data.issuer,data.supplier_tax_id,data.supplier_name,data.invoice_number,data.issued_on,data.due_on,
-       data.description,data.net_clp,data.vat_clp,data.total_clp,data.cost_area,data.purchase_id,data.service_id,data.notes,actor.id]);
+        $10,NULLIF($11,''),NULLIF($12,'')::uuid,NULLIF($13,'')::uuid,NULLIF($14,''),$15${profilesReady?",NULLIF($16,'')::uuid":""}) RETURNING id`,
+      [data.issuer,supplierTaxId,supplierName,data.invoice_number,data.issued_on,data.due_on,
+       data.description,data.net_clp,data.vat_clp,data.total_clp,data.cost_area,data.purchase_id,data.service_id,data.notes,actor.id,
+       ...(profilesReady?[data.supplier_profile_id]:[])]);
     await tx.query("INSERT INTO audit_events(actor_id,action,entity_type,entity_id,next_value) VALUES ($1,'create','supplier_invoice',$2,$3)",
-      [actor.id,row.id,JSON.stringify({issuer:data.issuer,supplier_tax_id:data.supplier_tax_id,invoice_number:data.invoice_number,total_clp:data.total_clp})]);
+      [actor.id,row.id,JSON.stringify({issuer:data.issuer,supplier_tax_id:supplierTaxId,supplier_profile_id:data.supplier_profile_id||null,
+        invoice_number:data.invoice_number,total_clp:data.total_clp})]);
     return row.id;
   });
 }

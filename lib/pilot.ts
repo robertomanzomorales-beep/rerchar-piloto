@@ -629,6 +629,8 @@ export async function addEvidence(actor: Actor, id: string, description: string,
   const bytes = Buffer.from(await file.arrayBuffer());
   const kind = detectMime(bytes);
   const service = await getService(actor, id);
+  if(service.operating_company==="e_y_j"&&documentKindSafe==="guia_valorizada")
+    reject("E y J no utiliza guías valorizadas. Adjunte la guía de despacho u otro respaldo del servicio.");
   if (!(canManage(actor) ? service.status!=="cancelada" : canWorkService(actor,service) && ["programada","en_ruta"].includes(service.status)))
     reject("No se puede incorporar documentos en este estado.");
   const databaseStorage=process.env.EVIDENCE_STORAGE==="database";

@@ -55,7 +55,7 @@ export async function updateMaterialGuideFollowupAction(form:FormData){
 }
 export async function createSupplierInvoiceAction(form:FormData){
   const actor=await requireActor();let id:string;
-  const fields=["issuer","supplier_tax_id","supplier_name","invoice_number","issued_on","due_on","description",
+  const fields=["issuer","supplier_profile_id","supplier_tax_id","supplier_name","invoice_number","issued_on","due_on","description",
     "net_clp","vat_clp","total_clp","cost_area","purchase_id","service_id","notes"];
   try{id=await createSupplierInvoice(actor,Object.fromEntries(fields.map(field=>[field,val(form,field)])));}
   catch(e){redirect(`/facturas-recibidas?error=${encodeURIComponent(message(e))}`);}

@@ -1,7 +1,7 @@
 import {z} from "zod";
 import type {Actor} from "./auth";
 import type {Company} from "./companies";
-import {db,transaction} from "./db";
+import {db,transaction,type Db} from "./db";
 import {moduleReady} from "./schema-readiness";
 import {todayChile} from "./receivables";
 
@@ -16,8 +16,8 @@ const positive=z.union([z.string(),z.number()]).transform((raw,ctx)=>{
   return value;
 });
 const day=(value:Date|string)=>value instanceof Date?value.toISOString().slice(0,10):String(value).slice(0,10);
-const requestSchema=z.object({submission_key:uuid,amount_clp:positive,bank_name:z.string().trim().min(2).max(100),
-  account_type:z.enum(["corriente","vista","ahorro","otro"]),account_number:z.string().trim().min(4).max(60)});
+const requestSchema=z.object({submission_key:uuid,amount_clp:positive,bank_name:z.string().trim().max(100).default(""),
+  account_type:z.enum(["corriente","vista","ahorro","otro",""]).default(""),account_number:z.string().trim().max(60).default("")});
 const executionSchema=z.object({paid_on:z.iso.date(),bank_reference:z.string().trim().min(4).max(160)});
 const verificationSchema=z.object({checked_amount_clp:positive,checked_reference:z.string().trim().min(4).max(160),
   verification_note:z.string().trim().min(5).max(500)});
@@ -72,13 +72,29 @@ export async function supplierTransferOverview(actor:Actor,company:Company|""=""
 export async function requestSupplierTransfer(actor:Actor,invoiceId:string,input:unknown){
   admin(actor);await ready();if(!uuid.safeParse(invoiceId).success)reject("Factura inválida.");
   const data=requestSchema.parse(input);
+  const profilesReady=await moduleReady("counterparty_profiles");
   return transaction(async tx=>{
-    const [invoice]=await tx.query<{id:string;total_clp:string;paid_clp:string;status:string}>(
-      "SELECT id,total_clp,paid_clp,status FROM supplier_invoices WHERE id=$1 FOR UPDATE",[invoiceId]);
+    const [invoice]=await tx.query<{id:string;total_clp:string;paid_clp:string;status:string;supplier_tax_id:string;supplier_profile_id?:string|null}>(
+      `SELECT id,total_clp,paid_clp,status,supplier_tax_id${profilesReady?",supplier_profile_id":""} FROM supplier_invoices WHERE id=$1 FOR UPDATE`,[invoiceId]);
     if(!invoice||invoice.status==="pagada")reject("La factura no tiene saldo disponible.");
     const [existing]=await tx.query<{id:string;invoice_id:string}>(
       "SELECT id,invoice_id FROM supplier_transfer_requests WHERE submission_key=$1",[data.submission_key]);
     if(existing){if(existing.invoice_id!==invoiceId)reject("La clave de solicitud corresponde a otra factura.");return existing.id;}
+    let bankName=data.bank_name,accountType:string=data.account_type,accountNumber=data.account_number;
+    if(profilesReady){
+      const [profile]=await tx.query<{id:string;status:string;kind:string;bank_name:string;account_type:string;account_number:string}>(
+        `SELECT id,status,kind,bank_name,account_type,account_number FROM counterparty_profiles
+         WHERE ($1::uuid IS NULL OR id=$1)
+           AND upper(regexp_replace(tax_id,'[.[:space:]]','','g'))=upper(regexp_replace($2,'[.[:space:]]','','g'))
+         LIMIT 1 FOR UPDATE`,
+        [invoice.supplier_profile_id||null,invoice.supplier_tax_id]);
+      if(!profile||profile.kind==="cliente"||profile.status!=="verificada")
+        reject("Antes de transferir, registre y verifique la ficha bancaria del proveedor.");
+      if(!invoice.supplier_profile_id)await tx.query("UPDATE supplier_invoices SET supplier_profile_id=$2 WHERE id=$1",[invoiceId,profile.id]);
+      bankName=profile.bank_name;accountType=profile.account_type;accountNumber=profile.account_number;
+    }
+    if(!bankName||!accountNumber||!(["corriente","vista","ahorro","otro"] as string[]).includes(accountType))
+      reject("Complete banco, tipo y número de cuenta.");
     const [reserved]=await tx.query<{amount:string}>(`SELECT COALESCE(sum(amount_clp),0)::text AS amount FROM supplier_transfer_requests
       WHERE invoice_id=$1 AND status IN ('solicitada','aprobada','ejecutada')`,[invoiceId]);
     if(cents(data.amount_clp)+cents(reserved.amount)>cents(invoice.total_clp)-cents(invoice.paid_clp))
@@ -86,14 +102,27 @@ export async function requestSupplierTransfer(actor:Actor,invoiceId:string,input
     const [created]=await tx.query<{id:string}>(`INSERT INTO supplier_transfer_requests
       (submission_key,invoice_id,amount_clp,bank_name,account_type,account_number,requested_by)
       VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
-      [data.submission_key,invoiceId,data.amount_clp,data.bank_name,data.account_type,data.account_number,actor.id]);
+      [data.submission_key,invoiceId,data.amount_clp,bankName,accountType,accountNumber,actor.id]);
     await tx.query("INSERT INTO audit_events(actor_id,action,entity_type,entity_id,next_value) VALUES($1,'request','supplier_transfer',$2,$3)",
-      [actor.id,created.id,JSON.stringify({invoice_id:invoiceId,amount_clp:data.amount_clp,bank_name:data.bank_name,account_type:data.account_type,account_ending:data.account_number.slice(-4)})]);
+      [actor.id,created.id,JSON.stringify({invoice_id:invoiceId,amount_clp:data.amount_clp,bank_name:bankName,account_type:accountType,account_ending:accountNumber.slice(-4)})]);
     return created.id;
   });
 }
+async function assertCurrentBank(tx:Db,transferId:string){
+  const [current]=await tx.query<{status:string;bank_name:string;account_type:string;account_number:string;
+    saved_bank_name:string;saved_account_type:string;saved_account_number:string}>(
+    `SELECT p.status,p.bank_name,p.account_type,p.account_number,
+      t.bank_name AS saved_bank_name,t.account_type AS saved_account_type,t.account_number AS saved_account_number
+     FROM supplier_transfer_requests t JOIN supplier_invoices i ON i.id=t.invoice_id
+     JOIN counterparty_profiles p ON p.id=i.supplier_profile_id
+     WHERE t.id=$1 FOR UPDATE OF p`,[transferId]);
+  if(!current||current.status!=="verificada"||current.bank_name!==current.saved_bank_name||
+    current.account_type!==current.saved_account_type||current.account_number!==current.saved_account_number)
+    reject("La ficha bancaria cambió o está pendiente de revisión. Rechace la solicitud y cree una nueva con la cuenta verificada.");
+}
 export async function decideSupplierTransfer(actor:Actor,id:string,decision:"aprobada"|"rechazada",note:string){
   admin(actor);await ready();if(!uuid.safeParse(id).success)reject("Solicitud inválida.");
+  const profilesReady=await moduleReady("counterparty_profiles");
   const reason=z.string().trim().max(500).parse(note);
   if(decision==="rechazada"&&reason.length<5)reject("Indique el motivo del rechazo.");
   return transaction(async tx=>{
@@ -102,6 +131,7 @@ export async function decideSupplierTransfer(actor:Actor,id:string,decision:"apr
     if(!before||before.status!=="solicitada")reject("La solicitud ya fue resuelta.");
     if(before.requested_by===actor.id)reject("La persona que solicitó no puede aprobar o rechazar su propia transferencia.");
     if(decision==="aprobada"){
+      if(profilesReady)await assertCurrentBank(tx,id);
       const [invoice]=await tx.query<{total_clp:string;paid_clp:string}>(
         "SELECT total_clp,paid_clp FROM supplier_invoices WHERE id=$1 FOR UPDATE",[before.invoice_id]);
       const [proof]=await tx.query("SELECT id FROM operation_files WHERE invoice_id=$1 AND kind='factura' LIMIT 1",[before.invoice_id]);
@@ -119,6 +149,7 @@ export async function decideSupplierTransfer(actor:Actor,id:string,decision:"apr
 }
 export async function executeSupplierTransfer(actor:Actor,id:string,input:unknown,file:File){
   admin(actor);await ready();if(!uuid.safeParse(id).success)reject("Solicitud inválida.");
+  const profilesReady=await moduleReady("counterparty_profiles");
   const data=executionSchema.parse(input);
   if(data.paid_on>todayChile())reject("La transferencia no puede tener fecha futura.");
   if(!file||file.size<1||file.size>(process.env.VERCEL?4:5)*1024*1024)reject("Adjunte un comprobante de hasta 4 MB.");
@@ -129,6 +160,7 @@ export async function executeSupplierTransfer(actor:Actor,id:string,input:unknow
       "SELECT status,invoice_id,requested_by,approved_by FROM supplier_transfer_requests WHERE id=$1 FOR UPDATE",[id]);
     if(!before||before.status!=="aprobada")reject("Apruebe primero la solicitud de transferencia.");
     if(before.approved_by===actor.id)reject("Quien aprobó debe dejar la ejecución a otra persona.");
+    if(profilesReady)await assertCurrentBank(tx,id);
     const [invoice]=await tx.query<{issued_on:Date|string}>("SELECT issued_on FROM supplier_invoices WHERE id=$1",[before.invoice_id]);
     if(data.paid_on<day(invoice.issued_on))reject("La fecha de pago no puede anteceder a la factura.");
     await tx.query(`INSERT INTO supplier_transfer_proofs(transfer_id,filename,mime_type,content,uploaded_by)

@@ -10,6 +10,7 @@ test("solicitud, aprobación, ejecución y verificación requieren personas y re
   const {db,transaction}=await import("../lib/db");
   const {createSupplierInvoice,getSupplierInvoice,registerSupplierPayment}=await import("../lib/supplier-invoices");
   const {addOperationFile}=await import("../lib/operation-files");
+  const counterparties=await import("../lib/counterparties");
   const transfers=await import("../lib/supplier-transfers");
   const {listFinancialTransactions}=await import("../lib/financial-transactions");
   for(const name of (await readdir(resolve(process.cwd(),"db"))).filter(n=>/^\d+.*\.sql$/.test(n)).sort()){
@@ -20,13 +21,30 @@ test("solicitud, aprobación, ejecución y verificación requieren personas y re
     VALUES('solicita@demo.cl','Solicita','h','admin'),('aprueba@demo.cl','Aprueba','h','admin'),
     ('observa@demo.cl','Observa','h','operaciones') RETURNING id,name,email,role`);
   const [requester,approver,viewer]=users.map(u=>({...u,client_id:null}) as Actor);
-  const data={supplier_tax_id:"76.123.456-7",supplier_name:"Proveedor A",issued_on:"2026-10-01",
+  const profileInput={kind:"proveedor",legal_name:"Proveedor A",tax_id:"76.347.909-9",business_activity:"Insumos industriales",
+    legal_address:"Calle Principal 123",locality:"Santiago",phone:"+56222223333",general_email:"proveedor@demo.cl",
+    tax_status:"afecto",legal_representative:"Representante Legal",invoice_email:"facturas@demo.cl",
+    payment_terms:"30",requires_oc:"no",requires_hes:"no",requires_edp:"no",bank_name:"Banco Verificado",
+    account_type:"corriente",account_number:"9988776655",account_holder:"Proveedor A",
+    account_holder_tax_id:"76.347.909-9",proof_email:"comprobantes@demo.cl",
+    contacts:["compras","servicios","contabilidad","operaciones","prevencion"].map(area=>({area}))};
+  const profileId=await counterparties.saveCounterparty(requester,profileInput);
+  const document=new File([Buffer.from("%PDF-1.4\nrespaldo")],"respaldo.pdf",{type:"application/pdf"});
+  for(const kind of ["rut_empresa","certificado_bancario","carpeta_tributaria"])
+    await counterparties.uploadCounterpartyDocument(requester,profileId,kind,document);
+  assert.equal((await counterparties.getCounterparty(requester,profileId)).documents.length,3);
+  await assert.rejects(()=>counterparties.getCounterparty(viewer,profileId),/Sólo administración/);
+  await assert.rejects(()=>counterparties.verifyCounterparty(requester,profileId),/Otra persona/);
+  await counterparties.verifyCounterparty(approver,profileId);
+  const data={supplier_tax_id:"76.347.909-9",supplier_name:"Proveedor A",issued_on:"2026-10-01",
     due_on:"2026-10-20",description:"Insumos",total_clp:"10000"};
-  const invoice=await createSupplierInvoice(requester,{...data,issuer:"rerchar",invoice_number:"R-1"});
-  const other=await createSupplierInvoice(requester,{...data,issuer:"e_y_j",invoice_number:"E-1"});
+  const invoice=await createSupplierInvoice(requester,{...data,issuer:"rerchar",invoice_number:"R-1",supplier_profile_id:profileId});
+  const other=await createSupplierInvoice(requester,{...data,issuer:"e_y_j",invoice_number:"E-1",supplier_profile_id:profileId});
   const request={submission_key:randomUUID(),amount_clp:"6000",bank_name:"Banco A",account_type:"corriente",account_number:"1234567890"};
   await assert.rejects(()=>transfers.requestSupplierTransfer(viewer,invoice,request),transfers.SupplierTransferError);
   const id=await transfers.requestSupplierTransfer(requester,invoice,request);
+  assert.equal((await transfers.invoiceSupplierTransfers(requester,invoice))[0].account_number,"9988776655",
+    "la cuenta de la solicitud proviene de la ficha verificada, aunque el formulario envíe otro número");
   assert.equal(await transfers.requestSupplierTransfer(requester,invoice,request),id);
   await assert.rejects(()=>transfers.requestSupplierTransfer(requester,invoice,{...request,submission_key:randomUUID(),amount_clp:"5000"}),/saldo disponible/);
   await assert.rejects(()=>registerSupplierPayment(requester,invoice,{submission_key:randomUUID(),amount_clp:"1",paid_on:"2026-10-13",reference:"Manual"}),/transferencias pendientes/);
@@ -55,4 +73,9 @@ test("solicitud, aprobación, ejecución y verificación requieren personas y re
   await transfers.decideSupplierTransfer(approver,second,"rechazada","Cuenta incorrecta");
   assert.equal((await transfers.listSupplierTransfers(requester,"e_y_j"))[0].status,"rechazada");
   assert.equal((await getSupplierInvoice(requester,other)).invoice.paid_clp,"0.00");
+  const stale=await transfers.requestSupplierTransfer(requester,other,{...request,submission_key:randomUUID(),amount_clp:"1000"});
+  await counterparties.saveCounterparty(requester,{...profileInput,id:profileId,account_number:"1122334455"});
+  await assert.rejects(()=>transfers.decideSupplierTransfer(approver,stale,"aprobada","Revisada"),/ficha bancaria cambió/);
+  await transfers.decideSupplierTransfer(approver,stale,"rechazada","Cuenta reemplazada");
+  await assert.rejects(()=>transfers.requestSupplierTransfer(requester,other,{...request,submission_key:randomUUID()}),/verifique la ficha bancaria/);
 });

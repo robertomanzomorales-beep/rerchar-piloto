@@ -92,13 +92,20 @@ export async function eyjPaymentDashboard(){
 
 export async function eyjEdpInvoiceDashboard(){
   try{
-    const [row]=await db.query<{unbilled:string}>(`SELECT count(*) FILTER (WHERE status='aprobado'
-      AND receivable_invoice_id IS NULL AND service_invoice_id IS NULL)::text AS unbilled
+    const orderReady=await moduleReady("edp_client_order");
+    const [row]=await db.query<{unbilled:string;awaiting_order:string;ready_to_invoice:string}>(`SELECT
+      count(*) FILTER (WHERE status='aprobado' AND receivable_invoice_id IS NULL AND service_invoice_id IS NULL)::text AS unbilled,
+      ${orderReady?`count(*) FILTER (WHERE status='aprobado' AND receivable_invoice_id IS NULL AND service_invoice_id IS NULL
+        AND client_order_reference IS NULL AND client_order_exception IS NULL)::text AS awaiting_order,
+      count(*) FILTER (WHERE status='aprobado' AND receivable_invoice_id IS NULL AND service_invoice_id IS NULL
+        AND (client_order_reference IS NOT NULL OR client_order_exception IS NOT NULL))::text AS ready_to_invoice`:
+        "'0'::text AS awaiting_order,'0'::text AS ready_to_invoice"}
       FROM payment_statements WHERE issuer='e_y_j'`);
-    return {unbilled:row?.unbilled??"0",ready:true};
+    return {unbilled:row?.unbilled??"0",awaiting_order:row?.awaiting_order??"0",
+      ready_to_invoice:row?.ready_to_invoice??"0",order_ready:orderReady,ready:true};
   }catch(error){
     if(typeof error==="object"&&error!==null&&"code" in error&&["42P01","42703"].includes(String(error.code)))
-      return {unbilled:"0",ready:false};
+      return {unbilled:"0",awaiting_order:"0",ready_to_invoice:"0",order_ready:false,ready:false};
     throw error;
   }
 }

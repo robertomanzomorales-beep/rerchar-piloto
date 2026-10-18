@@ -6,6 +6,7 @@ import {requireActor} from "@/lib/auth";
 import {db} from "@/lib/db";
 import {chileDate} from "@/components/UI";
 import {companyName,serviceFolio,quoteFolio,type Company} from "@/lib/companies";
+import {moduleReady} from "@/lib/schema-readiness";
 
 type Client={id:string;name:string;tax_id:string|null;contact_name:string|null;email:string|null;address:string|null};
 type Service={id:string;folio:string;operating_company:Company|null;service_type:string;site_name:string;waste_type:string;status:string;guide_number:string|null;gross_kg:string|null;tare_kg:string|null;scheduled_for:Date|null;created_at:Date};
@@ -17,6 +18,8 @@ export default async function ClientDossier({params}:{params:Promise<{id:string}
   if(actor.role==="conductor"||!z.uuid().safeParse(id).success||(actor.role==="cliente"&&actor.client_id!==id))notFound();
   const [client]=await db.query<Client>("SELECT * FROM clients WHERE id=$1 AND deleted_at IS NULL",[id]);
   if(!client)notFound();
+  const profileReady=actor.role==="admin"&&await moduleReady("counterparty_profiles");
+  const [profile]=profileReady?await db.query<{id:string}>("SELECT id FROM counterparty_profiles WHERE client_id=$1",[id]):[];
   const [services,documents,certificates,invoices,quotes,receipts]=await Promise.all([
     db.query<Service>(`SELECT s.id,s.folio,s.operating_company,s.service_type,cs.name AS site_name,s.waste_type,s.status,s.guide_number,s.gross_kg,s.tare_kg,s.scheduled_for,s.created_at
       FROM service_requests s JOIN client_sites cs ON cs.id=s.site_id WHERE s.client_id=$1 AND s.deleted_at IS NULL ORDER BY s.created_at DESC LIMIT 300`,[id]),
@@ -36,7 +39,7 @@ export default async function ClientDossier({params}:{params:Promise<{id:string}
   ]);
   const labels:Record<string,string>={evidencia:"Evidencias",guia_traslado:"Guías de traslado",guia_valorizada:"Guías valorizadas",hoja_servicio:"Hojas de servicio",factura:"Facturas adjuntas",certificado:"Certificados externos",resumen_retiros:"Resúmenes adjuntos",otro:"Otros archivos"};
   return <><Link className="back-link" href="/clientes">← Clientes</Link><div className="page-title-row"><div><div className="eyebrow">CARPETA DEL CLIENTE</div><h1>{client.name}</h1><p className="page-intro">{[client.tax_id,client.contact_name,client.email,client.address].filter(Boolean).join(" · ")||"Sin datos adicionales"}</p></div><span className="title-icon"><Building2 size={23}/></span></div>
-    <div className="order-actions">{actor.role!=="cliente"&&<Link href={`/cotizaciones/nueva?cliente=${id}`} className="button button-primary">Nueva cotización</Link>}<Link href={`/clientes/${id}/resumen?empresa=rerchar`} className="button button-outline">Resumen RERCHAR</Link><Link href={`/clientes/${id}/resumen?empresa=e_y_j`} className="button button-outline">Resumen E y J</Link></div>
+    <div className="order-actions">{actor.role!=="cliente"&&<Link href={`/cotizaciones/nueva?cliente=${id}`} className="button button-primary">Nueva cotización</Link>}{profileReady&&<Link href={profile?`/fichas/${profile.id}`:`/fichas/nueva?cliente=${id}`} className="button button-outline">{profile?"Ficha legal y contactos":"Completar ficha legal"}</Link>}<Link href={`/clientes/${id}/resumen?empresa=rerchar`} className="button button-outline">Resumen RERCHAR</Link><Link href={`/clientes/${id}/resumen?empresa=e_y_j`} className="button button-outline">Resumen E y J</Link></div>
     <section className="section-card"><div className="section-heading"><div><div className="eyebrow">OPERACIÓN</div><h2>Servicios y documentos generados</h2></div><span className="count-pill">{services.length}</span></div>
       <div className="table-wrap"><table className="data-table"><thead><tr><th>Folio / empresa</th><th>Faena / material</th><th>Estado</th><th>Documentos</th></tr></thead><tbody>{services.map(s=><tr key={s.id}><td><Link href={`/solicitudes/${s.id}`}><strong>{serviceFolio(s)}</strong></Link><small className="table-sub">{companyName(s.operating_company)} · {chileDate(s.created_at)}</small></td><td>{s.site_name}<small className="table-sub">{s.waste_type} · {s.service_type}</small></td><td>{s.status}</td><td><Link href={`/solicitudes/${s.id}/orden`}>Orden / hoja de servicio</Link> · <Link href={`/solicitudes/${s.id}/guias`}>Guías y pesos</Link></td></tr>)}</tbody></table>{!services.length&&<p className="muted">Todavía no hay servicios registrados.</p>}</div></section>
     <div className="supply-columns"><section className="section-card"><h2>Cotizaciones</h2><ul className="record-list">{quotes.map(q=><li key={q.id}><Link href={`/cotizaciones/${q.id}`}><strong>{quoteFolio(q)} · {q.title}</strong></Link><small>{companyName(q.issuer)} · {q.status} · {chileDate(q.created_at)}</small></li>)}{!quotes.length&&<li className="muted">Sin cotizaciones disponibles.</li>}</ul></section>

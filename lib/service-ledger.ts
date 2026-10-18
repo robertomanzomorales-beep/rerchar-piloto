@@ -34,7 +34,7 @@ export async function listGuideFollowups(actor:Actor,company=""){
       LEFT JOIN valued_guide_followups f ON f.service_id=s.id
       WHERE s.deleted_at IS NULL AND s.status<>'cancelada' AND s.service_type<>'arriendo'
         AND (s.scheduled_for IS NOT NULL OR f.service_id IS NOT NULL)
-        AND ($1::text='' OR s.operating_company=$1)
+        AND s.operating_company='rerchar' AND ($1::text='' OR s.operating_company=$1)
       ORDER BY COALESCE(f.requested_on,(s.scheduled_for AT TIME ZONE 'America/Santiago')::date,s.created_at::date) DESC LIMIT 250`,[company]);
 }
 export async function saveGuideFollowup(actor:Actor,serviceId:string,input:unknown){
@@ -44,11 +44,12 @@ export async function saveGuideFollowup(actor:Actor,serviceId:string,input:unkno
     requested_on:date,received_on:date,documents_sent_on:date,notes:label(500)}).parse(input);
   if(data.received_on&&!data.requested_on)reject("Registre la fecha de solicitud antes de la recepción.");
   if(data.received_on&&data.received_on<data.requested_on)reject("La recepción precede a la solicitud.");
-  if(data.documents_sent_on&&!data.received_on)reject("Registre la recepción antes del envío de documentos.");
-  if(data.documents_sent_on&&data.documents_sent_on<data.received_on)reject("El envío de documentos no puede anteceder a la recepción de la guía.");
   return transaction(async tx=>{
-    const [service]=await tx.query("SELECT id FROM service_requests WHERE id=$1 AND deleted_at IS NULL",[serviceId]);
+    const [service]=await tx.query<{operating_company:Company|null}>("SELECT operating_company FROM service_requests WHERE id=$1 AND deleted_at IS NULL",[serviceId]);
     if(!service)reject("Servicio no encontrado.");
+    if(service.operating_company==="e_y_j"&&(data.requested_on||data.received_on))reject("E y J no utiliza guías valorizadas. Registre sólo su cierre documental.");
+    if(service.operating_company!=="e_y_j"&&data.documents_sent_on&&!data.received_on)reject("Registre la recepción antes del envío de documentos.");
+    if(service.operating_company!=="e_y_j"&&data.documents_sent_on&&data.documents_sent_on<data.received_on)reject("El envío de documentos no puede anteceder a la recepción de la guía.");
     await tx.query(`INSERT INTO valued_guide_followups(service_id,requested_on,received_on,documents_sent_on,notes,updated_by,dispatch_guide_status)
       VALUES($1,NULLIF($2,'')::date,NULLIF($3,'')::date,NULLIF($4,'')::date,NULLIF($5,''),$6,NULLIF($7,''))
       ON CONFLICT(service_id) DO UPDATE SET requested_on=EXCLUDED.requested_on,received_on=EXCLUDED.received_on,

@@ -9,7 +9,8 @@ const statement:Statement={id:randomUUID(),client_id:randomUUID(),client_name:"E
   client_tax_id:"96.870.780-9",client_address:"Rosario Norte 532 Piso 7, Las Condes, Santiago, Chile",
   client_contact:"ntoro@eimontajes.cl",issuer_contact:"ccarpio@rerchar.cl",contract_manager:"Eduardo Aramayo",
   number:"01",period_on:"2026-01-01",statement_type:"residuos",contract_reference:"Contrato 2026",notes:"",
-  status:"borrador",created_at:"2026-01-20",receivable_invoice_id:null,service_invoice_id:null,invoice_variance_note:null};
+  status:"borrador",created_at:"2026-01-20",receivable_invoice_id:null,service_invoice_id:null,invoice_variance_note:null,
+  client_order_reference:null,client_order_on:null,client_order_exception:null};
 function operation(index:number,disposal=false):Operation{return {id:randomUUID(),statement_id:statement.id,service_id:null,
   line_number:index,description:disposal?"Disposición final":"Servicio de transporte Residuo Industrial",
   operation_on:"2026-01-15",weight_kg:"13710",weighing_ticket:"17819",service_sheet:"2949",

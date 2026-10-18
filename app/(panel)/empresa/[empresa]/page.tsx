@@ -28,7 +28,7 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
   const company = companies[selected];
   const showQuotes = actor.role !== "conductor";
   const today = new Intl.DateTimeFormat("sv-SE",{timeZone:"America/Santiago",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
-  const [quotes,services,serviceStats,quoteStats,months,guideAlerts,invoiceAlerts,unclassified,materials,payments,receiptGuides,receiptClosure,billingCalendar,checklistFaults,dayIssues,extraChargePending,receivables,edpInvoices,transferStats] = await Promise.all([
+  const [quotes,services,serviceStats,quoteStats,months,guideAlerts,invoiceAlerts,unclassified,materials,payments,receiptGuides,receiptClosure,billingCalendar,checklistFaults,dayIssues,extraChargePending,receivables,edpInvoices,transferStats,unbilledServices] = await Promise.all([
     showQuotes ? listQuotes(actor,"",selected) : Promise.resolve([]),
     listServices(actor,"","",selected),
     db.query<ServiceMetrics>(`SELECT count(*)::text AS total,
@@ -75,6 +75,10 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
     actor.role==="admin"?receivablesOverview(actor,selected,today):Promise.resolve(null),
     selected==="e_y_j"&&actor.role==="admin"?eyjEdpInvoiceDashboard():Promise.resolve(null),
     actor.role==="admin"?moduleReady("supplier_transfers").then(ready=>ready?supplierTransferOverview(actor,selected):null):Promise.resolve(null),
+    actor.role==="admin"?db.query<{total:string}>(`SELECT count(*)::text AS total FROM service_requests s
+      JOIN service_valuations v ON v.service_id=s.id
+      WHERE s.operating_company=$1 AND s.status='completada' AND s.deleted_at IS NULL
+        AND NOT EXISTS (SELECT 1 FROM service_invoices f WHERE f.valuation_id=v.id AND f.status='emitida')`,[selected]):Promise.resolve([]),
   ]);
   const s=serviceStats[0],q=quoteStats[0];
   const maxMonth=Math.max(1,...months.map(m=>value(m.total)));
@@ -96,7 +100,8 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
     ...(receivables?[{label:"Facturas de clientes vencidas con saldo",count:Number(receivables.overdue),href:`/cobranzas?empresa=${selected}&estado=vencidas`},
       {label:"Facturas de clientes que vencen en 7 días",count:Number(receivables.upcoming),href:`/cobranzas?empresa=${selected}&estado=proximas`},
       {label:"Facturas anteriores por conciliar",count:Number(receivables.legacy),href:`/cobranzas?empresa=${selected}`}]:[]),
-    ...(canManage(actor)?[{label:"Guías valorizadas solicitadas y no recibidas",count:value(guideAlerts[0]?.total),href:`/seguimiento-guias?empresa=${selected}`}]:[]),
+    ...(actor.role==="admin"?[{label:"Servicios valorizados sin factura individual · revisar EDP si corresponde",count:value(unbilledServices[0]?.total),href:`/finanzas?empresa=${selected}&facturacion=pendiente`}]:[]),
+    ...(selected==="rerchar"&&canManage(actor)?[{label:"Guías valorizadas solicitadas y no recibidas",count:value(guideAlerts[0]?.total),href:`/seguimiento-guias?empresa=${selected}`}]:[]),
     ...(selected==="rerchar"&&canManage(actor)?[{label:"Ventas de material con pesaje, factura o pago pendientes",count:value(materials?.guides.pending),href:"/control-guias"}]:[]),
     ...(selected==="rerchar"&&canManage(actor)&&receiptGuides?.ready?[{label:"Ingresos esperando guía valorizada",count:value(receiptGuides.pending),href:"/ingresos"}]:[]),
     ...(selected==="rerchar"&&canManage(actor)&&receiptClosure?.ready?[
@@ -106,7 +111,10 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
     ]:[]),
     ...(selected==="rerchar"&&canManage(actor)&&materials?.stock_ready?[{label:"Guías anteriores con salida de stock por conciliar",count:value(materials.guides.stock_pending),href:"/control-guias"}]:[]),
     ...(selected==="e_y_j"&&canManage(actor)&&payments?.ready?[{label:"Estados de pago por completar o corregir",count:value(payments.pending),href:"/estados-pago"}]:[]),
-    ...(edpInvoices?.ready?[{label:"EDP aprobados sin factura asociada",count:value(edpInvoices.unbilled),href:"/estados-pago"}]:[]),
+    ...(edpInvoices?.ready?[...(edpInvoices.order_ready?[
+      {label:"EDP aprobados esperando OC del cliente",count:value(edpInvoices.awaiting_order),href:"/estados-pago"},
+      {label:"EDP con OC listos para asociar factura",count:value(edpInvoices.ready_to_invoice),href:"/estados-pago"},
+    ]:[{label:"EDP aprobados sin factura asociada",count:value(edpInvoices.unbilled),href:"/estados-pago"}])]:[]),
     ...(selected==="e_y_j"&&canManage(actor)&&billingCalendar?.ready?[
       {label:"Cortes de EDP en los próximos 7 días",count:value(billingCalendar.cutoffs),href:"/estados-pago/calendario"},
       {label:"Envíos de EDP en los próximos 7 días",count:value(billingCalendar.sends),href:"/estados-pago/calendario"},
@@ -146,10 +154,10 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
     <section className="section-card company-processes"><div className="eyebrow">PROCESO SEGÚN PLANILLAS Y REUNIONES</div><h2>{selected==="rerchar"?"Compra, venta y gestión de material":"Servicios, transporte y arriendos"}</h2><div className="company-process-links">
       <Link href={`/cotizaciones?empresa=${selected}`}>1. Cotizaciones <ArrowRight size={16}/></Link>
       {selected==="rerchar"&&canManage(actor)?<Link href="/control-guias">2. Control de guía y salida de material <ArrowRight size={16}/></Link>:<Link href={`/solicitudes?empresa=${selected}`}>2. Solicitudes y planificación <ArrowRight size={16}/></Link>}
-      {selected==="rerchar"?<Link href="/ingresos">3. Recepción y stock de material <ArrowRight size={16}/></Link>:<Link href={`/seguimiento-guias?empresa=${selected}`}>3. Guías y seguimiento <ArrowRight size={16}/></Link>}
+      {selected==="rerchar"?<Link href="/ingresos">3. Recepción y stock de material <ArrowRight size={16}/></Link>:<Link href={`/solicitudes?empresa=${selected}`}>3. Ejecución y respaldo del servicio <ArrowRight size={16}/></Link>}
       {selected==="e_y_j"&&canManage(actor)&&<Link href="/estados-pago/calendario">4. Calendario de cortes y envíos <ArrowRight size={16}/></Link>}
       {selected==="e_y_j"&&canManage(actor)&&<Link href="/estados-pago">5. Estados de pago de servicios y arriendos <ArrowRight size={16}/></Link>}
-      <Link href={`/finanzas?empresa=${selected}`}>{selected==="e_y_j"?"6.":"4."} Valorización y cobros <ArrowRight size={16}/></Link>
+      <Link href={`/finanzas?empresa=${selected}`}>{selected==="e_y_j"?"6.":"4."} Facturas emitidas y cobros <ArrowRight size={16}/></Link>
     </div><p className="helper-text">Los estados de pago de E y J registran respaldo y valorización administrativa; la factura tributaria y la conciliación del cobro se gestionan por separado.</p></section>
     {showQuotes && <section className="section-card"><div className="section-heading"><div><div className="eyebrow">COMERCIAL · {company.short}</div><h2>Cotizaciones recientes</h2></div><Link href={`/cotizaciones?empresa=${selected}`} className="text-link">Ver todas <ArrowRight size={16}/></Link></div>{quotes.length ? <div className="table-wrap"><table className="data-table"><thead><tr><th>Folio</th><th>Cliente</th><th>Asunto</th><th>Estado</th><th>Fecha</th></tr></thead><tbody>{quotes.slice(0,5).map(item=><tr key={item.id}><td><Link href={`/cotizaciones/${item.id}`}><strong>{quoteFolio(item)}</strong></Link></td><td>{item.client_name}</td><td>{item.title}</td><td>{item.status}</td><td>{chileDate(item.created_at)}</td></tr>)}</tbody></table></div> : <p className="muted">Aún no hay cotizaciones registradas para {company.short}.</p>}</section>}
     <section className="section-card"><div className="section-heading"><div><div className="eyebrow">OPERACIÓN · {company.short}</div><h2>Solicitudes recientes</h2></div><Link href={`/solicitudes?empresa=${selected}`} className="text-link">Ver todas <ArrowRight size={16}/></Link></div><ServiceTable services={services.slice(0,8)}/></section>

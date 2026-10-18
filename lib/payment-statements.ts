@@ -28,7 +28,8 @@ export type Statement={id:string;client_id:string;client_name:string;client_tax_
   issuer_contact:string|null;contract_manager:string|null;number:string;period_on:Date|string;
   statement_type:"residuos"|"arriendo";contract_reference:string|null;notes:string|null;
   status:"borrador"|"enviado"|"aprobado"|"observado";created_at:Date|string;
-  receivable_invoice_id:string|null;service_invoice_id:string|null;invoice_variance_note:string|null};
+  receivable_invoice_id:string|null;service_invoice_id:string|null;invoice_variance_note:string|null;
+  client_order_reference:string|null;client_order_on:Date|string|null;client_order_exception:string|null};
 export type Operation={id:string;statement_id:string;service_id:string|null;line_number:number;description:string;operation_on:Date|string|null;
   weight_kg:string|null;weighing_ticket:string|null;service_sheet:string|null;guide_number:string|null;sidrep:string|null;
   rental_from:Date|string|null;rental_to:Date|string|null;is_disposal:boolean};
@@ -90,6 +91,26 @@ export async function getStatementInvoice(actor:Actor,statement:Statement):Promi
   return null;
 }
 
+export async function saveStatementClientOrder(actor:Actor,statementId:string,input:unknown){
+  admin(actor);uuid.parse(statementId);
+  const data=z.object({client_order_reference:optional(80),client_order_on:z.union([z.iso.date(),z.literal("")]).default(""),
+    client_order_exception:optional(500)}).parse(input);
+  if(data.client_order_reference){
+    if(!data.client_order_on)reject("Indique la fecha de la orden de compra recibida.");
+    if(data.client_order_exception)reject("Use la OC o justifique su ausencia, no ambas opciones.");
+  }else if(data.client_order_on)reject("Indique el número de la orden de compra.");
+  else if(data.client_order_exception.length<10)reject("Registre la OC recibida o justifique por qué el cliente no la emite (mínimo 10 caracteres).");
+  await transaction(async tx=>{
+    const [statement]=await tx.query<Statement>("SELECT * FROM payment_statements WHERE id=$1 AND issuer='e_y_j' FOR UPDATE",[statementId]);
+    if(!statement||!["enviado","aprobado"].includes(statement.status))reject("Envíe el EDP al cliente antes de registrar su OC.");
+    if(statement.receivable_invoice_id||statement.service_invoice_id)reject("La OC del EDP ya facturado no se puede cambiar desde esta ficha.");
+    await tx.query(`UPDATE payment_statements SET client_order_reference=NULLIF($2,''),client_order_on=NULLIF($3,'')::date,
+      client_order_exception=NULLIF($4,''),updated_at=now() WHERE id=$1`,
+      [statementId,data.client_order_reference,data.client_order_on,data.client_order_exception]);
+    await audit(tx,actor,"client_order","payment_statement",statementId,data);
+  });
+}
+
 export async function linkStatementInvoice(actor:Actor,statementId:string,input:unknown){
   admin(actor);uuid.parse(statementId);
   const data=z.object({invoice_number:z.string().trim().min(2).max(80),issued_on:z.iso.date(),due_on:z.iso.date(),
@@ -102,6 +123,11 @@ export async function linkStatementInvoice(actor:Actor,statementId:string,input:
     const [statement]=await tx.query<Statement>("SELECT * FROM payment_statements WHERE id=$1 AND issuer='e_y_j' FOR UPDATE",[statementId]);
     if(!statement||statement.status!=="aprobado")reject("Apruebe el EDP antes de registrar su factura externa.");
     if(statement.receivable_invoice_id||statement.service_invoice_id)reject("Este EDP ya tiene una factura vinculada.");
+    if(!statement.client_order_reference&&!statement.client_order_exception)reject("Registre la OC que envió el cliente después del EDP o justifique su ausencia.");
+    if(statement.client_order_on){
+      const orderOn=statement.client_order_on instanceof Date?statement.client_order_on.toISOString().slice(0,10):String(statement.client_order_on).slice(0,10);
+      if(orderOn>data.issued_on)reject("La factura no puede tener una fecha anterior a la OC del cliente.");
+    }
     const [operations,charges]=await Promise.all([
       tx.query<Operation>("SELECT * FROM payment_statement_operations WHERE statement_id=$1",[statementId]),
       tx.query<Charge>("SELECT * FROM payment_statement_charges WHERE statement_id=$1",[statementId]),

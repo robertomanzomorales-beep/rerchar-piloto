@@ -30,6 +30,9 @@ test("EDP aprobado comparte folio de factura externa y cobranza sin duplicar sal
   assert.equal((await eyjEdpInvoiceDashboard()).ready,false);
   await apply("041_edp_factura_cobranza.sql");
   assert.equal(await moduleReady("edp_billing"),true);
+  assert.equal(await moduleReady("edp_client_order"),false,"el módulo antiguo continúa disponible durante el despliegue");
+  await apply("048_edp_orden_compra_cliente.sql");
+  assert.equal(await moduleReady("edp_client_order"),true);
   const [client,other]=await db.query<{id:string}>("INSERT INTO clients(name) VALUES('Cliente E y J'),('Cliente ajeno') RETURNING id");
   const base={client_id:client.id,period_on:"2026-10-01",statement_type:"residuos" as const,
     client_name:"Cliente E y J",client_tax_id:"99.999.999-9",client_address:"Dirección 123",
@@ -42,6 +45,8 @@ test("EDP aprobado comparte folio de factura externa y cobranza sin duplicar sal
       unit_value:"100000",quantity:"1"});
     await edp.setPaymentStatementStatus(admin,id,"enviado");
     await edp.setPaymentStatementStatus(admin,id,"aprobado");
+    if(number!=="01")await edp.saveStatementClientOrder(admin,id,{client_order_reference:`OC-${number}`,
+      client_order_on:"2026-10-12",client_order_exception:""});
     return id;
   }
   const draft=await edp.createPaymentStatement(admin,{...base,number:"00",submission_key:randomUUID()});
@@ -49,10 +54,19 @@ test("EDP aprobado comparte folio de factura externa y cobranza sin duplicar sal
   await assert.rejects(()=>edp.linkStatementInvoice(admin,draft,invoice),edp.PaymentStatementError);
   const first=await approved("01"),second=await approved("02"),otherClient=await approved("03",other.id);
   assert.equal((await eyjEdpInvoiceDashboard()).unbilled,"3");
+  assert.equal((await eyjEdpInvoiceDashboard()).awaiting_order,"1");
   await assert.rejects(()=>edp.linkStatementInvoice(ops,first,invoice),edp.PaymentStatementError);
+  await assert.rejects(()=>edp.linkStatementInvoice(admin,first,invoice),/Registre la OC/);
+  await assert.rejects(()=>edp.saveStatementClientOrder(ops,first,{client_order_reference:"OC-01",client_order_on:"2026-10-12"}),edp.PaymentStatementError);
+  await assert.rejects(()=>edp.saveStatementClientOrder(admin,first,{client_order_reference:"OC-01",client_order_on:""}),/fecha/);
+  await edp.saveStatementClientOrder(admin,first,{client_order_reference:"OC-01",client_order_on:"2026-10-14"});
+  await assert.rejects(()=>edp.linkStatementInvoice(admin,first,invoice),/anterior a la OC/);
+  await edp.saveStatementClientOrder(admin,first,{client_order_reference:"OC-01",client_order_on:"2026-10-12"});
+  assert.equal((await eyjEdpInvoiceDashboard()).ready_to_invoice,"3");
   await assert.rejects(()=>edp.linkStatementInvoice(admin,first,{...invoice,total_clp:"120000"}),/Explique la diferencia/);
   await assert.rejects(()=>edp.linkStatementInvoice(admin,first,{...invoice,issued_on:"2026-11-01",due_on:"2026-11-15"}),/futura/);
   await edp.linkStatementInvoice(admin,first,invoice);
+  await assert.rejects(()=>edp.saveStatementClientOrder(admin,first,{client_order_reference:"OC-cambiada",client_order_on:"2026-10-12"}),/ya facturado/);
   assert.equal((await receivables.listReceivables(admin,"e_y_j")).length,1);
   assert.equal((await receivables.listReceivables(admin,"e_y_j"))[0].source,"edp");
   assert.equal((await eyjEdpInvoiceDashboard()).unbilled,"2");

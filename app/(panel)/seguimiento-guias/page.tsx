@@ -16,13 +16,12 @@ function days(from:Date|string|null,to:Date|string|null,now:string){
 export default async function GuideFollowups({searchParams}:{searchParams:Promise<{empresa?:string}>}){
   const actor=await requireActor();if(!canManage(actor))redirect("/");
   const requested=(await searchParams).empresa;
-  const company=requested==="rerchar"||requested==="e_y_j"?requested:"";
+  const company=requested==="rerchar"?requested:"rerchar";
   const rows=await listGuideFollowups(actor,company),now=today();
   const waitingRequest=rows.filter(r=>r.service_day&&iso(r.service_day)<=now&&!r.requested_on).length;
   const waitingGuide=rows.filter(r=>r.requested_on&&!r.received_on).length;
   const waitingClose=rows.filter(r=>r.received_on&&!r.documents_sent_on).length;
-  return <><div className="page-title-row"><div><div className="eyebrow">CONTROL MENSUAL DE CAMIONES</div><h1>Guías y cierre documental</h1><p className="page-intro">Estado de envío de la guía de despacho, solicitud y recepción de la valorizada, y cierre documental.</p></div><PrintButton label="Imprimir seguimiento"/></div>
-    <form action="/seguimiento-guias" method="GET" className="filters"><label>Empresa<select name="empresa" defaultValue={company}><option value="">Todas</option><option value="rerchar">RERCHAR</option><option value="e_y_j">E y J</option></select></label><button className="button button-outline" type="submit">Filtrar</button></form>
+  return <><div className="page-title-row"><div><div className="eyebrow">RERCHAR · CONTROL MENSUAL DE CAMIONES</div><h1>Guías valorizadas y cierre documental</h1><p className="page-intro">Estado de envío de la guía de despacho, solicitud y recepción de la valorizada, y cierre documental.</p></div><PrintButton label="Imprimir seguimiento"/></div>
     <div className="fleet-week-stats"><div><strong>{waitingRequest}</strong><span>Jornadas sin solicitud de guía valorizada</span></div><div><strong>{waitingGuide}</strong><span>Guías valorizadas por recibir</span></div><div><strong>{waitingClose}</strong><span>Recepciones sin cierre documental</span></div></div>
     <section className="section-card"><p className="helper-text">Se calculan los días con fechas reales, sin copiar las fórmulas erróneas del Excel. El plazo de vencimiento aún no está definido: estos contadores muestran tiempo transcurrido, no califican automáticamente una guía como vencida. Los servicios sin fecha programada se atienden en Solicitudes.</p>
       <div className="table-wrap"><table className="data-table"><thead><tr><th>Jornada / servicio</th><th>Cliente / empresa</th><th>Guía despacho</th><th>Solicitud valorizada</th><th>Recepción</th><th>Cierre documental</th><th>Tiempo de cada etapa</th><th>Estado</th></tr></thead><tbody>{rows.map(r=>{

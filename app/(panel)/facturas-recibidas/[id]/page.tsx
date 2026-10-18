@@ -2,6 +2,7 @@ import Link from "next/link";
 import {notFound} from "next/navigation";
 import {randomUUID} from "node:crypto";
 import {requireActor} from "@/lib/auth";
+import {db} from "@/lib/db";
 import {getSupplierInvoice,SupplierInvoiceError} from "@/lib/supplier-invoices";
 import {listOperationFiles} from "@/lib/operation-files";
 import {registerSupplierPaymentAction,addOperationFileAction,updateSupplierInvoiceDueDateAction} from "@/app/operation-actions";
@@ -21,7 +22,12 @@ export default async function SupplierInvoiceDetail({params,searchParams}:{param
   if(actor.role!=="admin")notFound();
   try{result=await getSupplierInvoice(actor,id);}catch(e){if(e instanceof SupplierInvoiceError)notFound();throw e;}
   const {invoice:r,payments}=result;
-  const [files,query,transferReady]=await Promise.all([listOperationFiles(actor,"invoice",id),searchParams,moduleReady("supplier_transfers")]);
+  const [files,query,transferReady,profileReady]=await Promise.all([listOperationFiles(actor,"invoice",id),searchParams,moduleReady("supplier_transfers"),moduleReady("counterparty_profiles")]);
+  const [supplierProfile]=profileReady?await db.query<{id:string;status:string;bank_name:string;account_type:string;account_number:string}>(
+    `SELECT id,status,bank_name,account_type,account_number FROM counterparty_profiles
+     WHERE ($1::uuid IS NULL OR id=$1) AND kind IN ('proveedor','ambos')
+       AND upper(regexp_replace(tax_id,'[.[:space:]]','','g'))=upper(regexp_replace($2,'[.[:space:]]','','g')) LIMIT 1`,
+    [r.supplier_profile_id||null,r.supplier_tax_id]):[];
   const transfers=transferReady?await invoiceSupplierTransfers(actor,id):[];
   const saldo=Number(r.total_clp)-Number(r.paid_clp);
   const reserved=transfers.filter(t=>["solicitada","aprobada","ejecutada"].includes(t.status)).reduce((sum,t)=>sum+Number(t.amount_clp),0);
@@ -40,7 +46,8 @@ export default async function SupplierInvoiceDetail({params,searchParams}:{param
     </article><section id="transferencias" className="section-card print-hide"><div className="section-heading"><div><div className="eyebrow">PAGOS A PROVEEDORES · {companyName(r.issuer)}</div><h2>Solicitudes de transferencia</h2></div><Link href={`/transferencias?empresa=${r.issuer}`} className="text-link">Ver todas las solicitudes →</Link></div>
       {!transferReady?<p className="helper-text">Para habilitar solicitudes, aprobación y comprobación aplique la migración 044 en la base de datos.</p>:<>
         <p className="helper-text">Solicitud → aprobación por otra persona → registro de ejecución con comprobante bancario → verificación por otra persona. Sólo la verificación aplica el pago a la factura. Saldo disponible para nuevas solicitudes: <strong>{money(available)}</strong>.</p>
-        {available>0&&<form action={requestSupplierTransferAction} className="form-grid"><input type="hidden" name="invoice_id" value={id}/><input type="hidden" name="submission_key" value={randomUUID()}/><label>Monto solicitado ($)<input name="amount_clp" type="number" min="0.01" max={available} step="0.01" required/></label><label>Banco destino<input name="bank_name" minLength={2} maxLength={100} required/></label><label>Tipo de cuenta<select name="account_type" defaultValue="corriente"><option value="corriente">Corriente</option><option value="vista">Vista</option><option value="ahorro">Ahorro</option><option value="otro">Otra</option></select></label><label>Número de cuenta<input name="account_number" minLength={4} maxLength={60} required/></label><div className="field-full form-footer"><SubmitButton className="button button-primary">Solicitar transferencia</SubmitButton></div></form>}
+        {profileReady&&<p className="helper-text">{supplierProfile?<>Ficha de proveedor: <Link href={`/fichas/${supplierProfile.id}`} className="text-link">{supplierProfile.status==="verificada"?"Verificada":"Pendiente de revisión"}</Link>{supplierProfile.status==="verificada"?` · ${supplierProfile.bank_name} · ${supplierProfile.account_type} · cuenta terminada en ${supplierProfile.account_number.slice(-4)}`:". Revise y verifique sus datos bancarios antes de solicitar."}</>:<>Falta ficha de proveedor para este RUT. <Link href="/fichas/nueva" className="text-link">Crear ficha →</Link></>}</p>}
+        {available>0&&(!profileReady||supplierProfile?.status==="verificada")&&<form action={requestSupplierTransferAction} className="form-grid"><input type="hidden" name="invoice_id" value={id}/><input type="hidden" name="submission_key" value={randomUUID()}/><label>Monto solicitado ($)<input name="amount_clp" type="number" min="0.01" max={available} step="0.01" required/></label>{!profileReady&&<><label>Banco destino<input name="bank_name" minLength={2} maxLength={100} required/></label><label>Tipo de cuenta<select name="account_type" defaultValue="corriente"><option value="corriente">Corriente</option><option value="vista">Vista</option><option value="ahorro">Ahorro</option><option value="otro">Otra</option></select></label><label>Número de cuenta<input name="account_number" minLength={4} maxLength={60} required/></label></>}<div className="field-full form-footer"><SubmitButton className="button button-primary">Solicitar transferencia</SubmitButton></div></form>}
         {transfers.length===0&&<p className="muted">No hay solicitudes para esta factura.</p>}
         {transfers.map(t=><div key={t.id} className="order-section"><h3>{money(t.amount_clp)} · {transferStatus[t.status]}</h3><p className="helper-text">Solicitó {t.requested_name} · {date(t.created_at)} · {t.bank_name} · {t.account_type} · cuenta terminada en {t.account_number.slice(-4)}.</p>
           {t.approved_name&&<p className="helper-text">{t.status==="rechazada"?"Resolvió":"Aprobó"} {t.approved_name} · {date(t.approved_at)}{t.decision_note?` · ${t.decision_note}`:""}.</p>}
