@@ -180,12 +180,13 @@ export async function createSite(actor: Actor, input: unknown) {
 
 export async function createAsset(actor: Actor, input: unknown) {
   needManage(actor);
-  const data = z.object({ code: required(30), label: required(120), kind: z.enum(["camion", "rampa", "equipo"]), plate: optional(15) }).parse(input);
+  const data = z.object({ code: required(30), label: optional(120), kind: z.enum(["camion", "rampa", "equipo"]), plate: optional(15) }).parse(input);
+  if(!data.label&&!data.plate)reject("Indique una descripción o patente para identificar el activo.");
   const readingUnit = data.kind === "camion" ? "km" : "sin";
   return transaction(async (tx) => {
     const [row] = await tx.query<{ id: string }>(
       "INSERT INTO assets (code, label, kind, plate, reading_unit) VALUES ($1,$2,$3,NULLIF($4,''),$5) RETURNING id",
-      [data.code.toUpperCase(), data.label, data.kind, data.plate.toUpperCase(), readingUnit],
+      [data.code.toUpperCase(), data.label||data.plate.toUpperCase(), data.kind, data.plate.toUpperCase(), readingUnit],
     );
     await tx.query("INSERT INTO audit_events (actor_id, action, entity_type, entity_id, next_value) VALUES ($1,'create','asset',$2,$3)", [actor.id, row.id, JSON.stringify({ code: data.code, kind: data.kind, reading_unit: readingUnit })]);
     return row.id;

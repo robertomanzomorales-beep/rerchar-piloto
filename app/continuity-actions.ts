@@ -94,11 +94,11 @@ export async function registerFuelAction(form:FormData) {
 }
 export async function createTireAction(form:FormData) {
   const actor=await requireActor();
-  await run("/mantenimiento",()=>createTire(actor,{code:value(form,"code"),brand:value(form,"brand"),size:value(form,"size")}));
+  await run("/mantenimiento",()=>createTire(actor,{code:value(form,"code"),brand:value(form,"brand"),size:value(form,"size"),warehouse_id:value(form,"warehouse_id")}));
 }
 export async function moveTireAction(form:FormData) {
   const actor=await requireActor();
   await run("/mantenimiento",()=>moveTire(actor,value(form,"tire_id"),{
-    action:value(form,"action"),asset_id:value(form,"asset_id"),position:value(form,"position"),reason:value(form,"reason"),
+    action:value(form,"action"),asset_id:value(form,"asset_id"),position:value(form,"position"),reason:value(form,"reason"),warehouse_id:value(form,"warehouse_id"),
   }));
 }

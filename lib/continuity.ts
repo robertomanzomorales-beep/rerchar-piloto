@@ -68,11 +68,11 @@ export type WorkOrder = { id: string; folio: string; asset_id: string; asset_lab
   closed_at: Date | null; performed_on: Date|string|null; history_only: boolean; reading_at_close: string | null; labor_cost: string; parts_cost: string; supplier: string | null;
   resolution: string | null; created_at: Date; created_by_name: string; closed_by_name: string | null };
 export type Tire = { id: string; code: string; brand: string | null; size: string | null; status: string; asset_id: string | null;
-  position: string | null; asset_label: string | null };
+  position: string | null; asset_label: string | null;warehouse_id:string|null;warehouse_name:string|null };
 
 export async function listMaintenance(actor: Actor) {
   guard(actor);
-  const [assets, plans, orders, incidents, tires] = await Promise.all([
+  const [assets, plans, orders, incidents, tires, warehouses] = await Promise.all([
     listAssets(actor),
     db.query<MaintenancePlan>(`SELECT p.*,a.label AS asset_label,a.code AS asset_code,a.current_reading,a.reading_unit,
       (CASE WHEN p.frequency_kind='fecha' THEN p.next_due_date <= (now() AT TIME ZONE 'America/Santiago')::date + p.lead_days
@@ -85,9 +85,11 @@ export async function listMaintenance(actor: Actor) {
       FROM fleet_incidents i JOIN assets a ON a.id=i.asset_id
       WHERE i.status='abierta' AND NOT EXISTS (SELECT 1 FROM work_orders w WHERE w.incident_id=i.id AND w.status IN ('abierta','en_trabajo'))
       ORDER BY i.reported_at DESC LIMIT 100`),
-    db.query<Tire>(`SELECT t.*,a.label AS asset_label FROM tires t LEFT JOIN assets a ON a.id=t.asset_id ORDER BY t.code LIMIT 300`),
+    db.query<Tire>(`SELECT t.*,a.label AS asset_label,w.name AS warehouse_name FROM tires t LEFT JOIN assets a ON a.id=t.asset_id
+      LEFT JOIN warehouses w ON w.id=t.warehouse_id ORDER BY t.code LIMIT 300`),
+    db.query<{id:string;name:string}>("SELECT id,name FROM warehouses WHERE active=true ORDER BY name"),
   ]);
-  return { assets,plans,orders,incidents,tires };
+  return { assets,plans,orders,incidents,tires,warehouses };
 }
 
 export async function createMaintenancePlan(actor: Actor, input: unknown) {
@@ -325,9 +327,13 @@ export async function registerFuel(actor: Actor, input: unknown) {
 
 export async function createTire(actor: Actor, input: unknown) {
   guard(actor);
-  const data = z.object({code:z.string().trim().min(2).max(45),brand:optional(90),size:optional(60)}).parse(input);
+  const data = z.object({code:z.string().trim().min(2).max(45),brand:optional(90),size:optional(60),warehouse_id:optionalId}).parse(input);
   return transaction(async (tx) => {
-    const [tire] = await tx.query<{id:string}>("INSERT INTO tires (code,brand,size) VALUES ($1,NULLIF($2,''),NULLIF($3,'')) RETURNING id",[data.code.toUpperCase(),data.brand,data.size]);
+    if(data.warehouse_id){
+      const [warehouse]=await tx.query("SELECT id FROM warehouses WHERE id=$1 AND active=true",[data.warehouse_id]);
+      if(!warehouse)reject("Seleccione una bodega activa para el neumático.");
+    }
+    const [tire] = await tx.query<{id:string}>("INSERT INTO tires (code,brand,size,warehouse_id) VALUES ($1,NULLIF($2,''),NULLIF($3,''),NULLIF($4,'')::uuid) RETURNING id",[data.code.toUpperCase(),data.brand,data.size,data.warehouse_id]);
     await tx.query("INSERT INTO tire_events (tire_id,kind,note,actor_id) VALUES ($1,'alta','Neumático registrado',$2)",[tire.id,actor.id]);
     await audit(tx,actor,"create","tire",tire.id,data);
     return tire.id;
@@ -337,7 +343,7 @@ export async function createTire(actor: Actor, input: unknown) {
 export async function moveTire(actor: Actor, tireId: string, input: unknown) {
   guard(actor);
   const id = uuid.parse(tireId);
-  const data = z.object({action:z.enum(["instalar","retirar"]),asset_id:optionalId,position:optional(35),reason:note()}).parse(input);
+  const data = z.object({action:z.enum(["instalar","retirar"]),asset_id:optionalId,position:optional(35),reason:note(),warehouse_id:optionalId}).parse(input);
   await transaction(async (tx) => {
     const [tire] = await tx.query<{status:string;asset_id:string|null;position:string|null}>("SELECT status,asset_id,position FROM tires WHERE id=$1 FOR UPDATE",[id]);
     if (!tire) reject("Neumático no encontrado.");
@@ -348,12 +354,16 @@ export async function moveTire(actor: Actor, tireId: string, input: unknown) {
       if (!asset) reject("Activo no encontrado.");
       const [occupied] = await tx.query("SELECT id FROM tires WHERE asset_id=$1 AND position=$2 AND status='instalado' AND id<>$3",[data.asset_id,data.position,id]);
       if (occupied) reject("La posición ya está ocupada por otro neumático.");
-      await tx.query("UPDATE tires SET status='instalado',asset_id=$2,position=$3 WHERE id=$1",[id,data.asset_id,data.position]);
+      await tx.query("UPDATE tires SET status='instalado',asset_id=$2,position=$3,warehouse_id=NULL WHERE id=$1",[id,data.asset_id,data.position]);
       await tx.query(`INSERT INTO tire_events (tire_id,kind,asset_id,position,reading,note,actor_id) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
         [id,tire.status==="instalado" ? "rotacion" : "instalacion",data.asset_id,data.position,asset.current_reading,data.reason,actor.id]);
     } else {
       if (tire.status!=="instalado") reject("Sólo puede retirar un neumático instalado.");
-      await tx.query("UPDATE tires SET status='disponible',asset_id=NULL,position=NULL WHERE id=$1",[id]);
+      if(data.warehouse_id){
+        const [warehouse]=await tx.query("SELECT id FROM warehouses WHERE id=$1 AND active=true",[data.warehouse_id]);
+        if(!warehouse)reject("Seleccione una bodega activa para el neumático retirado.");
+      }
+      await tx.query("UPDATE tires SET status='disponible',asset_id=NULL,position=NULL,warehouse_id=NULLIF($2,'')::uuid WHERE id=$1",[id,data.warehouse_id]);
       await tx.query("INSERT INTO tire_events (tire_id,kind,asset_id,position,note,actor_id) VALUES ($1,'retiro',$2,$3,$4,$5)",
         [id,tire.asset_id,tire.position,data.reason,actor.id]);
     }

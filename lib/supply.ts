@@ -71,13 +71,14 @@ export async function createStockItem(actor: Actor, input: unknown) {
 export type Purchase = {
   id: string; folio: string; title: string; category: string; priority: string; status: string;
   notes: string | null; supplier: string | null; order_reference: string | null;
+  order_sequence:string|null;without_order:boolean;
   issuer:"rerchar"|"e_y_j";supplier_tax_id:string|null;supplier_address:string|null;supplier_contact:string|null;cost_center:string|null;
   payment_terms:string|null;vat_rate:string;ordered_at:Date|null;
   expected_date: Date | string | null; requested_by: string; requested_name: string;
   approved_name: string | null; created_at: Date; updated_at: Date;
 };
 export type PurchaseLine = { id: string; item_id: string; code: string; name: string; unit: string; quantity: string; received_qty: string;unit_price_clp:string|null;discount_clp:string };
-export type PurchaseReceipt = { id: string; item_name: string; warehouse_name: string; quantity: string; guide_number: string; invoice_number: string | null; payment_status: string; recorded_name: string; created_at: Date };
+export type PurchaseReceipt = { id: string; item_name: string; warehouse_name: string; quantity: string; guide_number: string; invoice_number: string | null; document_kind:"guia"|"factura"; payment_status: string; recorded_name: string; created_at: Date };
 export type PurchaseEvent = { id: string; kind: string; description: string; actor_name: string; created_at: Date };
 const purchaseSelect = `SELECT p.*, u.name AS requested_name, a.name AS approved_name FROM purchase_requests p
  JOIN users u ON u.id=p.requested_by LEFT JOIN users a ON a.id=p.approved_by`;
@@ -95,7 +96,7 @@ export async function getPurchase(actor: Actor, id: string) {
   if (!purchase) reject("Solicitud de compra no encontrada.");
   const [lines, receipts, events] = await Promise.all([
     db.query<PurchaseLine>(`SELECT l.*,i.code,i.name,i.unit FROM purchase_lines l JOIN stock_items i ON i.id=l.item_id WHERE l.request_id=$1 ORDER BY i.name`, [id]),
-    db.query<PurchaseReceipt>(`SELECT r.id,i.name AS item_name,w.name AS warehouse_name,r.quantity,r.guide_number,r.invoice_number,r.payment_status,u.name AS recorded_name,r.created_at
+    db.query<PurchaseReceipt>(`SELECT r.id,i.name AS item_name,w.name AS warehouse_name,r.quantity,r.guide_number,r.invoice_number,r.document_kind,r.payment_status,u.name AS recorded_name,r.created_at
       FROM purchase_receipts r JOIN purchase_lines l ON l.id=r.line_id JOIN stock_items i ON i.id=l.item_id
       JOIN warehouses w ON w.id=r.warehouse_id JOIN users u ON u.id=r.recorded_by
       WHERE r.request_id=$1 ORDER BY r.created_at DESC,r.id DESC`, [id]),
@@ -174,7 +175,7 @@ export function purchaseTotals(lines:Pick<PurchaseLine,"quantity"|"unit_price_cl
 export async function savePurchaseDraft(actor: Actor, requestId: string, input: unknown) {
   requireOperations(actor);
   const id = uuid.parse(requestId);
-  const data = z.object({ supplier: label(160), order_reference: label(80), expected_date: date,
+  const data = z.object({ supplier: label(160), expected_date: date,
     issuer:z.enum(["rerchar","e_y_j"]),supplier_tax_id:optional(20),supplier_address:optional(250),
     supplier_contact:optional(120),cost_center:optional(120),payment_terms:label(120),
     vat_rate:z.enum(["0","0.19"]).default("0.19"),prices:z.record(uuid,z.union([z.string(),z.number()])),
@@ -194,12 +195,12 @@ export async function savePurchaseDraft(actor: Actor, requestId: string, input: 
         reject("El descuento unitario debe ser igual o menor que el precio.");
       await tx.query("UPDATE purchase_lines SET unit_price_clp=$2,discount_clp=$3 WHERE id=$1",[line.id,price,discount]);
     }
-    await tx.query(`UPDATE purchase_requests SET supplier=$2,order_reference=$3,expected_date=NULLIF($4,'')::date,
-      issuer=$5,supplier_tax_id=NULLIF($6,''),supplier_address=NULLIF($7,''),payment_terms=$8,vat_rate=$9,
-      supplier_contact=NULLIF($10,''),cost_center=NULLIF($11,''),updated_at=now()
-      WHERE id=$1`,[id,data.supplier,data.order_reference,data.expected_date,data.issuer,data.supplier_tax_id,
+    await tx.query(`UPDATE purchase_requests SET supplier=$2,order_reference=NULL,expected_date=NULLIF($3,'')::date,
+      issuer=$4,supplier_tax_id=NULLIF($5,''),supplier_address=NULLIF($6,''),payment_terms=$7,vat_rate=$8,
+      supplier_contact=NULLIF($9,''),cost_center=NULLIF($10,''),updated_at=now()
+      WHERE id=$1`,[id,data.supplier,data.expected_date,data.issuer,data.supplier_tax_id,
       data.supplier_address,data.payment_terms,data.vat_rate,data.supplier_contact,data.cost_center]);
-    await purchaseEvent(tx, actor, id, "draft_order", `Borrador de OC ${data.order_reference} guardado sin emitir`, data);
+    await purchaseEvent(tx, actor, id, "draft_order", "Borrador de OC guardado sin número y sin emitir", data);
   });
 }
 
@@ -209,13 +210,24 @@ export async function issuePurchaseDraft(actor:Actor,requestId:string,confirmati
   if(confirmation!=="EMITIR")reject("Confirme la emisión escribiendo EMITIR.");
   await transaction(async tx=>{
     const [request]=await tx.query<Purchase>("SELECT * FROM purchase_requests WHERE id=$1 FOR UPDATE",[id]);
-    if(!request||request.status!=="aprobada"||!request.supplier||!request.order_reference||!request.payment_terms)
+    if(!request||request.status!=="aprobada"||!request.supplier||!request.payment_terms)
       reject("Guarde y revise el borrador antes de emitir la orden.");
     const lines=await tx.query<PurchaseLine>("SELECT * FROM purchase_lines WHERE request_id=$1 FOR UPDATE",[id]);
     if(!lines.length||lines.some(line=>line.unit_price_clp==null))reject("El borrador requiere precios para cada artículo.");
-    await tx.query("UPDATE purchase_requests SET status='ordenada',ordered_at=now(),updated_at=now() WHERE id=$1",[id]);
-    await purchaseEvent(tx,actor,id,"order",`Orden ${request.order_reference} emitida para ${request.supplier}`,
-      {order_reference:request.order_reference,supplier:request.supplier});
+    let sequence:{last_number:string};
+    let reference:string;
+    do {
+      [sequence]=await tx.query<{last_number:string}>(`INSERT INTO purchase_order_sequences (issuer,last_number)
+        VALUES ($1,1) ON CONFLICT (issuer) DO UPDATE SET last_number=purchase_order_sequences.last_number+1
+        RETURNING last_number`,[request.issuer]);
+      reference=`OC-${request.issuer==="rerchar"?"RER":"EYJ"}-${String(sequence.last_number).padStart(6,"0")}`;
+      const [occupied]=await tx.query("SELECT id FROM purchase_requests WHERE issuer=$1 AND order_reference=$2 LIMIT 1",[request.issuer,reference]);
+      if(!occupied)break;
+    }while(true);
+    // Correlativo interno por empresa. La serie histórica oficial se configura al validar el último número emitido.
+    await tx.query("UPDATE purchase_requests SET status='ordenada',order_sequence=$2,order_reference=$3,ordered_at=now(),updated_at=now() WHERE id=$1",[id,sequence.last_number,reference]);
+    await purchaseEvent(tx,actor,id,"order",`Orden ${reference} emitida para ${request.supplier}`,
+      {order_reference:reference,supplier:request.supplier});
   });
 }
 
@@ -223,16 +235,22 @@ export async function receivePurchase(actor: Actor, requestId: string, input: un
   requireOperations(actor);
   const id = uuid.parse(requestId);
   const data = z.object({ submission_key: uuid, line_id: uuid, warehouse_id: uuid, quantity,
-    guide_number: z.string().trim().min(1).max(80), invoice_number: optional(80), payment_status: z.enum(["pendiente","pagada"]) }).parse(input);
+    guide_number: z.string().trim().max(80), invoice_number: optional(80), payment_status: z.enum(["pendiente","pagada"]),
+    without_order:z.boolean().default(false),supplier:optional(160),issuer:z.enum(["rerchar","e_y_j"]).optional() }).parse(input);
+  if(!data.guide_number&&!data.invoice_number)reject("Indique el número de guía o de factura que respalda la recepción.");
   return transaction(async (tx) => {
-    const [request] = await tx.query<{ status: string }>("SELECT status FROM purchase_requests WHERE id=$1 FOR UPDATE", [id]);
+    const [request] = await tx.query<{ status: string;without_order:boolean;issuer:string }>("SELECT status,without_order,issuer FROM purchase_requests WHERE id=$1 FOR UPDATE", [id]);
     if (!request) reject("Solicitud de compra no encontrada.");
     const [repeated] = await tx.query<{ id: string; request_id: string }>("SELECT id,request_id FROM purchase_receipts WHERE submission_key=$1", [data.submission_key]);
     if (repeated) {
       if (repeated.request_id !== id) reject("La clave de recepción ya fue utilizada.");
       return repeated.id;
     }
-    if (!["ordenada","parcial"].includes(request.status)) reject("La orden aún no admite recepción.");
+    if (request.status==="aprobada") {
+      if(!data.without_order||!data.supplier||!data.issuer)reject("Para recibir sin OC, indique proveedor y empresa compradora.");
+      await tx.query("UPDATE purchase_requests SET supplier=$2,issuer=$3,without_order=true,order_reference=NULL,order_sequence=NULL WHERE id=$1",[id,data.supplier,data.issuer]);
+    } else if (!["ordenada","parcial"].includes(request.status) || request.without_order!==data.without_order)
+      reject("La compra aún no admite esta modalidad de recepción.");
     const [line] = await tx.query<{ item_id: string }>("SELECT item_id FROM purchase_lines WHERE id=$1 AND request_id=$2", [data.line_id,id]);
     if (!line) reject("El artículo no pertenece a esta orden.");
     const [warehouse] = await tx.query("SELECT id FROM warehouses WHERE id=$1 AND active=true", [data.warehouse_id]);
@@ -241,17 +259,17 @@ export async function receivePurchase(actor: Actor, requestId: string, input: un
       WHERE id=$1 AND received_qty+$2<=quantity RETURNING received_qty`, [data.line_id,data.quantity]);
     if (!updated) reject("La cantidad supera el saldo pendiente de la orden.");
     const [receipt] = await tx.query<{ id: string }>(`INSERT INTO purchase_receipts
-      (submission_key,request_id,line_id,warehouse_id,quantity,guide_number,invoice_number,payment_status,recorded_by)
-      VALUES ($1,$2,$3,$4,$5,$6,NULLIF($7,''),$8,$9) RETURNING id`,
-      [data.submission_key,id,data.line_id,data.warehouse_id,data.quantity,data.guide_number,data.invoice_number,data.payment_status,actor.id]);
+      (submission_key,request_id,line_id,warehouse_id,quantity,guide_number,invoice_number,document_kind,payment_status,recorded_by)
+      VALUES ($1,$2,$3,$4,$5,$6,NULLIF($7,''),$8,$9,$10) RETURNING id`,
+      [data.submission_key,id,data.line_id,data.warehouse_id,data.quantity,data.guide_number||data.invoice_number,data.invoice_number,data.guide_number?"guia":"factura",data.payment_status,actor.id]);
     await tx.query(`INSERT INTO stock_balances (item_id,warehouse_id,quantity) VALUES ($1,$2,$3)
       ON CONFLICT (item_id,warehouse_id) DO UPDATE SET quantity=stock_balances.quantity+EXCLUDED.quantity`, [line.item_id,data.warehouse_id,data.quantity]);
     await tx.query(`INSERT INTO inventory_movements (item_id,warehouse_id,kind,qty_delta,note,purchase_receipt_id,created_by)
-      VALUES ($1,$2,'recepcion',$3,$4,$5,$6)`, [line.item_id,data.warehouse_id,data.quantity,`Guía ${data.guide_number}`,receipt.id,actor.id]);
+      VALUES ($1,$2,'recepcion',$3,$4,$5,$6)`, [line.item_id,data.warehouse_id,data.quantity,data.guide_number?`Guía ${data.guide_number}`:`Factura ${data.invoice_number}`,receipt.id,actor.id]);
     const [pending] = await tx.query("SELECT id FROM purchase_lines WHERE request_id=$1 AND received_qty<quantity LIMIT 1", [id]);
     const status = pending ? "parcial" : "recibida";
     await tx.query("UPDATE purchase_requests SET status=$2,updated_at=now() WHERE id=$1", [id,status]);
-    await purchaseEvent(tx, actor, id, "receive", `Recepción ${data.quantity} · guía ${data.guide_number}`, { receipt_id: receipt.id, item_id: line.item_id, warehouse_id: data.warehouse_id, quantity: data.quantity, status });
+    await purchaseEvent(tx, actor, id, "receive", `Recepción ${data.quantity} · ${data.without_order?"sin OC · ":""}${data.guide_number?`guía ${data.guide_number}`:`factura ${data.invoice_number}`}`, { receipt_id: receipt.id, item_id: line.item_id, warehouse_id: data.warehouse_id, quantity: data.quantity, status, without_order:data.without_order });
     return receipt.id;
   });
 }
@@ -261,10 +279,11 @@ export type StockItem = { id: string; code: string; name: string; unit: string; 
 export type StockBalance = { item_id: string; warehouse_id: string; item_code: string; item_name: string; unit: string; warehouse_name: string; minimum_qty: string; quantity: string; reserved: string };
 export type InventoryMovement = { id: string; item_name: string; code: string; unit: string; warehouse_name: string; kind: string; qty_delta: string; reserved_delta: string; note: string; actor_name: string; created_at: Date; document_reference:string|null;cost_center:string|null };
 export type Reservation = { id: string; item_name: string; warehouse_name: string; unit: string; quantity: string; reason: string; created_by_name: string; created_at: Date };
+export type SerializedTire={id:string;code:string;brand:string|null;size:string|null;status:string;warehouse_name:string|null;asset_label:string|null};
 
 export async function listInventory(actor: Actor, itemId = "", warehouseId = "") {
   requireOperations(actor);
-  const [warehouses, items, balances, movements, reservations] = await Promise.all([
+  const [warehouses, items, balances, movements, reservations, tires] = await Promise.all([
     db.query<Warehouse>("SELECT id,code,name FROM warehouses WHERE active=true ORDER BY name"),
     db.query<StockItem>("SELECT id,code,name,unit,minimum_qty,maximum_qty,category,unit_cost_clp FROM stock_items WHERE active=true ORDER BY name"),
     db.query<StockBalance>(`SELECT i.id AS item_id,w.id AS warehouse_id,i.code AS item_code,i.name AS item_name,i.unit,w.name AS warehouse_name,i.minimum_qty,
@@ -279,8 +298,11 @@ export async function listInventory(actor: Actor, itemId = "", warehouseId = "")
     db.query<Reservation>(`SELECT r.id,i.name AS item_name,w.name AS warehouse_name,i.unit,r.quantity,r.reason,u.name AS created_by_name,r.created_at
       FROM inventory_reservations r JOIN stock_items i ON i.id=r.item_id JOIN warehouses w ON w.id=r.warehouse_id
       JOIN users u ON u.id=r.created_by WHERE r.status='activa' ORDER BY r.created_at DESC LIMIT 100`),
+    db.query<SerializedTire>(`SELECT t.id,t.code,t.brand,t.size,t.status,w.name AS warehouse_name,a.label AS asset_label
+      FROM tires t LEFT JOIN warehouses w ON w.id=t.warehouse_id LEFT JOIN assets a ON a.id=t.asset_id
+      ORDER BY CASE t.status WHEN 'disponible' THEN 0 ELSE 1 END,t.code LIMIT 300`),
   ]);
-  return { warehouses, items, balances, movements, reservations };
+  return { warehouses, items, balances, movements, reservations, tires };
 }
 
 async function activePair(tx: Db, itemId: string, warehouseId: string) {

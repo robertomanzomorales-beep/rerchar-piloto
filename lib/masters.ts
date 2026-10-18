@@ -57,13 +57,14 @@ export async function updateSite(actor:Actor,id:string,input:unknown){
 
 export async function updateAsset(actor:Actor,id:string,input:unknown){
   uuid.parse(id);
-  const data=z.object({label:z.string().trim().min(2).max(120),plate:optional(15)}).parse(input);
+  const data=z.object({label:optional(120),plate:optional(15)}).parse(input);
+  if(!data.label&&!data.plate)reject("Indique una descripción o patente para identificar el activo.");
   await transaction(async tx=>{
     await authorize(tx,actor);
     const [asset]=await tx.query<{id:string;label:string;plate:string|null}>(
       "SELECT id,label,plate FROM assets WHERE id=$1 AND deleted_at IS NULL FOR UPDATE",[id]);
     if(!asset)reject("El activo no existe o ya no está disponible.");
-    const next={label:data.label,plate:data.plate.toUpperCase()||null};
+    const next={label:data.label||data.plate.toUpperCase(),plate:data.plate.toUpperCase()||null};
     const previous={label:asset.label,plate:asset.plate};
     if(JSON.stringify(previous)===JSON.stringify(next))return;
     await tx.query("UPDATE assets SET label=$2,plate=$3 WHERE id=$1",[id,next.label,next.plate]);

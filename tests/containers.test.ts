@@ -54,5 +54,9 @@ test("tolva conserva una sola ubicación, historial, servicio y alerta de perman
   const current=await listContainers(owner);
   assert.equal(current.records.length,2);
   assert.equal(current.records.find(r=>r.kind==="kilometraje")?.kilometers,"148.50");
+  await recordContainerService(owner,{container_id:id,service_id:"",kind:"mantenimiento",record_date:"2026-09-26",kilometers:"",description:"Envío a taller por daño estructural",cost_clp:"",mark_out_of_service:true,workshop_location:"Taller principal"});
+  const stopped=await listContainers(owner);
+  assert.equal(stopped.containers[0].status,"fuera_servicio","la mantención que envía al taller actualiza el estado visible");
+  assert.equal(stopped.movements[0].kind,"fuera_servicio");
   await assert.rejects(()=>recordContainerService(outsider,{container_id:id,service_id:"",kind:"kilometraje",record_date:"2026-09-25",kilometers:"500",description:"No autorizado",cost_clp:""}),ContainerError);
 });

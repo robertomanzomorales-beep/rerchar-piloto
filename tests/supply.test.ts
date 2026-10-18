@@ -38,7 +38,7 @@ test("compra, recepción parcial, Kardex, bodegas y reservas mantienen los saldo
   await assert.rejects(() => supply.addPurchaseLine(ops,purchaseId,{item_id:item,quantity:"1"}),supply.SupplyError);
   await assert.rejects(() => supply.receivePurchase(owner,purchaseId,{ submission_key:randomUUID(),line_id:randomUUID(),warehouse_id:main,quantity:"1",guide_number:"G-1",invoice_number:"",payment_status:"pendiente" }),supply.SupplyError);
   const pricing=(await supply.getPurchase(owner,purchaseId)).lines;
-  const draft={supplier:"Proveedora Uno",order_reference:"OC-2026-01",expected_date:"2026-09-28",
+  const draft={supplier:"Proveedora Uno",expected_date:"2026-09-28",
     issuer:"e_y_j",supplier_tax_id:"76.000.000-0",supplier_address:"Calama",supplier_contact:"Proveedora Uno",
     cost_center:"Operación",payment_terms:"Crédito 30 días",vat_rate:"0.19",
     prices:Object.fromEntries(pricing.map(line=>[line.id,"1200"])),discounts:{[pricing[0].id]:"100"}};
@@ -47,11 +47,13 @@ test("compra, recepción parcial, Kardex, bodegas y reservas mantienen los saldo
   const prepared=await supply.getPurchase(owner,purchaseId);
   assert.equal(prepared.purchase.status,"aprobada");
   assert.equal(prepared.purchase.ordered_at,null);
+  assert.equal(prepared.purchase.order_reference,null,"el borrador no consume número de OC");
   assert.equal(prepared.purchase.cost_center,"Operación");
   assert.deepEqual(supply.purchaseTotals(prepared.lines,0.19),{amounts:[4400,12000],net:16400,vat:3116,total:19516});
   await assert.rejects(()=>supply.issuePurchaseDraft(ops,purchaseId,""),supply.SupplyError);
   await supply.issuePurchaseDraft(ops,purchaseId,"EMITIR");
   assert.equal((await supply.getPurchase(owner,purchaseId)).purchase.status,"ordenada");
+  assert.equal((await supply.getPurchase(owner,purchaseId)).purchase.order_reference,"OC-EYJ-000001");
   const { lines } = await supply.getPurchase(owner,purchaseId);
   const firstLine = lines.find((line) => line.item_id === item)!;
   const secondLine = lines.find((line) => line.item_id === second)!;
@@ -96,4 +98,26 @@ test("compra, recepción parcial, Kardex, bodegas y reservas mantienen los saldo
   assert.equal(Number(ledger.reserved),Number(balance(item,branch).reserved));
   const [audits] = await db.query<{total:string}>("SELECT count(*)::text AS total FROM audit_events WHERE entity_type='purchase_request' AND entity_id=$1",[purchaseId]);
   assert.equal(Number(audits.total),8);
+
+  const direct=await supply.createPurchase(ops,{submission_key:randomUUID(),title:"Compra inmediata sin orden",category:"insumos",priority:"normal",item_id:second,quantity:"3",notes:"Compra habitual"});
+  await supply.approvePurchase(owner,direct);
+  const directLine=(await supply.getPurchase(owner,direct)).lines[0];
+  const directInput={submission_key:randomUUID(),line_id:directLine.id,warehouse_id:main,quantity:"3",guide_number:"",invoice_number:"F-218",payment_status:"pagada",without_order:true,supplier:"Proveedor local",issuer:"rerchar"};
+  await assert.rejects(()=>supply.receivePurchase(ops,direct,{...directInput,supplier:""}),supply.SupplyError);
+  const directReceipt=await supply.receivePurchase(ops,direct,directInput);
+  assert.equal(await supply.receivePurchase(ops,direct,directInput),directReceipt,"la recepción sin OC es idempotente");
+  const directDetail=await supply.getPurchase(owner,direct);
+  assert.equal(directDetail.purchase.status,"recibida");
+  assert.equal(directDetail.purchase.without_order,true);
+  assert.equal(directDetail.purchase.order_reference,null);
+  assert.equal(directDetail.purchase.issuer,"rerchar");
+  assert.equal(directDetail.receipts[0].document_kind,"factura");
+
+  const rerchar=await supply.createPurchase(ops,{submission_key:randomUUID(),title:"Compra con OC RERCHAR",category:"repuestos",priority:"normal",item_id:item,quantity:"1",notes:"Compra por orden"});
+  await supply.approvePurchase(owner,rerchar);
+  const rercharLine=(await supply.getPurchase(owner,rerchar)).lines[0];
+  await supply.savePurchaseDraft(ops,rerchar,{...draft,issuer:"rerchar",prices:{[rercharLine.id]:"1000"},discounts:{}});
+  assert.equal((await supply.getPurchase(owner,rerchar)).purchase.order_reference,null);
+  await supply.issuePurchaseDraft(ops,rerchar,"EMITIR");
+  assert.equal((await supply.getPurchase(owner,rerchar)).purchase.order_reference,"OC-RER-000001","cada empresa tiene su correlativo interno");
 });

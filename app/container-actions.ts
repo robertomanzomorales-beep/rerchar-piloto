@@ -33,5 +33,6 @@ export async function moveContainerAction(form:FormData) {
 export async function recordContainerServiceAction(form:FormData){
   const actor=await requireActor();
   await run(()=>recordContainerService(actor,{container_id:value(form,"container_id"),service_id:value(form,"service_id"),kind:value(form,"kind"),
-    record_date:value(form,"record_date"),kilometers:value(form,"kilometers"),description:value(form,"description"),cost_clp:value(form,"cost_clp")}));
+    record_date:value(form,"record_date"),kilometers:value(form,"kilometers"),description:value(form,"description"),cost_clp:value(form,"cost_clp"),
+    mark_out_of_service:value(form,"mark_out_of_service")==="on",workshop_location:value(form,"workshop_location")}));
 }

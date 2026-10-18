@@ -40,9 +40,9 @@ export default async function Purchases({ searchParams }: { searchParams: Promis
       <section className="section-card"><div className="section-heading"><div><div className="eyebrow">SEGUIMIENTO</div><h2>Solicitudes registradas</h2></div><span className="count-pill">{purchases.length}</span></div>
         <form method="get" className="supply-filter"><label>Estado<select name="estado" defaultValue={Object.hasOwn(purchaseStatus,query.estado ?? "") ? query.estado : ""}><option value="">Todos</option>{Object.entries(purchaseStatus).map(([key, text]) => <option key={key} value={key}>{text}</option>)}</select></label><button className="button button-outline" type="submit">Filtrar</button></form>
         {purchases.length ? <div className="table-wrap"><table className="data-table"><thead><tr><th>Compra / artículo</th><th>Criticidad</th><th>Estado</th><th aria-label="Abrir"/></tr></thead><tbody>{purchases.map((purchase) =>
-          <tr key={purchase.id}><td><Link className="table-main" href={`/compras/${purchase.id}`}>OC-{String(purchase.folio).padStart(5,"0")} · {purchase.title}</Link><span className="table-sub">{purchase.requested_name} · {chileDate(purchase.created_at)}</span></td>
+          <tr key={purchase.id}><td><Link className="table-main" href={`/compras/${purchase.id}`}>SC-{String(purchase.folio).padStart(5,"0")} · {purchase.title}</Link><span className="table-sub">{purchase.order_reference?`${purchase.order_reference} · `:""}{purchase.requested_name} · {chileDate(purchase.created_at)}</span></td>
             <td><span className={`priority priority-${purchase.priority}`}>{purchase.priority}</span></td><td><span className={`badge supply-status-${purchase.status}`}>{purchaseStatus[purchase.status]}</span></td>
-            <td><Link href={`/compras/${purchase.id}`} className="table-arrow" aria-label={`Abrir compra OC-${purchase.folio}`}><ArrowUpRight size={18}/></Link></td></tr>
+            <td><Link href={`/compras/${purchase.id}`} className="table-arrow" aria-label={`Abrir solicitud de compra SC-${purchase.folio}`}><ArrowUpRight size={18}/></Link></td></tr>
         )}</tbody></table></div> : <p className="muted">No hay solicitudes de compra para este filtro.</p>}
       </section>
     </div>

@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { ZodError } from "zod";
 import { requireActor } from "@/lib/auth";
-import { AssetLogError,addAssetEquipment,recordAssetMaintenance,removeAssetEquipment,updateAssetEquipment } from "@/lib/asset-log";
+import { AssetLogError,addAssetDocument,addAssetEquipment,recordAssetMaintenance,removeAssetEquipment,updateAssetEquipment } from "@/lib/asset-log";
 import { PilotError,reportFleetIncident,resolveFleetIncident } from "@/lib/pilot";
 
 const value=(form:FormData,key:string)=>String(form.get(key)??"");
@@ -50,4 +50,8 @@ export async function recordAssetMaintenanceAction(form:FormData) {
   const actor=await requireActor();const assetId=value(form,"asset_id");
   await run(assetId,()=>recordAssetMaintenance(actor,{asset_id:assetId,title:value(form,"title"),
     performed_on:value(form,"performed_on"),kind:value(form,"kind"),description:value(form,"description"),reading:value(form,"reading")}));
+}
+export async function addAssetDocumentAction(form:FormData){
+  const actor=await requireActor();const assetId=value(form,"asset_id");
+  await run(assetId,()=>addAssetDocument(actor,assetId,form.get("file") as File));
 }

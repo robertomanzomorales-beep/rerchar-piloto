@@ -11,7 +11,7 @@ test("avería a orden de trabajo, repuestos y disponibilidad; planes, combustibl
   const pilot=await import("../lib/pilot");
   const continuity=await import("../lib/continuity");
   const supply=await import("../lib/supply");
-  for (const name of ["001_piloto.sql","002_flota_y_despacho.sql","003_abastecimiento.sql","004_mantenimiento_combustible.sql","005_contenedores.sql","006_acreditacion.sql","007_finanzas.sql","008_trazabilidad_ambiental.sql","009_certificados.sql","010_evidencia_persistente.sql","011_operacion_real_2026.sql","012_planillas_operacion.sql","018_empresa_operadora.sql","023_conductores_terceros.sql","033_checklist_a_mantenimiento.sql","034_pautas_horometro.sql","035_ficha_flota.sql"]) {
+  for (const name of ["001_piloto.sql","002_flota_y_despacho.sql","003_abastecimiento.sql","004_mantenimiento_combustible.sql","005_contenedores.sql","006_acreditacion.sql","007_finanzas.sql","008_trazabilidad_ambiental.sql","009_certificados.sql","010_evidencia_persistente.sql","011_operacion_real_2026.sql","012_planillas_operacion.sql","018_empresa_operadora.sql","023_conductores_terceros.sql","033_checklist_a_mantenimiento.sql","034_pautas_horometro.sql","035_ficha_flota.sql","047_ubicacion_neumaticos.sql"]) {
     const sql=await readFile(resolve(process.cwd(),`db/${name}`),"utf8");
     await transaction(async tx => { for (const part of sql.split(/;\s*(?:\n|$)/).map(s=>s.trim()).filter(Boolean)) await tx.query(part); });
   }
@@ -86,11 +86,14 @@ test("avería a orden de trabajo, repuestos y disponibilidad; planes, combustibl
   assert.equal(Number(fuel.entries[0].km_per_liter),11);
   assert.equal((await continuity.listAssets(actor)).find(a=>a.id===asset)?.current_reading,"310.00");
 
-  const tire=await continuity.createTire(actor,{code:"NEU-01",brand:"Marca",size:"22.5"});
+  const tire=await continuity.createTire(actor,{code:"NEU-01",brand:"Marca",size:"22.5",warehouse_id:warehouse});
   await continuity.moveTire(actor,tire,{action:"instalar",asset_id:asset,position:"delantera izquierda",reason:"Montaje inicial"});
   const other=await continuity.createTire(actor,{code:"NEU-02",brand:"Marca",size:"22.5"});
   await assert.rejects(()=>continuity.moveTire(actor,other,{action:"instalar",asset_id:asset,position:"delantera izquierda",reason:"Posición ocupada"}),continuity.ContinuityError);
-  await continuity.moveTire(actor,tire,{action:"retirar",asset_id:"",position:"",reason:"Cambio programado"});
+  await continuity.moveTire(actor,tire,{action:"retirar",asset_id:"",position:"",reason:"Cambio programado",warehouse_id:warehouse});
+  const availableTire=(await supply.listInventory(actor)).tires.find(row=>row.id===tire);
+  assert.equal(availableTire?.status,"disponible");
+  assert.equal(availableTire?.warehouse_name,"Principal","el neumático retirado vuelve a verse en inventario por bodega");
   await continuity.moveTire(actor,other,{action:"instalar",asset_id:asset,position:"delantera izquierda",reason:"Montaje después de retiro"});
   const [tireEvents]=await db.query<{total:string}>("SELECT count(*)::text AS total FROM tire_events WHERE tire_id=$1",[tire]);
   assert.equal(Number(tireEvents.total),3);

@@ -64,4 +64,13 @@ test("ficha de camión y rampla vincula rutas, averías, mantenciones e inventar
   assert.equal(order.reading_at_close,"269851.00");
   assert.equal((await continuity.listAssets(actor)).find(asset=>asset.id===truck)?.current_reading,"310000.00");
   assert.equal((await log.getAssetLog(actor,truck)).orders[0].id,historical);
+
+  const firstPdf=new File([Buffer.from("%PDF-1.4\n%test\n")],"Permiso circulación.pdf",{type:"application/pdf"});
+  const docId=await log.addAssetDocument(actor,truck,firstPdf);
+  await log.addAssetDocument(actor,truck,new File([Buffer.from("%PDF-1.4\n%soap\n")],"SOAP.pdf",{type:"application/pdf"}));
+  const docs=(await log.getAssetLog(actor,truck)).documents;
+  assert.equal(docs.length,2,"el camión admite varios documentos con nombres propios");
+  assert.equal((await log.getAssetDocument(actor,docId))?.filename,"Permiso circulación.pdf");
+  await assert.rejects(()=>log.getAssetDocument(outsider,docId),log.AssetLogError);
+  await assert.rejects(()=>log.addAssetDocument(actor,truck,new File(["No es PDF"],"falso.pdf",{type:"application/pdf"})),log.AssetLogError);
 });

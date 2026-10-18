@@ -30,6 +30,7 @@ export type AssetOrder={id:string;folio:string;kind:string;title:string;descript
   created_at:Date;reading_at_close:string|null;resolution:string|null};
 export type AssetPlan={id:string;title:string;next_due_date:Date|string|null;next_due_reading:string|null;
   current_reading:string;reading_unit:string;frequency_kind:string};
+export type AssetDocument={id:string;original_filename:string;size_bytes:number;created_at:Date;created_by_name:string};
 
 export async function getAssetLog(actor:Actor,assetId:string) {
   guard(actor);
@@ -38,7 +39,7 @@ export async function getAssetLog(actor:Actor,assetId:string) {
     brand:string|null;model:string|null;available:boolean;reading_unit:string;current_reading:string}>(
       "SELECT id,code,label,kind,plate,brand,model,available,reading_unit,current_reading FROM assets WHERE id=$1 AND deleted_at IS NULL",[assetId]);
   if(!asset) reject("Activo no encontrado.");
-  const [serviceRoutes,directGuides,faults,orders,plans,equipment]=await Promise.all([
+  const [serviceRoutes,directGuides,faults,orders,plans,equipment,documents]=await Promise.all([
     db.query<Omit<AssetRoute,"source"|"href">>(`SELECT s.id,COALESCE(s.scheduled_for,s.created_at) AS event_at,s.guide_number,
       COALESCE(s.request_category,s.service_type) AS movement_type,s.origin,s.destination,c.name AS counterparty,
       s.status,(s.gross_kg-s.tare_kg)::text AS net_kg
@@ -60,12 +61,40 @@ export async function getAssetLog(actor:Actor,assetId:string) {
       FROM maintenance_plans p JOIN assets a ON a.id=p.asset_id WHERE p.asset_id=$1 AND p.active=true ORDER BY p.created_at DESC`,[assetId]),
     db.query<EquipmentItem>(`SELECT e.*,(e.condition<>'operativo' OR COALESCE(e.expires_on <= (now() AT TIME ZONE 'America/Santiago')::date+30,false)) AS warning
       FROM asset_equipment_inventory e WHERE e.asset_id=$1 AND e.active=true ORDER BY warning DESC,e.name LIMIT 200`,[assetId]),
+    db.query<AssetDocument>(`SELECT d.id,d.original_filename,d.size_bytes,d.created_at,u.name AS created_by_name
+      FROM asset_documents d JOIN users u ON u.id=d.created_by WHERE d.asset_id=$1 ORDER BY d.created_at DESC,d.id DESC LIMIT 200`,[assetId]),
   ]);
   const routes:AssetRoute[]=[
     ...serviceRoutes.map((row)=>({...row,source:"servicio" as const,href:`/solicitudes/${row.id}`})),
     ...directGuides.map((row)=>({...row,source:"guia" as const,href:`/control-guias/${row.id}`})),
   ].sort((a,b)=>new Date(b.event_at).getTime()-new Date(a.event_at).getTime()).slice(0,100);
-  return {asset,routes,faults,orders,plans,equipment};
+  return {asset,routes,faults,orders,plans,equipment,documents};
+}
+
+export async function addAssetDocument(actor:Actor,assetId:string,file:File){
+  guard(actor);
+  const id=uuid.parse(assetId);
+  if(!file||file.size<1||file.size>4*1024*1024)reject("Seleccione un PDF de hasta 4 MB.");
+  const bytes=Buffer.from(await file.arrayBuffer());
+  if(bytes.subarray(0,5).toString("ascii")!=="%PDF-")reject("El archivo debe ser un PDF válido.");
+  const name=(file.name||"documento.pdf").replace(/[\x00-\x1F\\/]/g,"_").slice(0,160);
+  return transaction(async tx=>{
+    const [asset]=await tx.query("SELECT id FROM assets WHERE id=$1 AND deleted_at IS NULL FOR SHARE",[id]);
+    if(!asset)reject("Activo no encontrado.");
+    const [document]=await tx.query<{id:string}>(`INSERT INTO asset_documents
+      (asset_id,original_filename,file_content,size_bytes,created_by) VALUES ($1,$2,$3,$4,$5) RETURNING id`,
+      [id,name,bytes,file.size,actor.id]);
+    await audit(tx,actor,"attach","asset_document",document.id,{asset_id:id,filename:name,size_bytes:file.size});
+    return document.id;
+  });
+}
+
+export async function getAssetDocument(actor:Actor,documentId:string){
+  guard(actor);
+  if(!uuid.safeParse(documentId).success)return null;
+  const [row]=await db.query<{file_content:Uint8Array;original_filename:string}>(`SELECT d.file_content,d.original_filename FROM asset_documents d
+    JOIN assets a ON a.id=d.asset_id WHERE d.id=$1 AND a.deleted_at IS NULL`,[documentId]);
+  return row?{bytes:Buffer.from(row.file_content),filename:row.original_filename}:null;
 }
 
 export async function addAssetEquipment(actor:Actor,input:unknown) {

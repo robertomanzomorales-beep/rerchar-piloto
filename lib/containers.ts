@@ -44,11 +44,16 @@ export async function recordContainerService(actor:Actor,input:unknown){
   guard(actor);
   const data=z.object({container_id:uuid,service_id:optionalId,kind:z.enum(["kilometraje","mantenimiento"]),
     record_date:z.iso.date(),kilometers:z.union([z.literal(""),z.coerce.number().finite().min(0).max(1_000_000)]).default(""),
-    description:z.string().trim().min(5).max(500),cost_clp:z.union([z.literal(""),z.coerce.number().finite().min(0).max(100_000_000)]).default("")}).parse(input);
+    description:z.string().trim().min(5).max(500),cost_clp:z.union([z.literal(""),z.coerce.number().finite().min(0).max(100_000_000)]).default(""),
+    mark_out_of_service:z.boolean().default(false),workshop_location:optional(180)}).parse(input);
   if(data.kind==="kilometraje"&&data.kilometers==="")reject("Indique los kilómetros recorridos en el traslado o arriendo.");
+  if(data.mark_out_of_service&&data.kind!=="mantenimiento")reject("Sólo una mantención puede sacar una unidad de servicio desde este registro.");
   return transaction(async tx=>{
-    const [container]=await tx.query<{client_id:string|null}>("SELECT client_id FROM containers WHERE id=$1 FOR SHARE",[data.container_id]);
+    const [container]=await tx.query<{client_id:string|null;status:string;location_name:string;waste_type:string|null}>(
+      "SELECT client_id,status,location_name,waste_type FROM containers WHERE id=$1 FOR UPDATE",[data.container_id]);
     if(!container)reject("Tolva o contenedor no encontrado.");
+    if(data.mark_out_of_service&&(!["patio","en_transito"].includes(container.status)||data.workshop_location.length<2))
+      reject("Para enviar a taller, retire primero la unidad de faena e indique la ubicación del taller.");
     if(data.service_id){
       const [service]=await tx.query<{client_id:string}>("SELECT client_id FROM service_requests WHERE id=$1 AND deleted_at IS NULL",[data.service_id]);
       if(!service)reject("Servicio no encontrado.");
@@ -60,6 +65,14 @@ export async function recordContainerService(actor:Actor,input:unknown){
     const [record]=await tx.query<{id:string}>(`INSERT INTO container_service_records(container_id,service_id,kind,record_date,kilometers,description,cost_clp,recorded_by)
       VALUES ($1,NULLIF($2,'')::uuid,$3,$4,NULLIF($5::text,'')::numeric,$6,NULLIF($7::text,'')::numeric,$8) RETURNING id`,
       [data.container_id,data.service_id,data.kind,data.record_date,data.kilometers,data.description,data.cost_clp,actor.id]);
+    if(data.mark_out_of_service){
+      await tx.query("UPDATE containers SET status='fuera_servicio',client_id=NULL,site_id=NULL,location_name=$2,waste_type=NULL,installed_at=NULL,updated_at=now() WHERE id=$1",
+        [data.container_id,data.workshop_location]);
+      await tx.query(`INSERT INTO container_movements
+        (container_id,kind,previous_status,previous_location,previous_waste_type,next_status,next_location,note,actor_id)
+        VALUES ($1,'fuera_servicio',$2,$3,$4,'fuera_servicio',$5,$6,$7)`,
+        [data.container_id,container.status,container.location_name,container.waste_type,data.workshop_location,data.description,actor.id]);
+    }
     await tx.query("INSERT INTO audit_events(actor_id,action,entity_type,entity_id,next_value) VALUES ($1,'create','container_service_record',$2,$3)",
       [actor.id,record.id,JSON.stringify(data)]);
     return record.id;
@@ -68,7 +81,7 @@ export async function recordContainerService(actor:Actor,input:unknown){
 
 export async function createContainer(actor:Actor,input:unknown) {
   guard(actor);
-  const data=z.object({code:z.string().trim().min(2).max(45),kind:z.enum(["tolva","ampliroll","contenedor"]),
+  const data=z.object({code:z.string().trim().min(2).max(45),kind:z.enum(["tolva","contenedor"]),
     capacity_m3:z.coerce.number().finite().positive().max(10000),location_name:z.string().trim().min(2).max(180),
     max_stay_days:z.coerce.number().int().min(1).max(3650)}).parse(input);
   return transaction(async(tx)=>{

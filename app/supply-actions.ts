@@ -62,7 +62,7 @@ export async function savePurchaseDraftAction(form: FormData) {
   const actor = await requireActor(); const id = value(form,"request_id");
   const prices=Object.fromEntries([...form.entries()].filter(([key])=>key.startsWith("price_")).map(([key,val])=>[key.slice(6),String(val)]));
   const discounts=Object.fromEntries([...form.entries()].filter(([key])=>key.startsWith("discount_")).map(([key,val])=>[key.slice(9),String(val)]));
-  await run(purchasePath(id), () => savePurchaseDraft(actor,id,{ supplier: value(form,"supplier"), order_reference: value(form,"order_reference"), expected_date: value(form,"expected_date"),
+  await run(purchasePath(id), () => savePurchaseDraft(actor,id,{ supplier: value(form,"supplier"), expected_date: value(form,"expected_date"),
     issuer:value(form,"issuer"),supplier_tax_id:value(form,"supplier_tax_id"),supplier_address:value(form,"supplier_address"),
     supplier_contact:value(form,"supplier_contact"),cost_center:value(form,"cost_center"),
     payment_terms:value(form,"payment_terms"),vat_rate:value(form,"vat_rate"),prices,discounts }));
@@ -76,6 +76,7 @@ export async function receivePurchaseAction(form: FormData) {
   await run(purchasePath(id), () => receivePurchase(actor,id,{
     submission_key: value(form,"submission_key"), line_id: value(form,"line_id"), warehouse_id: value(form,"warehouse_id"),
     quantity: value(form,"quantity"), guide_number: value(form,"guide_number"), invoice_number: value(form,"invoice_number"), payment_status: value(form,"payment_status"),
+    without_order:value(form,"without_order")==="true",supplier:value(form,"supplier"),issuer:value(form,"issuer")||undefined,
   }));
 }
 export async function adjustStockAction(form: FormData) {

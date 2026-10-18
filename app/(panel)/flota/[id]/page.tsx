@@ -4,7 +4,7 @@ import { ArrowLeft,ArrowRight,ClipboardList,Route,ShieldAlert,Wrench } from "luc
 import { canManage,requireActor } from "@/lib/auth";
 import { AssetLogError,getAssetLog } from "@/lib/asset-log";
 import { addAssetEquipmentAction,recordAssetMaintenanceAction,removeAssetEquipmentAction,
-  reportAssetIncidentAction,resolveAssetIncidentAction,updateAssetEquipmentAction } from "@/app/asset-log-actions";
+  reportAssetIncidentAction,resolveAssetIncidentAction,updateAssetEquipmentAction,addAssetDocumentAction } from "@/app/asset-log-actions";
 import { Notice,chileDate } from "@/components/UI";
 import { SubmitButton } from "@/components/Transition";
 
@@ -20,7 +20,7 @@ export default async function AssetDetail({params,searchParams}:{params:Promise<
   const {id}=await params;
   let detail;
   try { detail=await getAssetLog(actor,id); } catch(error) { if(error instanceof AssetLogError) notFound();throw error; }
-  const {asset,routes,faults,orders,plans,equipment}=detail;
+  const {asset,routes,faults,orders,plans,equipment,documents}=detail;
   const openFaults=faults.filter((fault)=>fault.status==="abierta");
   const alerts=equipment.filter((item)=>item.warning);
   const today=new Intl.DateTimeFormat("sv-SE",{timeZone:"America/Santiago",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
@@ -31,6 +31,11 @@ export default async function AssetDetail({params,searchParams}:{params:Promise<
       <p className="page-intro">{asset.code}{asset.plate?` · Patente ${asset.plate}`:""}{asset.brand?` · ${asset.brand}`:""}{asset.model?` ${asset.model}`:""}</p></div>
       <span className={`fleet-state ${asset.available?"available":"stopped"}`}>{asset.available?"Disponible":"Detenido"}</span></div>
     <Notice error={query.error} ok={query.ok}/>
+    <section className="section-card"><div className="section-heading"><div><div className="eyebrow">CARPETA DEL VEHÍCULO</div><h2>Documentación PDF</h2></div><span className="count-pill">{documents.length}</span></div>
+      <p className="helper-text">Adjunte varios certificados, permisos, revisión técnica, SOAP o resoluciones por camión o rampla. El nombre original del PDF identifica cada documento; máximo 4 MB por archivo.</p>
+      <form action={addAssetDocumentAction} className="form-grid supply-inline" encType="multipart/form-data"><input type="hidden" name="asset_id" value={id}/><label>Documento PDF<input type="file" name="file" accept="application/pdf,.pdf" required/></label><div className="field-full form-footer"><SubmitButton className="button button-outline">Agregar documento</SubmitButton></div></form>
+      {documents.length?<ul className="record-list">{documents.map(doc=><li key={doc.id}><Link href={`/api/flota-documentos/${doc.id}`}>{doc.original_filename}</Link><small>{(doc.size_bytes/1024).toLocaleString("es-CL",{maximumFractionDigits:0})} KB · {doc.created_by_name} · {chileDate(doc.created_at)}</small></li>)}</ul>:<p className="muted">Sin documentos cargados para este activo.</p>}
+    </section>
     <div className="fleet-stats"><div><strong>{openFaults.length}</strong><span>Averías abiertas</span></div><div><strong>{plans.length}</strong><span>Pautas activas</span></div><div><strong>{alerts.length}</strong><span>Elementos por revisar</span></div><div><strong>{asset.reading_unit==="sin"?"—":count(asset.current_reading)}</strong><span>Lectura actual {asset.reading_unit==="sin"?"":asset.reading_unit}</span></div></div>
 
     <section className="section-card"><div className="section-heading"><div><div className="eyebrow">RUTEO DE LA PLANILLA</div><h2><Route size={19}/> Viajes y guías vinculados</h2></div><span className="count-pill">{routes.length}</span></div>
