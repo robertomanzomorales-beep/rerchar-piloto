@@ -513,5 +513,14 @@ input::placeholder,textarea::placeholder{color:#959e9d}
   .module-unavailable-actions{display:flex;gap:9px;flex-wrap:wrap}
 }
 
+/* Cotizaciones: filtros dentro de la tarjeta, sin desplazar el panel lateral. */
+.quote-actions{justify-content:flex-start;flex-wrap:wrap;gap:9px}
+.filters.quote-filters{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;align-items:end;margin-bottom:14px}
+.quote-filters label{display:grid;gap:5px;min-width:0;color:#5c6267;font-size:11px;font-weight:700}
+.quote-filters select,.quote-filters input{width:100%;min-width:0}
+.quote-filters .button{justify-self:start;min-width:105px}
+@media(max-width:1150px){.filters.quote-filters{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:520px){.filters.quote-filters{grid-template-columns:1fr}.quote-filters .button{width:100%}}
+
 .maintenance-procedure{max-width:420px;margin-top:8px;font-size:11px;color:#52665e}.maintenance-procedure summary{cursor:pointer;color:#2e715d;font-weight:750}.maintenance-procedure p{white-space:pre-wrap;line-height:1.6;margin:7px 0 0}
 .asset-item-edit{min-width:145px}.asset-item-edit summary{cursor:pointer;color:#26735b;font-size:11px;font-weight:750}.asset-item-edit form{margin-top:11px}.asset-item-edit .button{font-size:11px}
