@@ -31,6 +31,32 @@ test("compra de Carol conserva materiales, observaciones e IVA confirmado hasta 
   const aluminum=catalog.find(item=>item.name==="CHATARRA DE ALUMINIO")!;
   const battery=catalog.find(item=>item.name==="BATERIAS")!;
   assert.ok(iron&&aluminum&&battery);
+  const shellInput={submission_key:randomUUID(),client_id:client.id,issuer:"e_y_j",title:"Arriendo de equipo",
+    issued_on:"2026-10-18",valid_until:"2026-10-28",vat_rate:"0.19",commercial_kind:"general"};
+  const shellId=await quotes.createQuote(actor,shellInput);
+  assert.equal(await quotes.createQuote(actor,shellInput),shellId,"el inicio repetido conserva el folio");
+  let shell=await quotes.getQuote(actor,shellId);
+  assert.match(quotes.quoteFolio(shell.quote),/^COT-EYJ-\d+$/);
+  assert.equal(shell.lines.length,0,"el número se asigna antes de agregar conceptos");
+  assert.ok((await quotes.quoteDeliveryIssues(shell.quote,shell.lines)).some(issue=>issue.includes("al menos un concepto")));
+  await quotes.addQuoteLine(actor,shellId,{description:"Arriendo de equipo",principal:"arriendo",segment:"arriendo_equipo",
+    quantity:"1",unit:"servicio",unit_price_clp:"0",taxable:true});
+  shell=await quotes.getQuote(actor,shellId);
+  assert.ok((await quotes.quoteDeliveryIssues(shell.quote,shell.lines)).some(issue=>issue.includes("precio de venta")));
+  await quotes.updateQuoteLine(actor,shellId,shell.lines[0].id,{description:"Arriendo de equipo",principal:"arriendo",segment:"arriendo_equipo",
+    quantity:"1",unit:"servicio",unit_price_clp:"150000",taxable:true});
+  shell=await quotes.getQuote(actor,shellId);
+  assert.equal((await quotes.quoteDeliveryIssues(shell.quote,shell.lines)).length,0);
+  await assert.rejects(()=>quotes.createQuote(actor,{...shellInput,submission_key:randomUUID(),commercial_kind:"compra_material"}),quotes.QuoteError);
+  const purchaseShellId=await quotes.createQuote(actor,{...shellInput,submission_key:randomUUID(),issuer:"rerchar",commercial_kind:"compra_material"});
+  const purchaseShell=await quotes.getQuote(actor,purchaseShellId);
+  assert.match(quotes.quoteFolio(purchaseShell.quote),/^COT-RER-\d+$/);
+  assert.equal(purchaseShell.quote.commercial_kind,"compra_material");
+  assert.equal(Number(purchaseShell.quote.vat_rate),0);
+  assert.ok((await quotes.quoteDeliveryIssues(purchaseShell.quote,purchaseShell.lines)).length>0,"una compra vacía no se entrega");
+  await quotes.addQuoteLine(actor,purchaseShellId,{description:"Material del catálogo",material_id:iron.id,principal:"compra",segment:"compra_metal",
+    quantity:"100",unit:"kg",unit_price_clp:"270",taxable:true});
+  assert.equal((await quotes.getQuote(actor,purchaseShellId)).lines[0].material_id,iron.id);
   const input={submission_key:randomUUID(),client_id:client.id,issuer:"rerchar",title:"Compra de metales por kilo",
     notes:"Pesaje en patio y pago según acuerdo comercial",issued_on:"2026-10-14",valid_until:"2026-11-14",vat_rate:"0.19",
     line:{description:"El texto no reemplaza al maestro",material_id:iron.id,line_note:"Separar impurezas",principal:"compra",segment:"compra_metal",

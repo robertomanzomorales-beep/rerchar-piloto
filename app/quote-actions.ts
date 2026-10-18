@@ -13,9 +13,9 @@ function message(error:unknown){if(error instanceof QuoteError||error instanceof
 export async function createQuoteAction(form:FormData){
   const actor=await requireActor();let id:string;
   try{id=await createQuote(actor,{submission_key:v(form,"submission_key")||randomUUID(),client_id:v(form,"client_id"),issuer:v(form,"issuer"),title:v(form,"title"),
-    notes:v(form,"notes"),issued_on:v(form,"issued_on"),valid_until:v(form,"valid_until"),vat_rate:v(form,"vat_rate"),
-    line:{description:v(form,"description"),principal:v(form,"principal"),segment:v(form,"segment"),waste_category:v(form,"waste_category"),destination_id:v(form,"destination_id"),material_id:v(form,"material_id"),line_note:v(form,"line_note"),quantity:v(form,"quantity"),unit:v(form,"unit"),unit_price_clp:v(form,"unit_price_clp"),currency:v(form,"currency")||"CLP",taxable:form.get("taxable")==="on"}});}
-  catch(error){redirect(`/cotizaciones/nueva?error=${encodeURIComponent(message(error))}`);}
+    notes:v(form,"notes"),issued_on:v(form,"issued_on"),valid_until:v(form,"valid_until"),vat_rate:v(form,"vat_rate"),commercial_kind:v(form,"commercial_kind")||undefined,
+    line:form.has("description")?{description:v(form,"description"),principal:v(form,"principal"),segment:v(form,"segment"),waste_category:v(form,"waste_category"),destination_id:v(form,"destination_id"),material_id:v(form,"material_id"),line_note:v(form,"line_note"),quantity:v(form,"quantity"),unit:v(form,"unit"),unit_price_clp:v(form,"unit_price_clp"),currency:v(form,"currency")||"CLP",taxable:form.get("taxable")==="on"}:undefined});}
+  catch(error){const params=new URLSearchParams({error:message(error)});if(v(form,"issuer"))params.set("empresa",v(form,"issuer"));if(v(form,"client_id"))params.set("cliente",v(form,"client_id"));if(v(form,"commercial_kind")==="compra_material")params.set("tipo","compra");redirect(`/cotizaciones/nueva?${params}`);}
   revalidatePath("/","layout");redirect(`/cotizaciones/${id}?ok=1`);
 }
 export async function addQuoteLineAction(form:FormData){

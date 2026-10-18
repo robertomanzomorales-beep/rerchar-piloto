@@ -95,6 +95,7 @@ export async function quoteDeliveryIssues(quote:Pick<Quote,"valid_until"> & Part
   const byId=new Map(destinations.map(item=>[item.id,item]));
   const validUntil=quote.valid_until instanceof Date?quote.valid_until.toISOString().slice(0,10):String(quote.valid_until).slice(0,10);
   const issues:string[]=[];
+  if(!lines.length)issues.push("Agregue al menos un concepto a la cotización.");
   if(lines.some(line=>line.currency==="UF")&&!quote.uf_rate_clp)issues.push("Registre el valor UF de referencia y su fecha.");
   if(quote.commercial_kind!=="compra_material"&&quoteTotals(lines,Number(quote.vat_rate??"0.19")).net<=0)
     issues.push("Indique el precio de venta de los conceptos antes de entregar la cotización.");
@@ -215,21 +216,26 @@ export async function getQuote(actor:Actor,quoteId:string){
 export async function createQuote(actor:Actor,input:unknown){
   canEdit(actor);
   const data=z.object({submission_key:uuid,client_id:uuid,issuer:z.enum(["rerchar","e_y_j"]),title:z.string().trim().min(3).max(180),
-    notes:optional(1000),issued_on:z.iso.date(),valid_until:z.iso.date(),vat_rate:z.union([z.literal(""),z.literal("0"),z.literal("0.19")]).default("0.19"),line:item}).parse(input);
-  checkClassification(data.line,true);
-  checkIssuerSegment(data.issuer,data.line.principal);
-  if(data.line.currency==="UF")reject("Cree el borrador en CLP, registre el valor UF y después cambie el concepto a UF.");
-  checkDestinationInput(data.line);
-  if(data.line.principal!=="compra"&&data.vat_rate==="")reject("Seleccione el tratamiento de IVA de la cotización.");
+    notes:optional(1000),issued_on:z.iso.date(),valid_until:z.iso.date(),vat_rate:z.union([z.literal(""),z.literal("0"),z.literal("0.19")]).default("0.19"),
+    commercial_kind:z.enum(["general","compra_material"]).optional(),line:item.optional()}).parse(input);
+  if(data.line){
+    checkClassification(data.line,true);
+    checkIssuerSegment(data.issuer,data.line.principal);
+    if(data.line.currency==="UF")reject("Cree el borrador en CLP, registre el valor UF y después cambie el concepto a UF.");
+    checkDestinationInput(data.line);
+  }
+  const kind=data.line?.principal==="compra"?"compra_material":data.commercial_kind??"general";
+  if(data.line&&data.commercial_kind&&kind!==data.commercial_kind)reject("El tipo de cotización no coincide con el concepto.");
+  if(data.issuer==="e_y_j"&&kind==="compra_material")reject("E y J no cotiza compras de material.");
+  if(kind==="general"&&data.vat_rate==="")reject("Seleccione el tratamiento de IVA de la cotización.");
   if(data.valid_until<data.issued_on)reject("La vigencia no puede vencer antes de la fecha de emisión.");
   return transaction(async tx=>{
     const [client]=await tx.query<{name:string;tax_id:string|null;email:string|null;address:string|null}>("SELECT name,tax_id,email,address FROM clients WHERE id=$1 AND deleted_at IS NULL",[data.client_id]);
     if(!client)reject("Seleccione un cliente registrado.");
     const [existing]=await tx.query<{id:string;created_by:string}>("SELECT id,created_by FROM client_quotes WHERE submission_key=$1",[data.submission_key]);
     if(existing){if(existing.created_by!==actor.id)reject("La clave de cotización pertenece a otro usuario.");return existing.id;}
-    const kind=data.line.principal==="compra"?"compra_material":"general";
-    const line=await purchaseLine(tx,data.line,kind,"pendiente");
-    const price=commercialPrice(data.line,null);
+    const line=data.line?await purchaseLine(tx,data.line,kind,"pendiente"):null;
+    const price=data.line?commercialPrice(data.line,null):null;
     const [quote]=await tx.query<{id:string;folio:string}>(`INSERT INTO client_quotes
       (submission_key,client_id,issuer,client_name,client_tax_id,client_email,client_address,title,notes,issued_on,valid_until,vat_rate,created_by,commercial_kind,tax_review_status)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NULLIF($9,''),$10,$11,$12,$13,$14,$15) RETURNING id,folio`,
@@ -237,12 +243,14 @@ export async function createQuote(actor:Actor,input:unknown){
        data.issued_on,data.valid_until,kind==="compra_material"?"0":data.vat_rate,actor.id,kind,kind==="compra_material"?"pendiente":"no_aplica"]);
     const displayFolio=`COT-${data.issuer==="rerchar"?"RER":"EYJ"}-${String(quote.folio).padStart(5,"0")}`;
     await tx.query("UPDATE client_quotes SET display_folio=$2,route_required=$3 WHERE id=$1",
-      [quote.id,displayFolio,["retiro","transporte","instalacion"].includes(data.line.principal)]);
-    const destinationName=await destinationSnapshot(tx,data.line.destination_id);
-    await tx.query(`INSERT INTO client_quote_lines(quote_id,position,description,quantity,unit,unit_price_clp,taxable,principal,segment,waste_category,destination_id,destination_name,destination_required,material_id,line_note,currency,unit_price_uf)
-      VALUES ($1,1,$2,$3,$4,$5,$6,$7,$8,NULLIF($9,''),NULLIF($10,'')::uuid,$11,true,$12,NULLIF($13,''),$14,$15)`,
-      [quote.id,line.name,data.line.quantity,data.line.unit,price.clp,line.taxable,data.line.principal,data.line.segment,
-       data.line.waste_category,data.line.destination_id,destinationName,line.materialId,data.line.line_note,price.currency,price.uf]);
+      [quote.id,displayFolio,Boolean(data.line&&["retiro","transporte","instalacion"].includes(data.line.principal))]);
+    if(data.line&&line&&price){
+      const destinationName=await destinationSnapshot(tx,data.line.destination_id);
+      await tx.query(`INSERT INTO client_quote_lines(quote_id,position,description,quantity,unit,unit_price_clp,taxable,principal,segment,waste_category,destination_id,destination_name,destination_required,material_id,line_note,currency,unit_price_uf)
+        VALUES ($1,1,$2,$3,$4,$5,$6,$7,$8,NULLIF($9,''),NULLIF($10,'')::uuid,$11,true,$12,NULLIF($13,''),$14,$15)`,
+        [quote.id,line.name,data.line.quantity,data.line.unit,price.clp,line.taxable,data.line.principal,data.line.segment,
+         data.line.waste_category,data.line.destination_id,destinationName,line.materialId,data.line.line_note,price.currency,price.uf]);
+    }
     await tx.query("INSERT INTO audit_events(actor_id,action,entity_type,entity_id,next_value) VALUES ($1,'create','client_quote',$2,$3)",
       [actor.id,quote.id,JSON.stringify({client_id:data.client_id,title:data.title,issuer:data.issuer})]);
     return quote.id;
