@@ -29,27 +29,36 @@ export type Tariff={id:string;contract_id:string;contract_code:string;client_nam
 export type FinancialService={id:string;folio:string;client_id:string;site_id:string;client_name:string;site_name:string;service_type:string;waste_type:string;
   operating_company:Company|null;
   gross_kg:string|null;tare_kg:string|null;status:string;closed_at:Date|null;valuation_id:string|null;quantity:string|null;unit_price_clp:string|null;
-  total_clp:string|null;tariff_id:string|null;tariff_unit:string|null;client_order_reference:string|null;invoice_id:string|null;invoice_number:string|null;
+  total_clp:string|null;tariff_id:string|null;tariff_unit:string|null;client_order_reference:string|null;
+  requires_client_oc:boolean;client_oc_reference:string|null;in_payment_statement:boolean;invoice_id:string|null;invoice_number:string|null;
   invoice_status:string|null;invoice_total:string|null;invoice_total_verified:boolean|null;paid_clp:string;manual_cost_clp:string;fuel_cost_clp:string};
 export type InvoicePayment={id:string;amount_clp:string;paid_on:Date|string;method:string;reference:string;created_at:Date;actor_name:string};
 export type ServiceCost={id:string;category:string;amount_clp:string;description:string;created_at:Date;actor_name:string};
 
 const serviceSelect=`SELECT s.id,s.folio,s.client_id,s.site_id,s.operating_company,c.name AS client_name,cs.name AS site_name,s.service_type,s.waste_type,s.gross_kg,s.tare_kg,s.status,s.closed_at,
  v.id AS valuation_id,v.quantity,v.unit_price_clp,v.total_clp,v.tariff_id,t.unit AS tariff_unit,v.client_order_reference,
+ COALESCE(cp.requires_oc,false) AS requires_client_oc,
+ COALESCE(NULLIF(btrim(v.client_order_reference),''),NULLIF(btrim(cd.order_reference),''),NULLIF(btrim(q.client_order_reference),'')) AS client_oc_reference,
+ EXISTS (SELECT 1 FROM payment_statement_operations po WHERE po.service_id=s.id) AS in_payment_statement,
  f.id AS invoice_id,f.invoice_number,f.status AS invoice_status,f.total_clp AS invoice_total,f.total_verified AS invoice_total_verified,
  COALESCE((SELECT sum(p.amount_clp) FROM invoice_payments p WHERE p.invoice_id=f.id),0)::text AS paid_clp,
  COALESCE((SELECT sum(x.amount_clp) FROM service_costs x WHERE x.service_id=s.id),0)::text AS manual_cost_clp,
  COALESCE((SELECT sum(x.cost_clp) FROM fuel_entries x WHERE x.service_id=s.id),0)::text AS fuel_cost_clp
  FROM service_requests s JOIN clients c ON c.id=s.client_id JOIN client_sites cs ON cs.id=s.site_id
+ LEFT JOIN counterparty_profiles cp ON cp.client_id=s.client_id AND cp.kind IN ('cliente','ambos')
+ LEFT JOIN service_commercial_details cd ON cd.service_id=s.id
+ LEFT JOIN client_quotes q ON q.id=s.quote_id
  LEFT JOIN service_valuations v ON v.service_id=s.id LEFT JOIN service_tariffs t ON t.id=v.tariff_id
  LEFT JOIN service_invoices f ON f.valuation_id=v.id AND f.status='emitida'`;
 
-export async function listFinance(actor:Actor,company="rerchar"){
+export async function listFinance(actor:Actor,company="rerchar",clientOcOnly=false){
   admin(actor);
   if(!["rerchar","e_y_j","pendiente"].includes(company))reject("Empresa inválida.");
   const [services,contracts,tariffs,clients,sites]=await Promise.all([
-    db.query<FinancialService>(`${serviceSelect} WHERE s.deleted_at IS NULL AND s.status='completada'
-      AND ($1='pendiente' AND s.operating_company IS NULL OR s.operating_company=$1) ORDER BY s.closed_at DESC LIMIT 200`,[company]),
+    db.query<FinancialService>(`SELECT * FROM (${serviceSelect} WHERE s.deleted_at IS NULL AND s.status='completada'
+      AND ($1='pendiente' AND s.operating_company IS NULL OR s.operating_company=$1)) AS service
+      WHERE ($2::boolean=false OR (requires_client_oc AND client_oc_reference IS NULL AND invoice_id IS NULL AND NOT in_payment_statement))
+      ORDER BY closed_at DESC LIMIT 200`,[company,clientOcOnly]),
     db.query<Contract>(`SELECT c.id,c.client_id,c.site_id,c.code,c.operating_company,c.starts_on,c.ends_on,c.notes,c.active,cl.name AS client_name,cs.name AS site_name
       FROM client_contracts c JOIN clients cl ON cl.id=c.client_id LEFT JOIN client_sites cs ON cs.id=c.site_id
       WHERE ($1='pendiente' AND c.operating_company IS NULL OR c.operating_company=$1)
@@ -63,6 +72,14 @@ export async function listFinance(actor:Actor,company="rerchar"){
       WHERE s.deleted_at IS NULL AND c.deleted_at IS NULL ORDER BY c.name,s.name`),
   ]);
   return {services,contracts,tariffs,clients,sites};
+}
+
+export async function pendingClientOrders(actor:Actor,company:Company){
+  admin(actor);
+  const [row]=await db.query<{total:string}>(`SELECT count(*)::text AS total FROM (${serviceSelect}
+    WHERE s.operating_company=$1 AND s.deleted_at IS NULL AND s.status='completada') AS service
+    WHERE requires_client_oc AND client_oc_reference IS NULL AND invoice_id IS NULL AND NOT in_payment_statement`,[company]);
+  return Number(row?.total??0);
 }
 
 export async function getFinancialService(actor:Actor,id:string){

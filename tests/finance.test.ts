@@ -52,8 +52,25 @@ test("tarifa vigente, valorización, reemisión, pagos y margen conservan saldos
     "SELECT action,previous_value,next_value FROM audit_events WHERE entity_type='service_valuation' AND action='update_reference'");
   assert.equal(correction.previous_value.client_order_reference,"OC-CLIENTE-1");
   assert.equal(correction.next_value.reason,"Referencia de proveedor ingresada por error");
+  await db.query(`INSERT INTO counterparty_profiles
+    (client_id,kind,legal_name,tax_id,business_activity,legal_address,locality,phone,general_email,
+     tax_status,legal_representative,invoice_email,payment_terms,requires_oc,created_by,updated_by)
+    VALUES ($1,'cliente','Cliente financiero','11111111-1','Servicios','Calle 1','Santiago',
+      '222222222','cliente@example.cl','afecto','Representante','facturas@example.cl','30',true,$2,$2)`,[client.id,owner.id]);
+  assert.equal(await finance.pendingClientOrders(owner,"rerchar"),1);
+  assert.equal(await finance.pendingClientOrders(owner,"e_y_j"),0);
+  assert.equal((await finance.listFinance(owner,"rerchar",true)).services[0].id,service.id);
+  assert.equal((await finance.getFinancialService(owner,service.id)).service.requires_client_oc,true);
+  await db.query(`INSERT INTO service_commercial_details(service_id,order_reference,updated_by)
+    VALUES($1,'OC-EN-SEGUIMIENTO',$2)`,[service.id,owner.id]);
+  assert.equal(await finance.pendingClientOrders(owner,"rerchar"),0,"la OC en seguimiento resuelve el aviso");
+  assert.equal((await finance.getFinancialService(owner,service.id)).service.client_oc_reference,"OC-EN-SEGUIMIENTO");
+  await db.query("UPDATE service_commercial_details SET order_reference=NULL WHERE service_id=$1",[service.id]);
+  assert.equal(await finance.pendingClientOrders(owner,"rerchar"),1);
   const firstInvoice=await finance.registerInvoice(owner,service.id,{invoice_number:"F-ANULADA",issued_on:"2026-09-24",due_on:"2026-10-01",total_clp:"50000"});
+  assert.equal(await finance.pendingClientOrders(owner,"rerchar"),0,"una factura activa cierra el pendiente de prefacturación");
   await finance.voidInvoice(owner,firstInvoice,"Error de folio externo");
+  assert.equal(await finance.pendingClientOrders(owner,"rerchar"),1,"al anular la factura reaparece la OC pendiente");
   const activeInvoice=await finance.registerInvoice(owner,service.id,{invoice_number:"F-001",issued_on:"2026-09-24",due_on:"2026-10-01",total_clp:"50000"});
   const payment={submission_key:randomUUID(),amount_clp:"20000",paid_on:"2026-09-24",method:"transferencia",reference:"Transferencia A"};
   const paymentId=await finance.registerPayment(owner,activeInvoice,payment);
