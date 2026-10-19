@@ -69,6 +69,7 @@ test("certificado PDF/QR conserva versión, permisos y revocación de ficha obse
   await db.query("UPDATE clients SET name='Cliente corregido' WHERE id=$1",[client.id]);
   await assert.rejects(()=>certificates.issueCertificate(owner,service.id,"EMITIR"),/El servicio cambió/);
   await certificates.saveCertificateDraft(owner,service.id);
+  await db.query("UPDATE service_certificate_drafts SET snapshot=snapshot-'document_type' WHERE service_id=$1",[service.id]);
   const first=await certificates.issueCertificate(owner,service.id,"EMITIR");
   assert.equal((await certificates.listCertificateDrafts(owner)).length,0);
   assert.equal((await certificates.listCertificatePreparation(owner)).length,0);

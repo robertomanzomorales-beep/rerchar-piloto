@@ -182,8 +182,10 @@ export async function issueCertificate(actor:Actor,serviceId:string,confirmation
       "SELECT snapshot FROM service_certificate_drafts WHERE service_id=$1 FOR UPDATE",[serviceId]);
     if(!draft)reject("Primero guarde y revise el borrador del certificado.");
     const snapshot=await certificateSnapshot(tx,serviceId,draft.snapshot.document_type??"servicio");
+    // Los borradores anteriores a la selección de tipo son certificados de servicio.
+    const savedSnapshot:CertificateSnapshot={document_type:"servicio",...draft.snapshot};
     const keys=Object.keys(snapshot) as (keyof CertificateSnapshot)[];
-    if(keys.length!==Object.keys(draft.snapshot).length||keys.some(key=>snapshot[key]!==draft.snapshot[key]))
+    if(keys.length!==Object.keys(savedSnapshot).length||keys.some(key=>snapshot[key]!==savedSnapshot[key]))
       reject("El servicio cambió desde que se preparó el borrador. Actualícelo antes de emitir.");
     const [last]=await tx.query<{version:number}>("SELECT version FROM service_certificates WHERE service_id=$1 ORDER BY version DESC LIMIT 1",[serviceId]);
     const version=(last?.version??0)+1;
