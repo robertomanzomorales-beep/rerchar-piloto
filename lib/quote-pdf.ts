@@ -12,6 +12,7 @@ export async function renderQuotePdf(quote:Quote,lines:QuoteLine[],warning="",ro
   const regular=await doc.embedFont(await readFile(resolve(process.cwd(),"public/fonts/montserrat-regular.ttf")),{subset:true});
   const bold=await doc.embedFont(await readFile(resolve(process.cwd(),"public/fonts/montserrat-bold.ttf")),{subset:true});
   const logo=quote.issuer==="rerchar"?await doc.embedPng(await readFile(resolve(process.cwd(),"public/rerchar-logo-transparente.png"))):null;
+  const certifications=quote.issuer==="rerchar"?await doc.embedPng(await readFile(resolve(process.cwd(),"public/rerchar-certificaciones-iso.png"))):null;
   const dark=rgb(0.12,0.18,0.16),green=rgb(0,0.45,0.32),gray=rgb(0.43,0.48,0.46),rule=rgb(0.82,0.87,0.84),pale=rgb(0.96,0.98,0.96);
   const safe=(s:unknown)=>[...normalizeQuoteText(s).replace(/\n/g," ").replace(/\u2011/g,"-")]
     .map(ch=>/[\u0020-\u024f\u2013\u2014\u2018\u2019\u201c\u201d\u2022\u2026]/.test(ch)?ch:"?").join("");
@@ -48,6 +49,7 @@ export async function renderQuotePdf(quote:Quote,lines:QuoteLine[],warning="",ro
     page.drawRectangle({x:0,y:830,width:595.28,height:12,color:green});
     if(logo)page.drawImage(logo,{x:45,y:755,width:175,height:61});
     else write("E Y J LIMITADA",45,785,17,bold,green);
+    if(certifications)page.drawImage(certifications,{x:234,y:767,width:103.5,height:36});
     write(issuer.name,45,736,9,bold);write(`RUT ${issuer.tax_id}`,45,721,8,regular,gray);
     write(continuation?"COTIZACIÓN · CONTINUACIÓN":"COTIZACIÓN COMERCIAL",350,791,10,bold,green);
     write(quoteFolio(quote),350,763,19,bold);
