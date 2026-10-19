@@ -17,6 +17,7 @@ Fuente: audio de 96 minutos «Reunion Jorge supervios rerchar.m4a». La transcri
 | 80:18 | Recursos compartidos → Combustible | Registrar lectura en la carga; el odómetro de la ficha se actualiza mediante el flujo existente. La lectura manual se conserva para registros ajenos al combustible. |
 | 84:00 | Recursos compartidos → Mantenimiento | Retirar neumático indicando bodega; consultar su unidad y disponibilidad en Inventario. No se suma un neumático identificado al stock genérico. |
 | 92:06 | Flota → ficha de camión/rampla | Adjuntar varios PDF con nombres originales y descargarlos desde la carpeta del vehículo; acceso sólo a operaciones. |
+| Seguimiento de guías | RERCHAR → Operación → Seguimiento guías valorizadas | En el servicio, registrar solicitud, fecha pactada y responsable de administración u operaciones. El panel muestra atrasadas, próximas a vencer y pendientes sin plazo; cada responsable puede filtrar sus pendientes. La fecha pactada debe cotejarse con el acuerdo de cada cliente. |
 
 ## Pendiente de validación o de alcance
 
@@ -25,4 +26,4 @@ Fuente: audio de 96 minutos «Reunion Jorge supervios rerchar.m4a». La transcri
 - API del proveedor de combustible: falta proveedor, especificación y autorización (80:22–80:53).
 - Una tercera empresa exportadora, citada por Renato y Eduardo al inicio (09:57–12:33): nombre legal no confirmado; DUS, BL, packing list y contratos constituyen un proceso adicional. El levantamiento documentado cubre RERCHAR y E y J. Se evalúa por separado antes de incorporarlo.
 
-Las migraciones `045`–`047` y `059` se aplican con `npm run db:migrate`; en Vercel el comando de compilación las ejecuta antes de publicar. Las pruebas locales de compras, guías, tolvas, mantenimiento, documentos y permisos forman parte de `npm test`. Ningún resultado local sustituye la revisión funcional de Jorge con datos reales y el cotejo del correlativo oficial.
+Las migraciones `045`–`047`, `059` y `060` se aplican con `npm run db:migrate`; en Vercel el comando de compilación las ejecuta antes de publicar. Las pruebas locales de compras, guías, tolvas, mantenimiento, documentos y permisos forman parte de `npm test`. Ningún resultado local sustituye la revisión funcional de Jorge con datos reales, fechas acordadas y el cotejo del correlativo oficial.

@@ -16,6 +16,7 @@ import {supplierTransferOverview} from "@/lib/supplier-transfers";
 import {moduleReady} from "@/lib/schema-readiness";
 import {pendingClientOrders} from "@/lib/finance";
 import {listCredentialAlerts} from "@/lib/personnel";
+import {guideFollowupOverview} from "@/lib/service-ledger";
 
 type ServiceMetrics = { total:string; requested:string; scheduled:string; in_route:string; pending_review:string; completed:string; critical:string };
 type QuoteMetrics = { total:string; draft:string; sent:string; accepted:string; expired:string; awaiting_order:string; awaiting_service:string };
@@ -59,9 +60,7 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
         AND ($2::text <> 'cliente' OR s.client_id=$3::uuid)
         AND ($2::text <> 'conductor' OR s.driver_id=$4::uuid)
       GROUP BY series.month ORDER BY series.month`,[selected,actor.role,actor.client_id,actor.id]),
-    canManage(actor) ? db.query<{total:string}>(`SELECT count(*)::text AS total FROM valued_guide_followups f
-      JOIN service_requests s ON s.id=f.service_id WHERE s.operating_company=$1 AND s.deleted_at IS NULL
-      AND f.requested_on IS NOT NULL AND f.received_on IS NULL`,[selected]) : Promise.resolve([]),
+    selected==="rerchar"&&canManage(actor) ? guideFollowupOverview(actor,today) : Promise.resolve(null),
     actor.role === "admin" ? supplierInvoiceOverview(actor,selected,today) : Promise.resolve(null),
     canManage(actor) ? db.query<{total:string}>("SELECT count(*)::text AS total FROM service_requests WHERE operating_company IS NULL AND deleted_at IS NULL") : Promise.resolve([]),
     selected==="rerchar"&&canManage(actor) ? rercharMaterialDashboard() : Promise.resolve(null),
@@ -115,7 +114,12 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
       {label:"Facturas anteriores por conciliar",count:Number(receivables.legacy),href:`/cobranzas?empresa=${selected}`}]:[]),
     ...(actor.role==="admin"?[{label:"Servicios valorizados sin factura individual · revisar EDP si corresponde",count:value(unbilledServices[0]?.total),href:`/finanzas?empresa=${selected}&facturacion=pendiente`}]:[]),
     ...(actor.role==="admin"?[{label:"Servicios cerrados con OC del cliente requerida y pendiente",count:clientOrdersPending,href:`/finanzas?empresa=${selected}&oc=pendiente`}]:[]),
-    ...(selected==="rerchar"&&canManage(actor)?[{label:"Guías valorizadas solicitadas y no recibidas",count:value(guideAlerts[0]?.total),href:`/seguimiento-guias?empresa=${selected}`}]:[]),
+    ...(selected==="rerchar"&&canManage(actor)?[
+      {label:"Guías valorizadas atrasadas a mi cargo",count:value(guideAlerts?.my_overdue),href:"/seguimiento-guias?estado=mias"},
+      {label:"Guías valorizadas atrasadas",count:value(guideAlerts?.overdue),href:"/seguimiento-guias?estado=atrasadas"},
+      {label:"Guías valorizadas que vencen en 7 días",count:value(guideAlerts?.upcoming),href:"/seguimiento-guias?estado=proximas"},
+      {label:"Guías valorizadas pendientes sin plazo",count:value(guideAlerts?.undated),href:"/seguimiento-guias?estado=sin_plazo"},
+    ]:[]),
     ...(selected==="rerchar"&&canManage(actor)?[{label:"Ventas de material con pesaje, factura o pago pendientes",count:value(materials?.guides.pending),href:"/control-guias"}]:[]),
     ...(selected==="rerchar"&&canManage(actor)&&receiptGuides?.ready?[{label:"Ingresos esperando guía valorizada",count:value(receiptGuides.pending),href:"/ingresos"}]:[]),
     ...(selected==="rerchar"&&canManage(actor)&&receiptClosure?.ready?[

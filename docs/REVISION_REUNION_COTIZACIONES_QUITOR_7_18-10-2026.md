@@ -26,7 +26,7 @@ Audio recibido: 76 min 23 s. Transcripción automática revisada por tramos. Las
 | 47:50–56:20 | Aceptar o rechazar y conservar autor, fecha y respaldo. | Cliente autenticado responde desde su cotización; auditoría de aceptación o rechazo. La alternativa de enlace directo en correo y confirmación automática por correo no está implementada. |
 | 57:15–61:55 | OC del cliente después de aceptar y antes de programar; guías, hoja de servicio, ticket, factura, pago y certificado. | Número/fecha y archivo de OC dentro de la cotización; servicios vinculados y sus documentos/facturación visibles por folio. El alta de una solicitud no está bloqueada por ausencia de OC, porque los contratos mensuales y excepciones requieren una regla más precisa. |
 | 62:00–72:55 | Lista de cotizaciones de un cliente con acceso directo a OC y expediente asociado; filtros generales. | Carpeta del cliente muestra OC, cantidad de servicios y documentos por fila; detalle de cotización agrupa documentos, ejecución, cobro y certificado. Filtros por empresa, cliente, preparador y rango de emisión. |
-| 73:20–74:40 | Consolidado mensual para EDP desde datos de guías, tickets, conductor y patente. | Los datos estructurados del servicio y exportaciones ya existen parcialmente. OCR de PDFs y formato de consolidado específico quedan pendientes de fuente y validación. |
+| 73:20–74:40 | Consolidado mensual para EDP desde datos de guías, tickets, conductor y patente. | El CSV del calendario E y J cruza servicios del cliente y período con cotización, OC, hoja de servicio, guías, SIDREP, tickets, conductor, patente, pesajes y valores registrados; marca campos sin respaldo. OCR de PDFs y formato exacto solicitado quedan pendientes de cotejar con su fuente. |
 
 ## Dependencias reales
 

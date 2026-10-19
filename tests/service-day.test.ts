@@ -38,8 +38,19 @@ test("parte diario conserva incompletos, resuelve alerta y sigue guía sin confu
   assert.equal((await day.listOpenDayAlerts(actor)).length,0);
   assert.equal((await day.listWeekResults(actor,"2026-10-12","2026-10-19")).length,2);
   assert.equal((await db.query("SELECT id FROM audit_events WHERE action='day_result' AND entity_id=$1",[service])).length,3);
+  await assert.rejects(()=>ledger.saveGuideFollowup(actor,service,{requested_on:"2026-10-13",due_on:"2026-10-12",
+    responsible_user_id:actor.id}),/plazo no puede anteceder/);
+  await assert.rejects(()=>ledger.saveGuideFollowup(actor,service,{requested_on:"2026-10-13",due_on:"2026-10-16",
+    responsible_user_id:driver.id}),/responsable activo/);
+  await ledger.saveGuideFollowup(actor,service,{requested_on:"2026-10-13",due_on:"2026-10-16",
+    responsible_user_id:actor.id,dispatch_guide_status:"enviada"});
+  assert.equal((await ledger.guideFollowupOverview(actor,"2026-10-17")).my_overdue,"1");
+  assert.equal((await ledger.listGuideFollowups(actor,"rerchar","atrasadas","2026-10-17")).length,1);
+  assert.equal((await ledger.listGuideFollowups(actor,"rerchar","proximas","2026-10-15")).length,1);
   await assert.rejects(()=>ledger.saveGuideFollowup(actor,service,{dispatch_guide_status:"enviada",requested_on:"2026-10-13",received_on:"2026-10-15",documents_sent_on:"2026-10-14",notes:""}),/anteceder/);
-  await ledger.saveGuideFollowup(actor,service,{dispatch_guide_status:"enviada",requested_on:"2026-10-13",received_on:"2026-10-15",documents_sent_on:"2026-10-16",notes:"Documentos completos"});
+  await ledger.saveGuideFollowup(actor,service,{dispatch_guide_status:"enviada",requested_on:"2026-10-13",due_on:"2026-10-16",
+    responsible_user_id:actor.id,received_on:"2026-10-15",documents_sent_on:"2026-10-16",notes:"Documentos completos"});
+  assert.equal((await ledger.guideFollowupOverview(actor,"2026-10-17")).overdue,"0");
   const followup=(await ledger.listGuideFollowups(actor,"rerchar"))[0];
   assert.equal(followup.dispatch_guide_status,"enviada");
   assert.equal(new Date(followup.service_day).toISOString().slice(0,10),"2026-10-13");
