@@ -13,7 +13,7 @@ test("solicitud, permisos, planificación, checklist, evidencia y cierre", async
   try {
     const { db, transaction } = await import("../lib/db");
     const { createClient, createSite, createAsset, createService, assignService, cancelService, reportFleetIncident, resolveFleetIncident, listFleet, reportServices, normalizeReportFilters, saveChecklist, startService, addEvidence, handoffService, finishService, getService, listServices, listAgenda, PilotError } = await import("../lib/pilot");
-    for (const migration of ["001_piloto.sql", "002_flota_y_despacho.sql", "003_abastecimiento.sql", "004_mantenimiento_combustible.sql", "005_contenedores.sql", "006_acreditacion.sql", "007_finanzas.sql", "008_trazabilidad_ambiental.sql", "009_certificados.sql", "010_evidencia_persistente.sql", "011_operacion_real_2026.sql", "018_empresa_operadora.sql", "022_entrega_conductor.sql","023_conductores_terceros.sql","027_solicitudes_arriendo.sql","033_checklist_a_mantenimiento.sql","035_ficha_flota.sql","036_programacion_semanal.sql"]) {
+    for (const migration of ["001_piloto.sql", "002_flota_y_despacho.sql", "003_abastecimiento.sql", "004_mantenimiento_combustible.sql", "005_contenedores.sql", "006_acreditacion.sql", "007_finanzas.sql", "008_trazabilidad_ambiental.sql", "009_certificados.sql", "010_evidencia_persistente.sql", "011_operacion_real_2026.sql", "018_empresa_operadora.sql", "022_entrega_conductor.sql","023_conductores_terceros.sql","027_solicitudes_arriendo.sql","033_checklist_a_mantenimiento.sql","035_ficha_flota.sql","036_programacion_semanal.sql","058_evidencia_area_checklist.sql"]) {
       const sql = await readFile(resolve(process.cwd(), `db/${migration}`), "utf8");
       await transaction(async (tx) => {
         for (const statement of sql.split(/;\s*(?:\n|$)/).map((text) => text.trim()).filter(Boolean)) await tx.query(statement);
@@ -83,6 +83,15 @@ test("solicitud, permisos, planificación, checklist, evidencia y cierre", async
     assert.equal((await listFleet(planner)).assets.find((a) => a.id === asset.id)?.available, true);
     await startService(operator, id);
     await assert.rejects(() => finishService(operator, id, { gross_kg: 1400, tare_kg: 800 }), PilotError);
+    const areaJpg=()=>new File([new Uint8Array([0xff,0xd8,0xff,0xd9])],"faena.jpg",{type:"image/jpeg"});
+    const pdf=new File(["%PDF-1.4\n"],"area.pdf",{type:"application/pdf"});
+    await assert.rejects(()=>addEvidence(operator,id,"Foto del área",pdf,"foto_area"),PilotError);
+    const areaId=await addEvidence(operator,id,"",areaJpg(),"foto_area");
+    const checklistFileId=await addEvidence(operator,id,"",areaJpg(),"checklist");
+    const tagged=await db.query<{id:string;document_kind:string;description:string;created_by:string;created_at:Date}>(
+      "SELECT id,document_kind,description,created_by,created_at FROM service_evidence WHERE id=ANY($1::uuid[])",[[areaId,checklistFileId]]);
+    assert.deepEqual(new Set(tagged.map(row=>row.document_kind)),new Set(["foto_area","checklist"]));
+    assert.ok(tagged.every(row=>row.created_by===operator.id&&row.created_at));
     await assert.rejects(() => addEvidence(outsider, id, "Imagen del pesaje", new File([new Uint8Array([0xff, 0xd8, 0xff, 0xd9])], "prueba.jpg", { type: "image/jpeg" })), PilotError);
     await addEvidence(operator, id, "Imagen del pesaje", new File([new Uint8Array([0xff, 0xd8, 0xff, 0xd9])], "prueba.jpg", { type: "image/jpeg" }));
     await assert.rejects(() => finishService(operator, id, { gross_kg: 700, tare_kg: 800 }), PilotError);
@@ -100,7 +109,7 @@ test("solicitud, permisos, planificación, checklist, evidencia y cierre", async
     assert.equal((await reportServices(planner, normalizeReportFilters({ client_id: b.id }))).length, 0);
     assert.equal(normalizeReportFilters({ from: "2026-02-31" }).from, "");
     const [count] = await db.query<{ total: string }>("SELECT count(*)::text AS total FROM service_events WHERE service_id=$1", [id]);
-    assert.equal(Number(count.total), 7);
+    assert.equal(Number(count.total), 9);
     assert.equal((await db.query("SELECT id FROM service_requests WHERE submission_key=$1", [submissionKey])).length, 1);
 
     const purchase = await createService(planner,{...input,submission_key:randomUUID(),request_category:"compra",service_type:"compra",estimated_kg:""});

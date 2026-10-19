@@ -23,6 +23,7 @@ function localInput(value: Date | string | null) {
   return parts.replace(" ", "T");
 }
 const day=(value:Date|string|null)=>value instanceof Date?value.toISOString().slice(0,10):value?String(value).slice(0,10):"";
+const evidenceLabels:Record<string,string>={foto_area:"Foto del área de trabajo",foto_material:"Foto del material",checklist:"Checklist",ticket_pesaje:"Ticket de pesaje"};
 
 export default async function ServiceDetail({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ error?: string; ok?: string }> }) {
   const actor = await requireActor();
@@ -35,8 +36,9 @@ export default async function ServiceDetail({ params, searchParams }: { params: 
       `SELECT e.id,e.description,e.kind,e.created_at,u.name AS actor_name FROM service_events e
        LEFT JOIN users u ON u.id=e.actor_id WHERE e.service_id=$1 ORDER BY e.created_at DESC,e.id DESC`, [id],
     ),
-    db.query<{ id: string; description: string; document_kind:string;storage_key:string|null;original_filename: string | null; created_at: Date }>(
-      "SELECT id,description,document_kind,storage_key,original_filename,created_at FROM service_evidence WHERE service_id=$1 ORDER BY created_at DESC", [id],
+    db.query<{ id: string; description: string; document_kind:string;storage_key:string|null;original_filename: string | null; created_at: Date;actor_name:string }>(
+      `SELECT e.id,e.description,e.document_kind,e.storage_key,e.original_filename,e.created_at,u.name AS actor_name
+       FROM service_evidence e JOIN users u ON u.id=e.created_by WHERE e.service_id=$1 ORDER BY e.created_at DESC`, [id],
     ),
     db.query<{ vehicle_ok: boolean; documents_ok: boolean; containment_ok: boolean; ppe_ok: boolean; comment: string | null; completed_at: Date }>(
       "SELECT vehicle_ok,documents_ok,containment_ok,ppe_ok,comment,completed_at FROM service_checklists WHERE service_id=$1", [id],
@@ -154,7 +156,7 @@ export default async function ServiceDetail({ params, searchParams }: { params: 
       </div>
       <aside className="detail-side">
         <section className="section-card side-card"><div className="eyebrow">ESTADO DEL SERVICIO</div><div className="progress-list">{(rental?["solicitada","programada","completada"]:purchase?["solicitada","programada","en_ruta","pendiente_revision","completada"]:["solicitada", "programada", "en_ruta", "completada"]).map((state, index, all) => <div className={`progress-step ${all.indexOf(service.status) >= index ? "done" : ""}`} key={state}><span className="progress-number">{index + 1}</span><span>{state === "en_ruta" ? "En ruta" : state === "pendiente_revision"?"Revisión administrativa":state.charAt(0).toUpperCase() + state.slice(1)}</span></div>)}</div></section>
-        <section className="section-card side-card"><div className="section-heading"><div><div className="eyebrow">ARCHIVOS</div><h2>Documentos y evidencias</h2></div><span className="count-pill">{evidence.length}</span></div>{evidence.length ? <ul className="evidence-list">{evidence.map((item) => <li key={item.id}><FileText size={17}/><div><strong>{item.description}</strong>{item.original_filename && <Link href={`/api/evidencia/${item.id}`}>{item.original_filename}</Link>}<small>{item.document_kind.replaceAll("_"," ")} · {chileDate(item.created_at)}</small></div></li>)}</ul> : <p className="muted">Sin archivos adjuntos.</p>}</section>
+        <section className="section-card side-card"><div className="section-heading"><div><div className="eyebrow">ARCHIVOS</div><h2>Documentos y evidencias</h2></div><span className="count-pill">{evidence.length}</span></div>{evidence.length ? <ul className="evidence-list">{evidence.map((item) => <li key={item.id}><FileText size={17}/><div><strong>{item.description}</strong>{item.original_filename && <Link href={`/api/evidencia/${item.id}`}>{item.original_filename}</Link>}<small>{evidenceLabels[item.document_kind]??item.document_kind.replaceAll("_"," ")} · {chileDate(item.created_at)} · {item.actor_name}</small></div></li>)}</ul> : <p className="muted">Sin archivos adjuntos.</p>}</section>
         {containerMoves.length>0&&<section className="section-card side-card"><div className="eyebrow">CONTENEDORES</div><h2>Movimientos asociados</h2><ol className="timeline">{containerMoves.map((move)=><li key={move.id}><span className="timeline-marker"/><strong>{move.code} · {move.kind.replaceAll("_"," ")}</strong><small>{move.previous_location?`${move.previous_location} → `:""}{move.next_location} · {chileDate(move.created_at)}</small></li>)}</ol></section>}
         <section className="section-card side-card"><div className="eyebrow">TRAZABILIDAD</div><h2>Historial</h2><ol className="timeline">{timeline.map((item) => <li key={item.id}><span className="timeline-marker"/><strong>{item.description}</strong><small>{item.actor_name ?? "Sistema"} · {chileDate(item.created_at)}</small></li>)}</ol></section>
         <Link className="back-link" href="/solicitudes"><ArrowLeft size={16}/> Volver a solicitudes</Link>

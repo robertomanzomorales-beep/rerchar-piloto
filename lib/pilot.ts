@@ -634,14 +634,16 @@ function detectMime(bytes: Buffer) {
 }
 
 export async function addEvidence(actor: Actor, id: string, description: string, file: File, documentKind="evidencia") {
-  const documentKindSafe=z.enum(["evidencia","guia_traslado","guia_valorizada","hoja_servicio","ticket_pesaje","foto_material","factura","certificado","resumen_retiros","otro"]).parse(documentKind);
-  if(actor.role==="conductor"&&!(["evidencia","guia_traslado","hoja_servicio","ticket_pesaje","foto_material"] as string[]).includes(documentKindSafe))
+  const documentKindSafe=z.enum(["evidencia","guia_traslado","guia_valorizada","hoja_servicio","ticket_pesaje","foto_material","foto_area","checklist","factura","certificado","resumen_retiros","otro"]).parse(documentKind);
+  if(actor.role==="conductor"&&!(["evidencia","guia_traslado","hoja_servicio","ticket_pesaje","foto_material","foto_area","checklist"] as string[]).includes(documentKindSafe))
     reject("El conductor sólo puede cargar documentos y fotografías de su operación.");
-  const descriptionSafe=z.string().trim().max(500).parse(description) || ({guia_traslado:"Guía de Traslado",hoja_servicio:"Hoja de Servicio",ticket_pesaje:"Ticket de pesaje",foto_material:"Fotografía del material"} as Record<string,string>)[documentKindSafe] || "Respaldo del servicio";
+  const descriptionSafe=z.string().trim().max(500).parse(description) || ({guia_traslado:"Guía de Traslado",hoja_servicio:"Hoja de Servicio",ticket_pesaje:"Ticket de pesaje",foto_material:"Fotografía del material",foto_area:"Fotografía del área de trabajo",checklist:"Checklist de faena"} as Record<string,string>)[documentKindSafe] || "Respaldo del servicio";
   const maxMb=process.env.VERCEL?4:5;
   if (!file || file.size < 1 || file.size > maxMb * 1024 * 1024) reject(`El archivo debe pesar entre 1 byte y ${maxMb} MB.`);
   const bytes = Buffer.from(await file.arrayBuffer());
   const kind = detectMime(bytes);
+  if(documentKindSafe==="foto_area"&&!kind.mime.startsWith("image/"))
+    reject("La foto del área debe ser JPG, PNG o WebP.");
   const service = await getService(actor, id);
   if(service.operating_company==="e_y_j"&&documentKindSafe==="guia_valorizada")
     reject("E y J no utiliza guías valorizadas. Adjunte la guía de despacho u otro respaldo del servicio.");
