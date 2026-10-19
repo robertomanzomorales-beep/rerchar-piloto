@@ -7,6 +7,7 @@ import {GET as paymentStatementPdf} from "@/lib/api-downloads/payment-statement-
 import {GET as evidence} from "@/lib/api-downloads/evidence";
 import {GET as counterpartyDocument} from "@/lib/api-downloads/counterparty-document";
 import {GET as assetDocument} from "@/lib/api-downloads/asset-document";
+import {GET as containerPhoto} from "@/lib/api-downloads/container-photo";
 import {GET as transferProof} from "@/lib/api-downloads/transfer-proof";
 import {GET as edpConsolidated} from "@/lib/api-downloads/edp-consolidated";
 import {GET as receivablesExport} from "@/lib/api-downloads/receivables-export";
@@ -31,6 +32,7 @@ const routes:{path:string[];handler:DownloadHandler}[]=[
   {path:["evidencia",":id"],handler:evidence},
   {path:["fichas","documentos",":id"],handler:counterpartyDocument},
   {path:["flota-documentos",":id"],handler:assetDocument},
+  {path:["contenedores","movimientos",":id","foto"],handler:containerPhoto},
   {path:["transferencias",":id","comprobante"],handler:transferProof},
   {path:["cobranzas","exportar"],handler:receivablesExport},
   {path:["cotizaciones","exportar"],handler:quotesExport},

@@ -9,8 +9,8 @@ test("tolva conserva una sola ubicación, historial, servicio y alerta de perman
   process.env.PGLITE_DATA_DIR="memory://";
   const {db,transaction}=await import("../lib/db");
   const {createService}=await import("../lib/pilot");
-  const {createContainer,moveContainer,listContainers,recordContainerService,ContainerError}=await import("../lib/containers");
-  for (const name of ["001_piloto.sql","002_flota_y_despacho.sql","003_abastecimiento.sql","004_mantenimiento_combustible.sql","005_contenedores.sql","006_acreditacion.sql","007_finanzas.sql","008_trazabilidad_ambiental.sql","009_certificados.sql","010_evidencia_persistente.sql","011_operacion_real_2026.sql","018_empresa_operadora.sql","023_conductores_terceros.sql","027_solicitudes_arriendo.sql"]) {
+  const {createContainer,moveContainer,listContainers,recordContainerService,getContainerMovementPhoto,ContainerError}=await import("../lib/containers");
+  for (const name of ["001_piloto.sql","002_flota_y_despacho.sql","003_abastecimiento.sql","004_mantenimiento_combustible.sql","005_contenedores.sql","006_acreditacion.sql","007_finanzas.sql","008_trazabilidad_ambiental.sql","009_certificados.sql","010_evidencia_persistente.sql","011_operacion_real_2026.sql","018_empresa_operadora.sql","023_conductores_terceros.sql","027_solicitudes_arriendo.sql","059_foto_instalacion_tolva.sql"]) {
     const sql=await readFile(resolve(process.cwd(),`db/${name}`),"utf8");
     await transaction(async tx=>{for(const part of sql.split(/;\s*(?:\n|$)/).map(s=>s.trim()).filter(Boolean)) await tx.query(part);});
   }
@@ -26,7 +26,16 @@ test("tolva conserva una sola ubicación, historial, servicio y alerta de perman
   const serviceA=await createService(owner,serviceInput);
   const serviceB=await createService(owner,{...serviceInput,submission_key:randomUUID(),client_id:clientB.id,site_id:siteB.id});
   const id=await createContainer(owner,{code:"TOL-01",kind:"tolva",capacity_m3:12,location_name:"Patio principal",max_stay_days:14});
-  await moveContainer(owner,id,{action:"instalar",site_id:siteA.id,service_id:serviceA,location_name:"",waste_type:"Chatarra",note:"Instalación en cliente A"});
+  const photoBytes=Buffer.from([137,80,78,71,13,10,26,10,1,2,3]);
+  const photo=new File([photoBytes],"tolva-instalada.png",{type:"image/png"});
+  await assert.rejects(()=>moveContainer(owner,id,{action:"instalar",site_id:siteA.id,service_id:serviceA,location_name:"",waste_type:"Chatarra",note:"Foto inválida"},
+    new File([Buffer.from("texto")],"falsa.png",{type:"image/png"})),ContainerError);
+  await moveContainer(owner,id,{action:"instalar",site_id:siteA.id,service_id:serviceA,location_name:"",waste_type:"Chatarra",note:"Instalación en cliente A"},photo);
+  const installedMovement=(await listContainers(owner)).movements[0];
+  assert.equal(installedMovement.photo_filename,"tolva-instalada.png");
+  const stored=await getContainerMovementPhoto(owner,installedMovement.id);
+  assert.deepEqual(Buffer.from(stored?.content??[]),photoBytes);
+  await assert.rejects(()=>getContainerMovementPhoto(outsider,installedMovement.id),ContainerError);
   await assert.rejects(()=>moveContainer(owner,id,{action:"instalar",site_id:siteB.id,service_id:"",location_name:"",waste_type:"Chatarra",note:"Doble ubicación no permitida"}),ContainerError);
   await assert.rejects(()=>moveContainer(owner,id,{action:"reubicar",site_id:siteB.id,service_id:serviceA,location_name:"",waste_type:"Metal",note:"Servicio incorrecto"}),ContainerError);
   assert.equal((await listContainers(owner)).containers[0].site_id,siteA.id,"la transición rechazada se revierte");
@@ -36,6 +45,7 @@ test("tolva conserva una sola ubicación, historial, servicio y alerta de perman
   assert.equal(installed.site_id,siteB.id);
   assert.ok(installed.stay_days>=19);
   assert.ok(installed.stay_days>=installed.max_stay_days);
+  await assert.rejects(()=>moveContainer(owner,id,{action:"retirar",site_id:"",service_id:serviceB,location_name:"Patio",waste_type:"",note:"Foto en retiro"},photo),ContainerError);
   await moveContainer(owner,id,{action:"retirar",site_id:"",service_id:serviceB,location_name:"Patio principal",waste_type:"",note:"Tolva retirada de faena B"});
   await assert.rejects(()=>moveContainer(owner,id,{action:"retirar",site_id:"",service_id:"",location_name:"Patio",waste_type:"",note:"Segundo retiro inválido"}),ContainerError);
   await moveContainer(owner,id,{action:"traslado",site_id:"",service_id:"",location_name:"Camión 1",waste_type:"",note:"Traslado interno en ruta"});

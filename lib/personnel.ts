@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { Actor } from "./auth";
 import { canManage } from "./auth";
 import { db,transaction,type Db } from "./db";
+import type {Company} from "./companies";
 
 const uuid=z.uuid();
 const optionalId=z.union([uuid,z.literal("")]).default("");
@@ -55,6 +56,48 @@ export type Requirement={id:string;client_id:string;site_id:string|null;client_n
 export type Credential={id:string;user_id:string;requirement_id:string;worker_name:string;requirement_name:string;client_name:string;site_name:string|null;
   reference:string;issued_on:Date|string;expires_on:Date|string;state:string;reviewed_by_name:string|null;review_note:string|null;created_at:Date};
 export type ExternalCredential=Omit<Credential,"user_id"> & {external_driver_id:string};
+
+export type CredentialAlert={id:string;source:"interno"|"tercero";worker_name:string;
+  client_name:string;site_name:string|null;requirement_name:string;expires_on:Date|string;
+  warning_days:number;days_left:number};
+
+// Se toma la credencial verificada de mayor vigencia por conductor y requisito.
+// Una renovación deja de alertar por su documento anterior.
+export async function listCredentialAlerts(actor:Actor,company?:Company){
+  guard(actor);
+  return db.query<CredentialAlert>(`WITH valid_documents AS (
+    SELECT c.id,'interno'::text AS source,c.user_id AS worker_id,c.requirement_id,
+      c.issued_on,c.expires_on,c.created_at,u.name AS worker_name
+    FROM worker_credentials c JOIN users u ON u.id=c.user_id
+    WHERE c.state='verificada' AND u.active=true AND u.role='conductor'
+    UNION ALL
+    SELECT c.id,'tercero'::text,c.external_driver_id,c.requirement_id,
+      c.issued_on,c.expires_on,c.created_at,e.name
+    FROM external_driver_credentials c JOIN external_drivers e ON e.id=c.external_driver_id
+    WHERE c.state='verificada' AND e.active=true
+  ), latest AS (
+    SELECT d.*,row_number() OVER (PARTITION BY source,worker_id,requirement_id
+      ORDER BY expires_on DESC,created_at DESC,id DESC) AS position FROM valid_documents d
+  )
+  SELECT l.id,l.source,l.worker_name,r.name AS requirement_name,c.name AS client_name,
+    cs.name AS site_name,l.expires_on,r.warning_days,
+    (l.expires_on-(now() AT TIME ZONE 'America/Santiago')::date)::int AS days_left
+  FROM latest l JOIN site_requirements r ON r.id=l.requirement_id
+  JOIN clients c ON c.id=r.client_id LEFT JOIN client_sites cs ON cs.id=r.site_id
+  LEFT JOIN worker_profiles p ON p.user_id=l.worker_id AND l.source='interno'
+  WHERE l.position=1 AND r.active=true
+    AND l.issued_on<=(now() AT TIME ZONE 'America/Santiago')::date
+    AND l.expires_on<=(now() AT TIME ZONE 'America/Santiago')::date+r.warning_days
+    AND ($1::text='' OR
+      (l.source='interno' AND p.employer=$1) OR
+      EXISTS (SELECT 1 FROM service_requests s
+        WHERE s.operating_company=$1 AND s.deleted_at IS NULL
+          AND s.status IN ('solicitada','programada','en_ruta','pendiente_revision')
+          AND s.client_id=r.client_id AND (r.site_id IS NULL OR s.site_id=r.site_id)
+          AND (l.source='interno' AND s.driver_id=l.worker_id
+            OR l.source='tercero' AND s.external_driver_id=l.worker_id)))
+  ORDER BY days_left,l.worker_name,r.name`,[company??""]);
+}
 
 export async function listPersonnel(actor:Actor) {
   guard(actor);

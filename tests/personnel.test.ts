@@ -35,9 +35,18 @@ test("despacho exige acreditación verificada y vigente para la faena configurad
   await pilot.assignService(owner,service,plan);
   await pilot.saveChecklist(owner,service,{vehicle_ok:true,documents_ok:true,containment_ok:true,ppe_ok:true,comment:"Verificado"});
   await db.query("UPDATE worker_credentials SET expires_on=(now() AT TIME ZONE 'America/Santiago')::date-1 WHERE id=$1",[credential]);
+  let alerts=await personnel.listCredentialAlerts(owner,"rerchar");
+  assert.equal(alerts.length,1);
+  assert.equal(alerts[0].days_left,-1);
+  assert.equal((await personnel.listCredentialAlerts(owner,"e_y_j")).length,0);
   await assert.rejects(()=>pilot.startService(owner,service),pilot.PilotError,"una acreditación vencida después de programar bloquea la salida");
   const renewal=await personnel.recordCredential(owner,{user_id:driver.id,requirement_id:req,reference:"Licencia renovada",issued_on:"2026-09-24",expires_on:"2027-09-24"});
   await personnel.reviewCredential(owner,renewal,"verificada","");
+  assert.equal((await personnel.listCredentialAlerts(owner,"rerchar")).length,0,"la renovación vigente oculta la anterior");
+  await db.query("UPDATE worker_credentials SET expires_on=(now() AT TIME ZONE 'America/Santiago')::date+20 WHERE id=$1",[renewal]);
+  alerts=await personnel.listCredentialAlerts(owner,"rerchar");
+  assert.equal(alerts.length,1);
+  assert.equal(alerts[0].days_left,20,"el plazo de aviso configurado se refleja en el panel");
   await pilot.startService(owner,service);
   assert.equal((await pilot.getService(owner,service)).status,"en_ruta");
   await personnel.reviewCredential(owner,renewal,"revocada","Antecedente observado");

@@ -28,7 +28,8 @@ export async function createContainerAction(form:FormData) {
 export async function moveContainerAction(form:FormData) {
   const actor=await requireActor();
   await run(()=>moveContainer(actor,value(form,"container_id"),{action:value(form,"action"),site_id:value(form,"site_id"),
-    service_id:value(form,"service_id"),location_name:value(form,"location_name"),waste_type:value(form,"waste_type"),note:value(form,"note")}));
+    service_id:value(form,"service_id"),location_name:value(form,"location_name"),waste_type:value(form,"waste_type"),note:value(form,"note")},
+    form.get("installation_photo") instanceof File?form.get("installation_photo") as File:null));
 }
 export async function recordContainerServiceAction(form:FormData){
   const actor=await requireActor();

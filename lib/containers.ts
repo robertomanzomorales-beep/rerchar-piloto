@@ -16,7 +16,7 @@ export type ContainerRow={ id:string;code:string;kind:string;capacity_m3:string;
   max_stay_days:number;stay_days:number;created_at:Date };
 export type ContainerMovement={id:string;container_id:string;code:string;kind:string;previous_status:string|null;previous_location:string|null;
   previous_waste_type:string|null;next_status:string;next_location:string;next_waste_type:string|null;service_id:string|null;service_folio:string|null;service_company:Company|null;
-  note:string;actor_name:string;created_at:Date};
+  note:string;actor_name:string;created_at:Date;photo_id:string|null;photo_filename:string|null};
 export type ContainerServiceRecord={id:string;container_id:string;code:string;kind:string;record_date:Date|string;kilometers:string|null;description:string;cost_clp:string|null;service_id:string|null;service_folio:string|null;actor_name:string};
 
 export async function listContainers(actor:Actor) {
@@ -30,8 +30,10 @@ export async function listContainers(actor:Actor) {
       WHERE cs.deleted_at IS NULL AND c.deleted_at IS NULL ORDER BY c.name,cs.name`),
     db.query<{id:string;folio:string;operating_company:Company|null;site_id:string;client_id:string}>(`SELECT id,folio,operating_company,site_id,client_id FROM service_requests
       WHERE deleted_at IS NULL AND status IN ('solicitada','programada','en_ruta','pendiente_revision','completada') ORDER BY created_at DESC LIMIT 150`),
-    db.query<ContainerMovement>(`SELECT m.*,c.code,s.folio AS service_folio,s.operating_company AS service_company,u.name AS actor_name FROM container_movements m
+    db.query<ContainerMovement>(`SELECT m.*,c.code,s.folio AS service_folio,s.operating_company AS service_company,
+      u.name AS actor_name,p.movement_id AS photo_id,p.filename AS photo_filename FROM container_movements m
       JOIN containers c ON c.id=m.container_id LEFT JOIN service_requests s ON s.id=m.service_id JOIN users u ON u.id=m.actor_id
+      LEFT JOIN container_movement_photos p ON p.movement_id=m.id
       ORDER BY m.created_at DESC,m.id DESC LIMIT 250`),
     db.query<ContainerServiceRecord>(`SELECT r.*,c.code,s.folio AS service_folio,u.name AS actor_name FROM container_service_records r
       JOIN containers c ON c.id=r.container_id LEFT JOIN service_requests s ON s.id=r.service_id JOIN users u ON u.id=r.recorded_by
@@ -95,12 +97,28 @@ export async function createContainer(actor:Actor,input:unknown) {
   });
 }
 
-export async function moveContainer(actor:Actor,containerId:string,input:unknown) {
+function imageMime(bytes:Buffer){
+  if(bytes.subarray(0,3).equals(Buffer.from([255,216,255])))return "image/jpeg";
+  if(bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])))return "image/png";
+  if(bytes.subarray(0,4).toString()==="RIFF"&&bytes.subarray(8,12).toString()==="WEBP")return "image/webp";
+  reject("La foto debe ser JPG, PNG o WebP válido.");
+}
+
+export async function moveContainer(actor:Actor,containerId:string,input:unknown,file?:File|null) {
   guard(actor);
   const id=uuid.parse(containerId);
   const data=z.object({action:z.enum(["instalar","retirar","reubicar","traslado","fuera_servicio","reactivar"]),
     site_id:optionalId,service_id:optionalId,location_name:optional(180),waste_type:optional(120),
     note:z.string().trim().min(5).max(500)}).parse(input);
+  let photo:{content:Buffer;mime:string;filename:string}|null=null;
+  if(file&&file.size>0){
+    if(!["instalar","reubicar"].includes(data.action))reject("La foto de instalación sólo corresponde a instalar o reubicar.");
+    if(file.size>4*1024*1024)reject("La foto debe pesar hasta 4 MB.");
+    const content=Buffer.from(await file.arrayBuffer());
+    const mime=imageMime(content);
+    const filename=(file.name||"instalacion.jpg").replace(/[\x00-\x1f\\/]/g,"_").slice(0,160);
+    photo={content,mime,filename};
+  }
   await transaction(async(tx)=>{
     const [current]=await tx.query<{status:string;site_id:string|null;client_id:string|null;location_name:string;waste_type:string|null}>(
       "SELECT status,site_id,client_id,location_name,waste_type FROM containers WHERE id=$1 FOR UPDATE",[id]);
@@ -149,7 +167,20 @@ export async function moveContainer(actor:Actor,containerId:string,input:unknown
       (container_id,kind,previous_status,previous_location,previous_waste_type,next_status,next_location,next_waste_type,service_id,note,actor_id)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NULLIF($9,'')::uuid,$10,$11) RETURNING id`,
       [id,eventKind,current.status,current.location_name,current.waste_type,nextStatus,nextLocation,nextWaste,data.service_id,data.note,actor.id]);
+    if(photo){
+      await tx.query(`INSERT INTO container_movement_photos(movement_id,filename,mime,file_content,uploaded_by)
+        VALUES ($1,$2,$3,$4,$5)`,[movement.id,photo.filename,photo.mime,photo.content,actor.id]);
+    }
     await tx.query("INSERT INTO audit_events (actor_id,action,entity_type,entity_id,previous_value,next_value) VALUES ($1,$2,'container',$3,$4,$5)",
-      [actor.id,eventKind,id,JSON.stringify(current),JSON.stringify({status:nextStatus,client_id:clientId,site_id:siteId,location_name:nextLocation,waste_type:nextWaste,movement_id:movement.id})]);
+      [actor.id,eventKind,id,JSON.stringify(current),JSON.stringify({status:nextStatus,client_id:clientId,site_id:siteId,location_name:nextLocation,waste_type:nextWaste,movement_id:movement.id,photo:photo?.filename??null})]);
   });
+}
+
+export async function getContainerMovementPhoto(actor:Actor,movementId:string){
+  guard(actor);
+  if(!uuid.safeParse(movementId).success)reject("Movimiento inválido.");
+  const [row]=await db.query<{filename:string;mime:string;file_content:Uint8Array}>(`
+    SELECT p.filename,p.mime,p.file_content FROM container_movement_photos p
+    JOIN container_movements m ON m.id=p.movement_id WHERE m.id=$1`,[movementId]);
+  return row?{filename:row.filename,mime:row.mime,content:row.file_content}:null;
 }

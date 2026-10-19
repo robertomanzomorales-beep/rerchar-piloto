@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { ShieldCheck, UserRound, CalendarClock, MapPin } from "lucide-react";
 import { canManage, requireActor } from "@/lib/auth";
-import { listPersonnel } from "@/lib/personnel";
+import { listCredentialAlerts,listPersonnel } from "@/lib/personnel";
 import { createExternalDriverAction, createRequirementAction, disableRequirementAction, recordCredentialAction, recordExternalCredentialAction, reviewCredentialAction, reviewExternalCredentialAction, saveWorkerProfileAction } from "@/app/personnel-actions";
 import { Notice, chileDate } from "@/components/UI";
 import { SubmitButton } from "@/components/Transition";
@@ -11,11 +11,12 @@ const formatDay=(value:Date|string)=>chileDate(`${iso(value)}T12:00:00Z`,false);
 export default async function Personnel({searchParams}:{searchParams:Promise<{error?:string;ok?:string}>}) {
   const actor=await requireActor();
   if(!canManage(actor)) redirect("/");
-  const [{workers,clients,sites,requirements,credentials,externalDrivers,externalCredentials},query]=await Promise.all([listPersonnel(actor),searchParams]);
+  const [{workers,clients,sites,requirements,credentials,externalDrivers,externalCredentials},expiryAlerts,query]=await Promise.all([listPersonnel(actor),listCredentialAlerts(actor),searchParams]);
   const today=new Intl.DateTimeFormat("sv-SE",{timeZone:"America/Santiago",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
   const activeDrivers=workers.filter((worker)=>worker.role==="conductor");
   const pending=[...credentials,...externalCredentials].filter((credential)=>credential.state==="pendiente").length;
-  const expired=[...credentials,...externalCredentials].filter((credential)=>credential.state==="verificada"&&iso(credential.expires_on)<today).length;
+  const expired=expiryAlerts.filter((credential)=>credential.days_left<0).length;
+  const upcoming=expiryAlerts.length-expired;
   const coverage=sites.flatMap((site)=>{
     const required=requirements.filter((r)=>r.client_id===site.client_id && (!r.site_id || r.site_id===site.id));
     if(!required.length) return [];
@@ -29,7 +30,11 @@ export default async function Personnel({searchParams}:{searchParams:Promise<{er
   return <>
     <div className="page-title-row"><div><div className="eyebrow">HABILITACIÓN POR FAENA</div><h1>Personal y acreditaciones</h1><p className="page-intro">Registre requisitos, fechas de vigencia y verificaciones antes de asignar conductores.</p></div><span className="title-icon"><ShieldCheck size={23}/></span></div>
     <Notice error={query.error} ok={query.ok}/>
-    <div className="supply-summary"><div><strong>{activeDrivers.length} + {externalDrivers.length}</strong><span>Propios + terceros</span></div><div><strong>{pending}</strong><span>Documentos por revisar</span></div><div><strong>{expired}</strong><span>Verificados y vencidos</span></div><div><strong>{requirements.length}</strong><span>Requisitos por cliente o faena</span></div></div>
+    <div className="supply-summary"><div><strong>{activeDrivers.length} + {externalDrivers.length}</strong><span>Propios + terceros</span></div><div><strong>{pending}</strong><span>Documentos por revisar</span></div><div><strong>{expired}</strong><span>Acreditaciones vencidas</span></div><div><strong>{upcoming}</strong><span>Próximas a vencer</span></div></div>
+    <section className="section-card" id="vencimientos"><div className="section-heading"><div><div className="eyebrow">VIGENCIA POR CLIENTE Y FAENA</div><h2><CalendarClock size={19}/> Alertas de acreditación</h2></div><span className="count-pill">{expiryAlerts.length}</span></div>
+      <p className="helper-text">Cada requisito usa su plazo de aviso, inicialmente 30 días. Se muestra la credencial verificada de mayor vigencia por conductor y requisito; las renovaciones reemplazan la alerta anterior.</p>
+      {expiryAlerts.length?<div className="table-wrap"><table className="data-table"><thead><tr><th>Conductor</th><th>Cliente / faena</th><th>Requisito</th><th>Vencimiento</th><th>Estado</th></tr></thead><tbody>{expiryAlerts.map(a=><tr key={a.id}><td><strong>{a.worker_name}</strong><span className="table-sub">{a.source==="tercero"?"Tercero":"Propio"}</span></td><td>{a.client_name}<span className="table-sub">{a.site_name??"Todas las faenas"}</span></td><td>{a.requirement_name}</td><td>{formatDay(a.expires_on)}</td><td><span className="inventory-low">{a.days_left<0?"Vencida":a.days_left===0?"Vence hoy":`${a.days_left} día(s) restantes`}</span></td></tr>)}</tbody></table></div>:<p className="muted">No hay acreditaciones verificadas dentro del plazo de aviso o vencidas.</p>}
+    </section>
     <section className="section-card"><div className="section-heading"><div><div className="eyebrow">DESPACHO</div><h2><MapPin size={19}/> Habilitación por conductor y faena</h2></div><span className="count-pill">{coverage.length}</span></div>
       <p className="helper-text">Un conductor con requisitos pendientes, vencidos o rechazados no puede ser programado en esa faena. Cuando una faena no tiene requisitos configurados, la planificación sigue disponible.</p>
       {coverage.length?<div className="table-wrap"><table className="data-table"><thead><tr><th>Conductor</th><th>Cliente / faena</th><th>Estado</th><th>Requisitos pendientes</th></tr></thead><tbody>{coverage.slice(0,150).map(({site,worker,missing})=><tr key={`${worker.id}:${site.id}`}><td><strong>{worker.name}</strong></td><td>{site.client_name}<span className="table-sub">{site.name}</span></td><td>{missing.length?<span className="inventory-low">Faltan {missing.length}</span>:<span className="inventory-good">Habilitado</span>}</td><td>{missing.map((requirement)=>requirement.name).join(" · ")||"—"}</td></tr>)}</tbody></table></div>:<p className="muted">Al definir requisitos para una faena aparecerá aquí su matriz de habilitación.</p>}{coverage.length>150&&<p className="helper-text">Vista inicial: 150 combinaciones. El bloqueo de despacho se verifica para todas las faenas.</p>}

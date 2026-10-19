@@ -20,9 +20,9 @@ Fuente: audio de 96 minutos «Reunion Jorge supervios rerchar.m4a». La transcri
 
 ## Pendiente de validación o de alcance
 
-- Foto al instalar una tolva y quién debe subirla (61:38–62:44); no se amplió el permiso del conductor.
+- Foto al instalar o reubicar una tolva (61:38–62:44): operaciones puede adjuntarla en el movimiento; queda el nombre del archivo, responsable y fecha en el historial, con descarga privada. Validar con Jorge si la foto debe ser obligatoria y quién la carga en terreno; no se amplió el permiso del conductor.
 - Código SKU automático: faltan categoría y regla de numeración (aprox. 45:00–49:00).
 - API del proveedor de combustible: falta proveedor, especificación y autorización (80:22–80:53).
 - Una tercera empresa exportadora, citada por Renato y Eduardo al inicio (09:57–12:33): nombre legal no confirmado; DUS, BL, packing list y contratos constituyen un proceso adicional. El levantamiento documentado cubre RERCHAR y E y J. Se evalúa por separado antes de incorporarlo.
 
-Las migraciones `045`–`047` se aplican con `npm run db:migrate`; en Vercel el comando de compilación las ejecuta antes de publicar. Las pruebas locales de compras, guías, tolvas, mantenimiento, documentos y permisos forman parte de `npm test`. Ningún resultado local sustituye la revisión funcional de Jorge con datos reales y el cotejo del correlativo oficial.
+Las migraciones `045`–`047` y `059` se aplican con `npm run db:migrate`; en Vercel el comando de compilación las ejecuta antes de publicar. Las pruebas locales de compras, guías, tolvas, mantenimiento, documentos y permisos forman parte de `npm test`. Ningún resultado local sustituye la revisión funcional de Jorge con datos reales y el cotejo del correlativo oficial.

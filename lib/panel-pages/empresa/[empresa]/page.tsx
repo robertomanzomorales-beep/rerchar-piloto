@@ -15,6 +15,7 @@ import {supplierInvoiceOverview} from "@/lib/supplier-invoices";
 import {supplierTransferOverview} from "@/lib/supplier-transfers";
 import {moduleReady} from "@/lib/schema-readiness";
 import {pendingClientOrders} from "@/lib/finance";
+import {listCredentialAlerts} from "@/lib/personnel";
 
 type ServiceMetrics = { total:string; requested:string; scheduled:string; in_route:string; pending_review:string; completed:string; critical:string };
 type QuoteMetrics = { total:string; draft:string; sent:string; accepted:string; expired:string; awaiting_order:string; awaiting_service:string };
@@ -29,7 +30,7 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
   const company = companies[selected];
   const showQuotes = actor.role !== "conductor";
   const today = new Intl.DateTimeFormat("sv-SE",{timeZone:"America/Santiago",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
-  const [quotes,services,serviceStats,quoteStats,months,guideAlerts,invoiceAlerts,unclassified,materials,payments,receiptGuides,receiptClosure,billingCalendar,checklistFaults,dayIssues,extraChargePending,receivables,edpInvoices,transferStats,unbilledServices,clientOrdersPending] = await Promise.all([
+  const [quotes,services,serviceStats,quoteStats,months,guideAlerts,invoiceAlerts,unclassified,materials,payments,receiptGuides,receiptClosure,billingCalendar,checklistFaults,dayIssues,extraChargePending,receivables,edpInvoices,transferStats,unbilledServices,clientOrdersPending,credentialAlerts] = await Promise.all([
     showQuotes ? listQuotes(actor,"",selected) : Promise.resolve([]),
     listServices(actor,"","",selected),
     db.query<ServiceMetrics>(`SELECT count(*)::text AS total,
@@ -84,6 +85,7 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
       WHERE s.operating_company=$1 AND s.status='completada' AND s.deleted_at IS NULL
         AND NOT EXISTS (SELECT 1 FROM service_invoices f WHERE f.valuation_id=v.id AND f.status='emitida')`,[selected]):Promise.resolve([]),
     actor.role==="admin"?pendingClientOrders(actor,selected):Promise.resolve(0),
+    canManage(actor)?listCredentialAlerts(actor,selected):Promise.resolve([]),
   ]);
   const s=serviceStats[0],q=quoteStats[0];
   const maxMonth=Math.max(1,...months.map(m=>value(m.total)));
@@ -96,6 +98,10 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
   ];
   const maxStatus=Math.max(1,...serviceBars.map(b=>b.count));
   const alerts=[
+    ...(canManage(actor)?[
+      {label:"Acreditaciones vencidas de conductores",count:credentialAlerts.filter(c=>c.days_left<0).length,href:"/personal#vencimientos"},
+      {label:"Acreditaciones próximas a vencer",count:credentialAlerts.filter(c=>c.days_left>=0).length,href:"/personal#vencimientos"},
+    ]:[]),
     ...(showQuotes?[{label:"Cotizaciones enviadas con vigencia vencida",count:value(q?.expired),href:`/cotizaciones?empresa=${selected}`}]:[]),
     ...(canManage(actor)?[{label:"Cotizaciones aceptadas esperando OC del cliente",count:value(q?.awaiting_order),href:`/cotizaciones?empresa=${selected}`},
       {label:"Cotizaciones con OC esperando solicitud de servicio",count:value(q?.awaiting_service),href:`/cotizaciones?empresa=${selected}`}]:[]),
@@ -139,6 +145,7 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
       {label:"Transferencias ejecutadas por verificar",count:value(transferStats.ejecutadas),href:`/transferencias?empresa=${selected}`},
     ]:[]),
   ];
+  const activeAlerts=alerts.filter(a=>a.count>0);
   return <>
     <Link href="/" className="back-link"><ArrowLeft size={16}/> Cambiar de empresa</Link>
     <div className="page-title-row"><div><div className="eyebrow">PANEL DE CONTROL · {company.code}</div><h1>{company.short}</h1><p className="page-intro">{company.name} · métricas de registros asignados a esta empresa.</p></div>
@@ -158,7 +165,7 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
       <section className="section-card"><div className="eyebrow">ÚLTIMOS SEIS MESES</div><h2>Servicios registrados por mes</h2><div className="company-trend" role="img" aria-label="Servicios registrados por mes">{months.map(m=><div className="company-trend-col" key={m.period}><span>{value(m.total)}</span><div className="company-trend-track"><div style={{height:`${value(m.total)===0?0:Math.max(8,100*value(m.total)/maxMonth)}%`}}/></div><small>{new Intl.DateTimeFormat("es-CL",{month:"short",timeZone:"UTC"}).format(new Date(`${m.period}-01T00:00:00Z`))}</small></div>)}</div></section>
       <section className="section-card"><div className="eyebrow">ESTADO DE SERVICIOS</div><h2>Distribución actual</h2><div className="company-status-chart">{serviceBars.map(b=><div className="company-status-row" key={b.label}><span>{b.label}</span><div className="company-status-track"><div style={{width:`${100*b.count/maxStatus}%`,background:b.color}}/></div><strong>{b.count}</strong></div>)}</div><p className="helper-text">Los servicios cancelados no aparecen en este gráfico; el total histórico sí los incluye.</p></section>
     </div>
-    <section className="section-card company-alerts"><div className="section-heading"><div><div className="eyebrow">ATENCIÓN DEL EQUIPO</div><h2><AlertTriangle size={20}/> Alertas y pendientes</h2></div></div><div className="company-alert-list">{alerts.map(a=><Link href={a.href} key={a.label} className="company-alert"><strong>{a.count}</strong><span>{a.label}</span><ArrowRight size={17}/></Link>)}</div>{alerts.every(a=>a.count===0)&&<p className="helper-text"><CheckCircle2 size={15}/> Sin pendientes registrados en estas categorías.</p>}</section>
+    <section className="section-card company-alerts"><div className="section-heading"><div><div className="eyebrow">ATENCIÓN DEL EQUIPO</div><h2><AlertTriangle size={20}/> Alertas y pendientes</h2></div><span className="count-pill">{activeAlerts.length} categorías activas</span></div><div className="company-alert-list">{activeAlerts.map(a=><Link href={a.href} key={a.label} className="company-alert"><strong>{a.count}</strong><span>{a.label}</span><ArrowRight size={17}/></Link>)}</div>{!activeAlerts.length&&<p className="helper-text"><CheckCircle2 size={15}/> Sin pendientes registrados en estas categorías.</p>}</section>
     <section className="section-card company-processes"><div className="eyebrow">PROCESO SEGÚN PLANILLAS Y REUNIONES</div><h2>{selected==="rerchar"?"Compra, venta y gestión de material":"Servicios, transporte y arriendos"}</h2><div className="company-process-links">
       <Link href={`/cotizaciones?empresa=${selected}`}>1. Cotizaciones <ArrowRight size={16}/></Link>
       {selected==="rerchar"&&canManage(actor)?<Link href="/control-guias">2. Control de guía y salida de material <ArrowRight size={16}/></Link>:<Link href={`/solicitudes?empresa=${selected}`}>2. Solicitudes y planificación <ArrowRight size={16}/></Link>}
