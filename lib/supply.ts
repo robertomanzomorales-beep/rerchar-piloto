@@ -323,6 +323,37 @@ export type StockBalance = { item_id: string; warehouse_id: string; item_code: s
 export type InventoryMovement = { id: string; item_name: string; code: string; unit: string; warehouse_name: string; kind: string; qty_delta: string; reserved_delta: string; note: string; actor_name: string; created_at: Date; document_reference:string|null;cost_center:string|null };
 export type Reservation = { id: string; item_name: string; warehouse_name: string; unit: string; quantity: string; reason: string; created_by_name: string; created_at: Date };
 export type SerializedTire={id:string;code:string;brand:string|null;size:string|null;status:string;warehouse_name:string|null;asset_label:string|null};
+export type InventorySpendRow = { family:string;item_id:string;code:string;name:string;unit:string;
+  quantity:string;amount_clp:string;movement_count:string;unpriced_count:string };
+export type InventorySpendMovement = {id:string;created_at:Date;code:string;name:string;unit:string;
+  warehouse_name:string;family:string;quantity:string;unit_cost_clp_at_movement:string|null;
+  amount_clp:string|null;note:string;actor_name:string};
+
+export async function listInventorySpend(actor: Actor, month: string) {
+  requireOperations(actor);
+  if (!/^20\d\d-(0[1-9]|1[0-2])$/.test(month)) reject("Seleccione un mes válido.");
+  const start = `${month}-01`;
+  const period = `m.kind='consumo' AND m.created_at >= ($1::date AT TIME ZONE 'America/Santiago')
+    AND m.created_at < (($1::date + interval '1 month') AT TIME ZONE 'America/Santiago')`;
+  const [items, movements] = await Promise.all([
+    db.query<InventorySpendRow>(`SELECT coalesce(m.category_at_movement,'Sin familia histórica') AS family,
+      i.id AS item_id,i.code,i.name,i.unit,(-sum(m.qty_delta))::text AS quantity,
+      coalesce(sum((-m.qty_delta)*m.unit_cost_clp_at_movement),0)::text AS amount_clp,
+      count(*)::text AS movement_count,
+      count(*) FILTER (WHERE m.unit_cost_clp_at_movement IS NULL)::text AS unpriced_count
+      FROM inventory_movements m JOIN stock_items i ON i.id=m.item_id
+      WHERE ${period}
+      GROUP BY family,i.id,i.code,i.name,i.unit ORDER BY family,i.name`,[start]),
+    db.query<InventorySpendMovement>(`SELECT m.id,m.created_at,i.code,i.name,i.unit,w.name AS warehouse_name,
+      coalesce(m.category_at_movement,'Sin familia histórica') AS family,
+      (-m.qty_delta)::text AS quantity,m.unit_cost_clp_at_movement::text,
+      ((-m.qty_delta)*m.unit_cost_clp_at_movement)::text AS amount_clp,m.note,u.name AS actor_name
+      FROM inventory_movements m JOIN stock_items i ON i.id=m.item_id
+      JOIN warehouses w ON w.id=m.warehouse_id JOIN users u ON u.id=m.created_by
+      WHERE ${period} ORDER BY m.created_at DESC,m.id DESC LIMIT 100`,[start]),
+  ]);
+  return { items, movements };
+}
 
 export async function listInventory(actor: Actor, itemId = "", warehouseId = "") {
   requireOperations(actor);
@@ -422,13 +453,20 @@ export async function closeReservation(actor: Actor, reservationId: string, acti
       "SELECT item_id,warehouse_id,quantity,status FROM inventory_reservations WHERE id=$1 FOR UPDATE", [id]);
     if (!reservation || reservation.status !== "activa") reject("La reserva ya fue cerrada o no existe.");
     const consume = action === "consumir";
+    const [snapshot] = consume ? await tx.query<{category:string|null;unit_cost_clp:string|null}>(
+      "SELECT category,unit_cost_clp FROM stock_items WHERE id=$1 FOR SHARE",[reservation.item_id]) : [];
+    if (consume && !snapshot) reject("Artículo de la reserva inexistente.");
     await tx.query(`UPDATE stock_balances SET reserved=reserved-$3,quantity=quantity-$4
       WHERE item_id=$1 AND warehouse_id=$2`, [reservation.item_id,reservation.warehouse_id,reservation.quantity,consume ? reservation.quantity : "0"]);
     await tx.query("UPDATE inventory_reservations SET status=$2,closed_by=$3,closed_at=now() WHERE id=$1", [id,consume ? "consumida" : "liberada",actor.id]);
-    await tx.query(`INSERT INTO inventory_movements (item_id,warehouse_id,kind,qty_delta,reserved_delta,note,reservation_id,created_by)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+    await tx.query(`INSERT INTO inventory_movements (item_id,warehouse_id,kind,qty_delta,reserved_delta,note,reservation_id,created_by,unit_cost_clp_at_movement,category_at_movement)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
       [reservation.item_id,reservation.warehouse_id,consume ? "consumo" : "liberacion",consume ? `-${reservation.quantity}` : "0",`-${reservation.quantity}`,
-        consume ? "Consumo de reserva" : "Liberación de reserva",id,actor.id]);
-    await audit(tx,actor,consume ? "consume" : "release","inventory_reservation",id,{ quantity: reservation.quantity });
+        consume ? "Consumo de reserva" : "Liberación de reserva",id,actor.id,
+        consume ? snapshot?.unit_cost_clp ?? null : null,consume ? snapshot?.category?.trim() || "Sin familia" : null]);
+    await audit(tx,actor,consume ? "consume" : "release","inventory_reservation",id,{
+      quantity: reservation.quantity,unit_cost_clp_at_movement:consume ? snapshot?.unit_cost_clp : null,
+      category_at_movement:consume ? snapshot?.category?.trim() || "Sin familia" : null,
+    });
   });
 }

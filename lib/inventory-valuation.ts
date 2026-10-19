@@ -1,4 +1,4 @@
-import type { StockBalance, StockItem } from "./supply";
+import type { InventorySpendRow, StockBalance, StockItem } from "./supply";
 
 // Stock uses three decimals and estimated unit costs use two. Keep the product
 // exact until display: one unit here represents 0.00001 Chilean pesos.
@@ -20,10 +20,39 @@ export function stockUnitMoney(cost: string): string {
   return stockMoney(fixed(cost, 2) * BigInt(1000));
 }
 
+export function stockMoneyFromDecimal(value: string): string {
+  return stockMoney(fixed(value, 5));
+}
+
 export function stockQuantity(value: bigint): string {
   const whole = value / BigInt(1000);
   const fraction = value % BigInt(1000);
   return `${whole.toLocaleString("es-CL")}${fraction ? `,${fraction.toString().padStart(3, "0").replace(/0+$/, "")}` : ""}`;
+}
+
+export function stockQuantityFromDecimal(value: string): string {
+  return stockQuantity(fixed(value, 3));
+}
+
+export function summarizeInventorySpend(rows: InventorySpendRow[]) {
+  const families = new Map<string,{name:string;amount:bigint;movements:number;unpriced:number;articles:Set<string>}>();
+  let amount = BigInt(0), movements = 0, unpriced = 0;
+  for (const row of rows) {
+    const value = fixed(row.amount_clp, 5);
+    const count = Number(row.movement_count), missing = Number(row.unpriced_count);
+    const family = families.get(row.family) ?? {
+      name:row.family,amount:BigInt(0),movements:0,unpriced:0,articles:new Set<string>(),
+    };
+    family.amount += value;
+    family.movements += count;
+    family.unpriced += missing;
+    family.articles.add(row.item_id);
+    families.set(row.family,family);
+    amount += value;
+    movements += count;
+    unpriced += missing;
+  }
+  return {amount,movements,unpriced,families:[...families.values()].sort((a,b)=>a.name.localeCompare(b.name,"es"))};
 }
 
 type Values = { physical: bigint; reserved: bigint; available: bigint };

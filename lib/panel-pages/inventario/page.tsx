@@ -2,8 +2,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Boxes, ArrowUpRight, ArrowLeftRight, BookmarkCheck, Warehouse } from "lucide-react";
 import { canManage, requireActor } from "@/lib/auth";
-import { listInventory } from "@/lib/supply";
-import { stockMoney, stockQuantity, stockUnitMoney, summarizeInventoryValuation } from "@/lib/inventory-valuation";
+import { listInventory, listInventorySpend } from "@/lib/supply";
+import { stockMoney, stockMoneyFromDecimal, stockQuantity, stockQuantityFromDecimal, stockUnitMoney, summarizeInventorySpend, summarizeInventoryValuation } from "@/lib/inventory-valuation";
 import { adjustStockAction, closeReservationAction, createItemAction, createWarehouseAction, reserveStockAction, transferStockAction, updateItemValuationAction } from "@/app/supply-actions";
 import { Notice, chileDate } from "@/components/UI";
 import { SubmitButton } from "@/components/Transition";
@@ -14,14 +14,19 @@ const movementLabel: Record<string, string> = {
   liberacion: "Liberación", consumo: "Consumo",
 };
 const amount = (value: string) => Number(value).toLocaleString("es-CL",{ maximumFractionDigits:3 });
+const localDay = new Intl.DateTimeFormat("es-CL",{timeZone:"America/Santiago",dateStyle:"short"});
 
-export default async function Inventory({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string; articulo?: string; bodega?: string }> }) {
+export default async function Inventory({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string; articulo?: string; bodega?: string; mes?: string }> }) {
   const actor = await requireActor();
   if (!canManage(actor)) redirect("/");
   const query = await searchParams;
-  const { warehouses, items, balances, movements, reservations, tires } = await listInventory(actor,query.articulo,query.bodega);
+  const currentMonth=new Intl.DateTimeFormat("sv-SE",{timeZone:"America/Santiago",year:"numeric",month:"2-digit"}).format(new Date());
+  const month=typeof query.mes==="string"&&/^20\d\d-(0[1-9]|1[0-2])$/.test(query.mes)?query.mes:currentMonth;
+  const [inventory,spend]=await Promise.all([listInventory(actor,query.articulo,query.bodega),listInventorySpend(actor,month)]);
+  const { warehouses, items, balances, movements, reservations, tires } = inventory;
   const alerts = balances.filter((balance) => Number(balance.quantity)-Number(balance.reserved) <= Number(balance.minimum_qty));
   const valuation = summarizeInventoryValuation(items, balances);
+  const spendSummary=summarizeInventorySpend(spend.items);
   return <>
     <div className="page-title-row"><div><div className="eyebrow">CONTROL DE EXISTENCIAS</div><h1>Inventario y bodegas</h1><p className="page-intro">Saldos, reservas y Kardex por artículo y bodega, con recepciones enlazadas a las compras.</p></div><span className="title-icon"><Boxes size={24}/></span></div>
     <Notice error={query.error} ok={query.ok}/>
@@ -38,6 +43,14 @@ export default async function Inventory({ searchParams }: { searchParams: Promis
       <div className="table-wrap"><table className="data-table"><thead><tr><th>Familia</th><th>Físico valorizado</th><th>Reservado</th><th>Disponible valorizado</th><th>Artículos sin costo</th></tr></thead><tbody>{valuation.groups.map(group=><tr key={group.name}><td><strong>{group.name}</strong><span className="table-sub">{group.priced} artículo(s) con saldo y costo</span></td><td>{stockMoney(group.physical)}</td><td>{stockMoney(group.reserved)}</td><td><strong>{stockMoney(group.available)}</strong></td><td>{group.unpriced ? <span className="inventory-low">{group.unpriced} pendiente(s)</span> : "—"}</td></tr>)}</tbody></table>{!valuation.groups.length && <p className="muted">Registre artículos para ver su valorización.</p>}</div>
       <h3>Detalle por artículo</h3><p className="helper-text">Las cantidades se suman entre bodegas sólo para el mismo artículo y unidad. Incluye únicamente artículos con existencia física.</p>
       <div className="table-wrap"><table className="data-table"><thead><tr><th>Artículo / familia</th><th>Físico</th><th>Reservado</th><th>Disponible</th><th>Costo unitario</th><th>Valor físico</th><th>Valor disponible</th></tr></thead><tbody>{valuation.articles.filter(row=>row.physical>BigInt(0)).map(row=><tr key={row.item.id}><td><strong>{row.item.name}</strong><span className="table-sub">{row.item.code} · {row.category}</span></td><td>{stockQuantity(row.physical)} {row.item.unit}</td><td>{stockQuantity(row.reserved)} {row.item.unit}</td><td>{stockQuantity(row.available)} {row.item.unit}</td><td>{row.item.unit_cost_clp==null?<span className="inventory-low">Sin costo</span>:stockUnitMoney(row.item.unit_cost_clp)}</td><td>{row.value?stockMoney(row.value.physical):"Pendiente"}</td><td>{row.value?stockMoney(row.value.available):"Pendiente"}</td></tr>)}</tbody></table>{!valuation.articles.some(row=>row.physical>BigInt(0))&&<p className="muted">Todavía no hay existencias físicas valorizables.</p>}</div>
+    </section>
+    <section className="section-card"><div className="section-heading"><div><div className="eyebrow">CONSUMO DE BODEGA · BODEGAS COMPARTIDAS</div><h2>Gasto estimado por mes</h2><p className="helper-text">Suma los artículos registrados como «uso» de una reserva durante el mes de Chile. Conserva el costo y la familia vigentes en cada consumo. Las transferencias, compras y correcciones de inventario no se cuentan como consumo.</p></div></div>
+      <form method="get" className="supply-filter"><label>Período<input type="month" name="mes" defaultValue={month} required/></label><button type="submit" className="button button-outline">Consultar mes</button></form>
+      <div className="supply-summary"><div><strong>{stockMoney(spendSummary.amount)}</strong><span>Consumo con costo registrado</span></div><div><strong>{spendSummary.movements}</strong><span>Movimientos de uso</span></div><div><strong>{spendSummary.unpriced}</strong><span>Consumos sin costo histórico</span></div></div>
+      {spendSummary.unpriced>0&&<p className="helper-text inventory-valuation-warning">El gasto estimado es parcial: {spendSummary.unpriced} consumo(s) no tienen costo guardado al momento del movimiento. Modificar hoy el catálogo no cambiará esos registros históricos.</p>}
+      {spend.items.length?<><h3>Por familia</h3><div className="table-wrap"><table className="data-table"><thead><tr><th>Familia al consumir</th><th>Artículos</th><th>Movimientos</th><th>Consumo estimado</th><th>Sin costo histórico</th></tr></thead><tbody>{spendSummary.families.map(family=><tr key={family.name}><td><strong>{family.name}</strong></td><td>{family.articles.size}</td><td>{family.movements}</td><td><strong>{stockMoney(family.amount)}</strong></td><td>{family.unpriced||"—"}</td></tr>)}</tbody></table></div>
+        <h3>Por artículo</h3><div className="table-wrap"><table className="data-table"><thead><tr><th>Familia / artículo</th><th>Cantidad consumida</th><th>Movimientos</th><th>Gasto estimado</th><th>Sin costo histórico</th></tr></thead><tbody>{spend.items.map(row=><tr key={`${row.family}:${row.item_id}`}><td><strong>{row.name}</strong><span className="table-sub">{row.family} · {row.code}</span></td><td>{stockQuantityFromDecimal(row.quantity)} {row.unit}</td><td>{row.movement_count}</td><td><strong>{stockMoneyFromDecimal(row.amount_clp)}</strong></td><td>{Number(row.unpriced_count)||"—"}</td></tr>)}</tbody></table></div>
+        <h3>Movimientos recientes del mes</h3><p className="helper-text">Se muestran los últimos {spend.movements.length} de {spendSummary.movements} consumos; el resumen anterior incluye el mes completo.</p><div className="table-wrap"><table className="data-table"><thead><tr><th>Fecha / responsable</th><th>Artículo / bodega</th><th>Cantidad</th><th>Costo al consumir</th><th>Gasto estimado</th></tr></thead><tbody>{spend.movements.map(row=><tr key={row.id}><td>{localDay.format(new Date(row.created_at))}<span className="table-sub">{row.actor_name}</span></td><td><strong>{row.name}</strong><span className="table-sub">{row.family} · {row.warehouse_name}</span></td><td>{stockQuantityFromDecimal(row.quantity)} {row.unit}</td><td>{row.unit_cost_clp_at_movement==null?<span className="inventory-low">Sin costo histórico</span>:stockUnitMoney(row.unit_cost_clp_at_movement)}</td><td>{row.amount_clp==null?"Pendiente":stockMoneyFromDecimal(row.amount_clp)}</td></tr>)}</tbody></table></div></>:<p className="muted">No hay consumos de reservas registrados en este período.</p>}
     </section>
     <section className="section-card"><div className="section-heading"><div><div className="eyebrow">NEUMÁTICOS IDENTIFICADOS</div><h2>Disponibilidad por unidad y bodega</h2></div><Link href="/mantenimiento" className="button button-outline">Mover neumáticos</Link></div>
       <p className="helper-text">Cada neumático tiene código propio: al retirarlo del camión vuelve a figurar como disponible en la bodega indicada en Mantenimiento. Se muestra por unidad identificada y no se suma al stock genérico de artículos.</p>

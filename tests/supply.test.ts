@@ -126,4 +126,28 @@ test("compra, recepción parcial, Kardex, bodegas y reservas mantienen los saldo
   assert.equal((await supply.getPurchase(owner,rerchar)).purchase.order_reference,null);
   await supply.issuePurchaseDraft(ops,rerchar,"EMITIR");
   assert.equal((await supply.getPurchase(owner,rerchar)).purchase.order_reference,"OC-RER-000001","cada empresa tiene su correlativo interno");
+
+  const month=new Intl.DateTimeFormat("sv-SE",{timeZone:"America/Santiago",year:"numeric",month:"2-digit"}).format(new Date());
+  await assert.rejects(()=>supply.listInventorySpend(outsider,month),supply.SupplyError);
+  await assert.rejects(()=>supply.listInventorySpend(ops,"2026-13"),supply.SupplyError);
+  let spending=await supply.listInventorySpend(ops,month);
+  assert.equal(spending.items.length,1,"los traslados y la reserva liberada no son gasto");
+  assert.equal(spending.items[0].family,"Repuestos");
+  assert.equal(Number(spending.items[0].quantity),7);
+  assert.equal(Number(spending.items[0].amount_clp),878.5);
+  assert.equal(spending.items[0].unpriced_count,"0");
+  assert.equal(spending.movements[0].unit_cost_clp_at_movement,"125.50");
+  await supply.updateStockItemValuation(ops,item,{category:"Nueva familia",unit_cost_clp:"400.00"});
+  spending=await supply.listInventorySpend(ops,month);
+  assert.equal(spending.items[0].family,"Repuestos","editar la familia no modifica el consumo histórico");
+  assert.equal(Number(spending.items[0].amount_clp),878.5,"editar el costo no revaloriza el gasto histórico");
+  const unpriced=await supply.reserveStock(ops,{item_id:second,warehouse_id:main,quantity:"1",reason:"Consumo de guantes"});
+  await supply.closeReservation(ops,unpriced,"consumir");
+  await supply.adjustStock(ops,{item_id:second,warehouse_id:main,direction:"salida",quantity:"1",reason:"Corrección por conteo"});
+  spending=await supply.listInventorySpend(ops,month);
+  assert.equal(spending.items.length,2,"el ajuste de conteo no es gasto por uso");
+  assert.equal(spending.items.find(row=>row.item_id===second)?.unpriced_count,"1");
+  assert.equal(spending.movements.find(row=>row.code==="EPP-01")?.amount_clp,null);
+  const prior=new Date(`${month}-01T12:00:00Z`);prior.setUTCMonth(prior.getUTCMonth()-1);
+  assert.equal((await supply.listInventorySpend(ops,prior.toISOString().slice(0,7))).items.length,0);
 });
