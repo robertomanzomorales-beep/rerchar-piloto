@@ -29,6 +29,12 @@ test("compra, recepción parcial, Kardex, bodegas y reservas mantienen los saldo
   const second = await supply.createStockItem(ops,{code:"EPP-01",name:"Guantes",unit:"un",minimum_qty:"5"});
   const zeroMinimum = await supply.createStockItem(ops,{code:"EPP-02",name:"Gafas",unit:"un",minimum_qty:"0"});
   assert.ok(zeroMinimum);
+  await assert.rejects(() => supply.updateStockItemValuation(outsider,item,{category:"Repuestos",unit_cost_clp:"125.50"}),supply.SupplyError);
+  await assert.rejects(() => supply.updateStockItemValuation(ops,item,{category:"Repuestos",unit_cost_clp:"125.555"}));
+  await supply.updateStockItemValuation(ops,item,{category:"Repuestos",unit_cost_clp:"125.50"});
+  const edited=(await supply.listInventory(ops)).items.find(row=>row.id===item);
+  assert.equal(edited?.category,"Repuestos");
+  assert.equal(edited?.unit_cost_clp,"125.50");
   const input = { submission_key:randomUUID(),title:"Repuestos y seguridad",category:"repuestos",priority:"alta",item_id:item,quantity:"10",notes:"Reparación de vehículo" };
   const purchaseId = await supply.createPurchase(ops,input);
   assert.equal(await supply.createPurchase(ops,input),purchaseId,"la misma solicitud no genera una compra adicional");

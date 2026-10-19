@@ -69,6 +69,26 @@ export async function createStockItem(actor: Actor, input: unknown) {
   });
 }
 
+export async function updateStockItemValuation(actor: Actor, itemId: string, input: unknown) {
+  requireOperations(actor);
+  if (!uuid.safeParse(itemId).success) reject("Artículo inválido.");
+  const data = z.object({
+    category: optional(100),
+    unit_cost_clp: z.union([
+      z.literal(""),
+      z.string().trim().regex(/^\d+(?:\.\d{1,2})?$/).refine(value => Number(value) <= 1_000_000_000),
+    ]),
+  }).parse(input);
+  return transaction(async tx => {
+    const [previous] = await tx.query<{category:string|null;unit_cost_clp:string|null}>(
+      "SELECT category,unit_cost_clp FROM stock_items WHERE id=$1 AND active=true FOR UPDATE", [itemId]);
+    if (!previous) reject("Artículo inexistente o inactivo.");
+    await tx.query("UPDATE stock_items SET category=NULLIF($2,''),unit_cost_clp=NULLIF($3,'')::numeric WHERE id=$1",
+      [itemId,data.category,data.unit_cost_clp]);
+    await audit(tx,actor,"update_valuation","stock_item",itemId,{previous,next:data});
+  });
+}
+
 export type Purchase = {
   id: string; folio: string; title: string; category: string; priority: string; status: string;
   notes: string | null; supplier: string | null; order_reference: string | null;

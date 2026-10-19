@@ -7,6 +7,7 @@ import { requireActor } from "@/lib/auth";
 import {
   SupplyError, addPurchaseLine, adjustStock, approvePurchase, cancelPurchase, closeReservation,
   createPurchase, createStockItem, createWarehouse, issuePurchaseDraft, receivePurchase, reserveStock, savePurchaseDraft, transferStock,
+  updateStockItemValuation,
 } from "@/lib/supply";
 
 const value = (form: FormData, key: string) => String(form.get(key) ?? "");
@@ -33,6 +34,12 @@ export async function createItemAction(form: FormData) {
   const actor = await requireActor();
   await run("/inventario", () => createStockItem(actor,{ code: value(form,"code"), name: value(form,"name"), unit: value(form,"unit"),
     category:value(form,"category"),minimum_qty: value(form,"minimum_qty"),maximum_qty:value(form,"maximum_qty"),unit_cost_clp:value(form,"unit_cost_clp") }));
+}
+export async function updateItemValuationAction(form: FormData) {
+  const actor = await requireActor();
+  await run("/inventario", () => updateStockItemValuation(actor,value(form,"item_id"),{
+    category:value(form,"category"),unit_cost_clp:value(form,"unit_cost_clp"),
+  }));
 }
 export async function createPurchaseAction(form: FormData) {
   const actor = await requireActor();
