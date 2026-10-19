@@ -3,6 +3,7 @@ import {randomUUID} from "node:crypto";
 import {readdir,readFile} from "node:fs/promises";
 import {resolve} from "node:path";
 import test from "node:test";
+import {PDFDocument} from "pdf-lib";
 import type {Actor} from "../lib/auth";
 
 test("compra de Carol conserva materiales, observaciones e IVA confirmado hasta el ingreso",async()=>{
@@ -32,12 +33,18 @@ test("compra de Carol conserva materiales, observaciones e IVA confirmado hasta 
   const battery=catalog.find(item=>item.name==="BATERIAS")!;
   assert.ok(iron&&aluminum&&battery);
   const shellInput={submission_key:randomUUID(),client_id:client.id,issuer:"e_y_j",title:"Arriendo de equipo",
+    company_intro:"E y J desarrolla servicios de transporte y arriendo para operaciones industriales.",
+    proposal_objective:"Disponer de un equipo de apoyo conforme al alcance y fechas que acuerde el cliente.",
     issued_on:"2026-10-18",valid_until:"2026-10-28",vat_rate:"0.19",commercial_kind:"general"};
   const shellId=await quotes.createQuote(actor,shellInput);
   assert.equal(await quotes.createQuote(actor,shellInput),shellId,"el inicio repetido conserva el folio");
   let shell=await quotes.getQuote(actor,shellId);
   assert.match(quotes.quoteFolio(shell.quote),/^COT-EYJ-\d+$/);
   assert.equal(shell.lines.length,0,"el número se asigna antes de agregar conceptos");
+  assert.equal(shell.quote.company_intro,shellInput.company_intro);
+  const expanded=Array.from({length:14},(_,i)=>`Alcance operativo ${i+1} sujeto a revisión comercial.`).join("\n");
+  await quotes.updateQuotePresentation(actor,shellId,{company_intro:expanded,proposal_objective:expanded});
+  assert.equal((await quotes.getQuote(actor,shellId)).quote.proposal_objective,expanded);
   assert.ok((await quotes.quoteDeliveryIssues(shell.quote,shell.lines)).some(issue=>issue.includes("al menos un concepto")));
   await quotes.addQuoteLine(actor,shellId,{description:"Arriendo de equipo",principal:"arriendo",segment:"arriendo_equipo",
     quantity:"1",unit:"servicio",unit_price_clp:"0",taxable:true});
@@ -47,6 +54,10 @@ test("compra de Carol conserva materiales, observaciones e IVA confirmado hasta 
     quantity:"1",unit:"servicio",unit_price_clp:"150000",taxable:true});
   shell=await quotes.getQuote(actor,shellId);
   assert.equal((await quotes.quoteDeliveryIssues(shell.quote,shell.lines)).length,0);
+  const expandedPdf=await PDFDocument.load(await renderQuotePdf(shell.quote,shell.lines));
+  assert.ok(expandedPdf.getPageCount()>=2,"la presentación extensa fluye a otra página antes de la tabla de precios");
+  await quotes.updateQuotePresentation(actor,shellId,{company_intro:shellInput.company_intro,
+    proposal_objective:shellInput.proposal_objective});
   await assert.rejects(()=>quotes.createQuote(actor,{...shellInput,submission_key:randomUUID(),commercial_kind:"compra_material"}),quotes.QuoteError);
   const purchaseShellId=await quotes.createQuote(actor,{...shellInput,submission_key:randomUUID(),issuer:"rerchar",commercial_kind:"compra_material"});
   const purchaseShell=await quotes.getQuote(actor,purchaseShellId);
@@ -58,6 +69,8 @@ test("compra de Carol conserva materiales, observaciones e IVA confirmado hasta 
     quantity:"100",unit:"kg",unit_price_clp:"270",taxable:true});
   assert.equal((await quotes.getQuote(actor,purchaseShellId)).lines[0].material_id,iron.id);
   const input={submission_key:randomUUID(),client_id:client.id,issuer:"rerchar",title:"Compra de metales por kilo",
+    company_intro:"RERCHAR presenta sus condiciones para la compra y valorización de materiales.",
+    proposal_objective:"Acordar el retiro y pesaje de los materiales detallados con el cliente.",
     notes:"Pesaje en patio y pago según acuerdo comercial",issued_on:"2026-10-14",valid_until:"2026-11-14",vat_rate:"0.19",
     line:{description:"El texto no reemplaza al maestro",material_id:iron.id,line_note:"Separar impurezas",principal:"compra",segment:"compra_metal",
       quantity:"1250.500",unit:"kg",unit_price_clp:"270",taxable:true}};
@@ -82,6 +95,8 @@ test("compra de Carol conserva materiales, observaciones e IVA confirmado hasta 
   assert.equal((await quotes.quoteDeliveryIssues(detail.quote,detail.lines)).length,0);
   assert.ok((await renderQuotePdf(detail.quote,detail.lines)).length>7000);
   await quotes.recordManualQuoteDelivery(actor,quoteId,{channel:"correo",recipient:"cliente@example.cl",reference:"Entregado según correo 14/10"});
+  await assert.rejects(()=>quotes.updateQuotePresentation(actor,quoteId,{company_intro:"Presentación corregida",
+    proposal_objective:"Nuevo objetivo de la cotización"}),/sólo puede corregirse mientras/);
   await quotes.recordQuoteDecision(actor,quoteId,"aceptada");
   const serviceInput={submission_key:randomUUID(),client_id:client.id,site_id:site.id,quote_id:quoteId,operating_company:"rerchar",
     request_category:"compra",service_type:"compra",waste_type:"Ajustado manualmente",estimated_kg:"",origin:"Faena norte",destination:"Patio RERCHAR",

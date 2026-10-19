@@ -23,7 +23,7 @@ test("cotización del cliente, PDF y guía de tres pesos respetan totales y perm
   const owner:Actor={id:admin.id,name:"Admin",email:"admin@demo.cl",role:"admin",client_id:null};
   const viewer:Actor={id:customer.id,name:"Cliente",email:"cliente@demo.cl",role:"cliente",client_id:clientA.id};
   const stranger:Actor={id:outsider.id,name:"Otro",email:"otro@demo.cl",role:"cliente",client_id:clientB.id};
-  const quoteId=await quotes.createQuote(owner,{submission_key:randomUUID(),client_id:clientA.id,issuer:"rerchar",title:"Retiro de material",issued_on:"2026-09-25",valid_until:"2026-10-25",vat_rate:"0.19",line:{description:"Transporte",principal:"retiro",segment:"retiro_chatarra",quantity:"2",unit:"viaje",unit_price_clp:"10000",taxable:true}});
+  const quoteId=await quotes.createQuote(owner,{submission_key:randomUUID(),client_id:clientA.id,issuer:"rerchar",title:"Retiro de material",company_intro:"RERCHAR presenta sus servicios de gestión de materiales industriales.",proposal_objective:"Retirar y transportar los materiales de la faena indicada.",issued_on:"2026-09-25",valid_until:"2026-10-25",vat_rate:"0.19",line:{description:"Transporte",principal:"retiro",segment:"retiro_chatarra",quantity:"2",unit:"viaje",unit_price_clp:"10000",taxable:true}});
   await quotes.addQuoteLine(owner,quoteId,{description:"Material exento",principal:"compra",segment:"compra_metal",quantity:"1",unit:"tonelada",unit_price_clp:"5000",taxable:false});
   const {quote,lines,totals}=await quotes.getQuote(owner,quoteId);
   assert.equal(quote.client_name,"Cliente A");assert.equal(quote.client_tax_id,"12.345.678-9");

@@ -34,7 +34,8 @@ function reject(message:string):never{throw new QuoteError(message);}
 function canEdit(actor:Actor){if(!canManage(actor))reject("Sólo operaciones puede preparar cotizaciones.");}
 export const issuers={rerchar:{name:"RERCHAR CHILE SPA",tax_id:"77.639.762-8"},e_y_j:{name:"EMPRESAS DE SERVICIOS INTEGRALES E Y J LIMITADA",tax_id:"76.347.909-9"}} as const;
 export type Quote={id:string;folio:string;display_folio:string|null;submission_key:string;client_id:string;issuer:keyof typeof issuers;client_name:string;client_tax_id:string|null;
-  client_email:string|null;client_address:string|null;title:string;notes:string|null;issued_on:Date|string;valid_until:Date|string;vat_rate:string;status:string;sent_at:Date|null;created_at:Date;
+  client_email:string|null;client_address:string|null;title:string;company_intro:string|null;proposal_objective:string|null;
+  notes:string|null;issued_on:Date|string;valid_until:Date|string;vat_rate:string;status:string;sent_at:Date|null;created_at:Date;
   uf_rate_clp:string|null;uf_rate_on:Date|string|null;client_order_reference:string|null;client_order_on:Date|string|null;
   route_required:boolean;commercial_kind:"general"|"compra_material";tax_review_status:"no_aplica"|"pendiente"|"sin_iva"|"con_iva";tax_review_note:string|null;segments?:string[]};
 export type QuoteLine={id:string;position:number;description:string;quantity:string;unit:string;unit_price_clp:string;taxable:boolean;
@@ -89,13 +90,15 @@ async function purchaseLine(tx:Db,data:z.infer<typeof item>,kind:"general"|"comp
 }
 type DestinationValidity={id:string;name:string;status:string;accepted_categories:string[];
   authorization_valid_until:Date|string|null;authorization_document_name:string|null;disposal_unit:string|null;disposal_price_clp:string|null};
-export async function quoteDeliveryIssues(quote:Pick<Quote,"valid_until"> & Partial<Pick<Quote,"id"|"route_required"|"vat_rate"|"commercial_kind"|"tax_review_status"|"uf_rate_clp">>,lines:QuoteLine[],source:Db=db){
+export async function quoteDeliveryIssues(quote:Pick<Quote,"valid_until"> & Partial<Pick<Quote,"id"|"route_required"|"vat_rate"|"commercial_kind"|"tax_review_status"|"uf_rate_clp"|"company_intro"|"proposal_objective">>,lines:QuoteLine[],source:Db=db){
   const ids=[...new Set(lines.map(line=>line.destination_id).filter((id):id is string=>Boolean(id)))];
   const destinations=ids.length?await source.query<DestinationValidity>(`SELECT id,name,status,accepted_categories,
     authorization_valid_until,authorization_document_name,disposal_unit,disposal_price_clp FROM quote_destinations WHERE id=ANY($1::uuid[])`,[ids]):[];
   const byId=new Map(destinations.map(item=>[item.id,item]));
   const validUntil=quote.valid_until instanceof Date?quote.valid_until.toISOString().slice(0,10):String(quote.valid_until).slice(0,10);
   const issues:string[]=[];
+  if(quote.company_intro!==undefined&&!quote.company_intro?.trim())issues.push("Complete la presentación de la empresa emisora.");
+  if(quote.proposal_objective!==undefined&&!quote.proposal_objective?.trim())issues.push("Complete el objetivo de la propuesta.");
   if(!lines.length)issues.push("Agregue al menos un concepto a la cotización.");
   if(lines.some(line=>line.currency==="UF")&&!quote.uf_rate_clp)issues.push("Registre el valor UF de referencia y su fecha.");
   if(quote.commercial_kind!=="compra_material"&&quoteTotals(lines,Number(quote.vat_rate??"0.19")).net<=0)
@@ -217,7 +220,7 @@ export async function getQuote(actor:Actor,quoteId:string){
 export async function createQuote(actor:Actor,input:unknown){
   canEdit(actor);
   const data=z.object({submission_key:uuid,client_id:uuid,issuer:z.enum(["rerchar","e_y_j"]),title:z.string().trim().min(3).max(180),
-    notes:optional(1000),issued_on:z.iso.date(),valid_until:z.iso.date(),vat_rate:z.union([z.literal(""),z.literal("0"),z.literal("0.19")]).default("0.19"),
+    company_intro:optional(700),proposal_objective:optional(700),notes:optional(1000),issued_on:z.iso.date(),valid_until:z.iso.date(),vat_rate:z.union([z.literal(""),z.literal("0"),z.literal("0.19")]).default("0.19"),
     commercial_kind:z.enum(["general","compra_material"]).optional(),line:item.optional()}).parse(input);
   if(data.line){
     checkClassification(data.line,true);
@@ -238,9 +241,9 @@ export async function createQuote(actor:Actor,input:unknown){
     const line=data.line?await purchaseLine(tx,data.line,kind,"pendiente"):null;
     const price=data.line?commercialPrice(data.line,null):null;
     const [quote]=await tx.query<{id:string;folio:string}>(`INSERT INTO client_quotes
-      (submission_key,client_id,issuer,client_name,client_tax_id,client_email,client_address,title,notes,issued_on,valid_until,vat_rate,created_by,commercial_kind,tax_review_status)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NULLIF($9,''),$10,$11,$12,$13,$14,$15) RETURNING id,folio`,
-      [data.submission_key,data.client_id,data.issuer,client.name,client.tax_id,client.email,client.address,data.title,data.notes,
+      (submission_key,client_id,issuer,client_name,client_tax_id,client_email,client_address,title,company_intro,proposal_objective,notes,issued_on,valid_until,vat_rate,created_by,commercial_kind,tax_review_status)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NULLIF($9,''),NULLIF($10,''),NULLIF($11,''),$12,$13,$14,$15,$16,$17) RETURNING id,folio`,
+      [data.submission_key,data.client_id,data.issuer,client.name,client.tax_id,client.email,client.address,data.title,data.company_intro,data.proposal_objective,data.notes,
        data.issued_on,data.valid_until,kind==="compra_material"?"0":data.vat_rate,actor.id,kind,kind==="compra_material"?"pendiente":"no_aplica"]);
     const displayFolio=`COT-${data.issuer==="rerchar"?"RER":"EYJ"}-${String(quote.folio).padStart(5,"0")}`;
     await tx.query("UPDATE client_quotes SET display_folio=$2,route_required=$3 WHERE id=$1",
@@ -255,6 +258,21 @@ export async function createQuote(actor:Actor,input:unknown){
     await tx.query("INSERT INTO audit_events(actor_id,action,entity_type,entity_id,next_value) VALUES ($1,'create','client_quote',$2,$3)",
       [actor.id,quote.id,JSON.stringify({client_id:data.client_id,title:data.title,issuer:data.issuer})]);
     return quote.id;
+  });
+}
+export async function updateQuotePresentation(actor:Actor,quoteId:string,input:unknown){
+  canEdit(actor);const id=uuid.parse(quoteId);
+  const data=z.object({company_intro:z.string().trim().max(700),proposal_objective:z.string().trim().max(700)}).parse(input);
+  if(!data.company_intro||!data.proposal_objective)reject("Complete la presentación de la empresa y el objetivo de la propuesta.");
+  await transaction(async tx=>{
+    const [current]=await tx.query<{company_intro:string|null;proposal_objective:string|null}>(
+      "SELECT company_intro,proposal_objective FROM client_quotes WHERE id=$1 AND status='borrador' FOR UPDATE",[id]);
+    if(!current)reject("La presentación sólo puede corregirse mientras la cotización está en borrador.");
+    if(current.company_intro===data.company_intro&&current.proposal_objective===data.proposal_objective)return;
+    await tx.query("UPDATE client_quotes SET company_intro=$2,proposal_objective=$3 WHERE id=$1",
+      [id,data.company_intro,data.proposal_objective]);
+    await tx.query(`INSERT INTO audit_events(actor_id,action,entity_type,entity_id,previous_value,next_value)
+      VALUES($1,'update_presentation','client_quote',$2,$3,$4)`,[actor.id,id,JSON.stringify(current),JSON.stringify(data)]);
   });
 }
 export async function addQuoteLine(actor:Actor,quoteId:string,input:unknown){

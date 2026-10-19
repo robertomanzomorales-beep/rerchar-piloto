@@ -32,6 +32,7 @@ const requirements:Record<ModuleKey,{tables:string[];columns:[string,string][]}>
     columns:[["payment_statement_cycles","contact_email"],["payment_statement_cycles","statement_id"]]},
   cotizaciones:{tables:["client_quotes","client_quote_lines","client_quote_routes","client_quote_costings","quote_destinations","material_catalog","material_stock_balances"],
     columns:[["client_quotes","display_folio"],["client_quotes","commercial_kind"],["client_quotes","tax_review_status"],
+      ["client_quotes","company_intro"],["client_quotes","proposal_objective"],
       ["client_quote_lines","principal"],["client_quote_lines","destination_id"],["client_quote_lines","material_id"],["client_quote_lines","line_note"]]},
 };
 

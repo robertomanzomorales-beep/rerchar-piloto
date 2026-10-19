@@ -32,6 +32,7 @@ test("destinos de Carol bloquean entrega inválida y conservan cotizaciones ante
   const seed=master.find(d=>d.name==="Planta RERCHAR Calama")!;
 
   const quoteId=await quotes.createQuote(owner,{submission_key:randomUUID(),client_id:client.id,issuer:"rerchar",title:"Retiro de reciclables",
+    company_intro:"RERCHAR presenta sus servicios de gestión de materiales industriales.",proposal_objective:"Retirar reciclables y llevarlos a destino autorizado.",
     issued_on:"2026-10-14",valid_until:"2099-12-31",line:{description:"Retiro de material",principal:"retiro",segment:"retiro_reciclable",
     waste_category:"reciclable",destination_id:seed.id,quantity:"1",unit:"viaje",unit_price_clp:"10000"}});
   const initial=await quotes.getQuote(owner,quoteId);
@@ -96,6 +97,7 @@ test("destinos de Carol bloquean entrega inválida y conservan cotizaciones ante
   assert.equal((await quotes.getQuote(viewer,quoteId)).lines[0].destination_name,"Planta RERCHAR Calama","la cotización emitida conserva el nombre cotizado");
 
   const historicId=await quotes.createQuote(owner,{submission_key:randomUUID(),client_id:client.id,issuer:"rerchar",title:"Servicio antiguo",
+    company_intro:"RERCHAR presenta las condiciones comerciales para el servicio.",proposal_objective:"Coordinar el retiro de material descrito en el concepto.",
     issued_on:"2026-10-14",valid_until:"2099-12-31",line:{description:"Retiro anterior",principal:"retiro",segment:"retiro_chatarra",
     quantity:"1",unit:"viaje",unit_price_clp:"1000"}});
   await db.query("UPDATE client_quote_lines SET destination_required=false WHERE quote_id=$1",[historicId]);

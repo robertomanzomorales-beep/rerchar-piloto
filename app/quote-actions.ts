@@ -5,7 +5,7 @@ import {redirect} from "next/navigation";
 import {revalidatePath} from "next/cache";
 import {ZodError} from "zod";
 import {requireActor} from "@/lib/auth";
-import {QuoteError,createQuote,addQuoteLine,updateQuoteLine,removeQuoteLine,recordManualQuoteDelivery,recordQuoteDecision,resolveQuoteSending,sendQuote,confirmPurchaseTax,setQuoteUfRate} from "@/lib/quotes";
+import {QuoteError,createQuote,updateQuotePresentation,addQuoteLine,updateQuoteLine,removeQuoteLine,recordManualQuoteDelivery,recordQuoteDecision,resolveQuoteSending,sendQuote,confirmPurchaseTax,setQuoteUfRate} from "@/lib/quotes";
 import {QuoteFollowupError,recordQuoteClientOrder,uploadQuoteDocument} from "@/lib/quote-followup";
 
 const v=(form:FormData,key:string)=>String(form.get(key)??"");
@@ -13,10 +13,16 @@ function message(error:unknown){if(error instanceof QuoteError||error instanceof
 export async function createQuoteAction(form:FormData){
   const actor=await requireActor();let id:string;
   try{id=await createQuote(actor,{submission_key:v(form,"submission_key")||randomUUID(),client_id:v(form,"client_id"),issuer:v(form,"issuer"),title:v(form,"title"),
-    notes:v(form,"notes"),issued_on:v(form,"issued_on"),valid_until:v(form,"valid_until"),vat_rate:v(form,"vat_rate"),commercial_kind:v(form,"commercial_kind")||undefined,
+    company_intro:v(form,"company_intro"),proposal_objective:v(form,"proposal_objective"),notes:v(form,"notes"),issued_on:v(form,"issued_on"),valid_until:v(form,"valid_until"),vat_rate:v(form,"vat_rate"),commercial_kind:v(form,"commercial_kind")||undefined,
     line:form.has("description")?{description:v(form,"description"),principal:v(form,"principal"),segment:v(form,"segment"),waste_category:v(form,"waste_category"),destination_id:v(form,"destination_id"),material_id:v(form,"material_id"),line_note:v(form,"line_note"),quantity:v(form,"quantity"),unit:v(form,"unit"),unit_price_clp:v(form,"unit_price_clp"),currency:v(form,"currency")||"CLP",taxable:form.get("taxable")==="on"}:undefined});}
   catch(error){const params=new URLSearchParams({error:message(error)});if(v(form,"issuer"))params.set("empresa",v(form,"issuer"));if(v(form,"client_id"))params.set("cliente",v(form,"client_id"));if(v(form,"commercial_kind")==="compra_material")params.set("tipo","compra");redirect(`/cotizaciones/nueva?${params}`);}
   revalidatePath("/","layout");redirect(`/cotizaciones/${id}?ok=1`);
+}
+export async function updateQuotePresentationAction(form:FormData){
+  const actor=await requireActor(),id=v(form,"quote_id"),path=`/cotizaciones/${encodeURIComponent(id)}`;
+  try{await updateQuotePresentation(actor,id,{company_intro:v(form,"company_intro"),proposal_objective:v(form,"proposal_objective")});}
+  catch(error){redirect(`${path}?error=${encodeURIComponent(message(error))}`);}
+  revalidatePath("/","layout");redirect(`${path}?ok=1`);
 }
 export async function addQuoteLineAction(form:FormData){
   const actor=await requireActor();const id=v(form,"quote_id"),path=`/cotizaciones/${encodeURIComponent(id)}`;

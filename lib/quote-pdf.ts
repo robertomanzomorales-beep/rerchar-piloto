@@ -65,7 +65,29 @@ export async function renderQuotePdf(quote:Quote,lines:QuoteLine[],warning="",ro
   page.drawRectangle({x:45,y:proposalTop-proposalHeight,width:505,height:proposalHeight,color:pale});
   write("PROPUESTA",59,proposalTop-23,8,bold,green);
   for(const [i,line] of titleLines.entries())write(line,59,proposalTop-43-i*15,12,bold);
-  let y=proposalTop-proposalHeight-27;
+  let y=proposalTop-proposalHeight-23;
+  function presentation(label:string,body:string|null){
+    if(!body?.trim())return;
+    const paragraphs=body.split(/\r\n?|\n|\u2028|\u2029/).filter(part=>part.trim());
+    if(!paragraphs.length)return;
+    function nextPage(continuation=false){
+      page=doc.addPage([595.28,841.89]);pages.push(page);header(true);y=682;
+      if(continuation){write(`${label} (CONTINUACIÓN)`,45,y,8,bold,green);y-=18;}
+    }
+    if(y<115)nextPage();
+    write(label,45,y,8,bold,green);y-=18;
+    for(const paragraph of paragraphs){
+      for(const part of wrap(paragraph,regular,8.5,496)){
+        if(y<88)nextPage(true);
+        write(part,49,y,8.5);y-=12;
+      }
+      y-=5;
+    }
+    y-=12;
+  }
+  presentation("RESEÑA DE LA EMPRESA",quote.company_intro);
+  presentation("OBJETIVO DE LA PROPUESTA",quote.proposal_objective);
+  if(y<195){page=doc.addPage([595.28,841.89]);pages.push(page);header(true);y=684;}
   function tableHeader(){page.drawRectangle({x:45,y:y-6,width:505,height:25,color:green});write(quote.commercial_kind==="compra_material"?"MATERIAL / OBSERVACIÓN":"DESCRIPCIÓN",54,y+2,8,bold,rgb(1,1,1));write(quote.commercial_kind==="compra_material"?"KG":"CANT.",324,y+2,8,bold,rgb(1,1,1));write(quote.commercial_kind==="compra_material"?"$/KG":"UNITARIO",400,y+2,8,bold,rgb(1,1,1));write(includesUf?"CLP REF.":"TOTAL",492,y+2,8,bold,rgb(1,1,1));y-=31;}
   tableHeader();
   lines.forEach((line,index)=>{
