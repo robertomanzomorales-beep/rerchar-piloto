@@ -96,7 +96,7 @@ export function verificationBaseUrl(){
 }
 export function verificationUrl(code:string){return `${verificationBaseUrl()}/verificar/${code}`;}
 
-async function certificateSnapshot(tx:Db,serviceId:string){
+async function certificateSnapshot(tx:Db,serviceId:string,documentType:"servicio"|"disposicion_final"="servicio"){
     const [service]=await tx.query<{id:string;folio:string;status:string;operating_company:string|null;client_name:string;site_name:string;
       service_type:string;waste_type:string;gross_kg:string;tare_kg:string;closed_at:Date}>(`
       SELECT s.id,s.folio,s.status,s.operating_company,c.name AS client_name,cs.name AS site_name,s.service_type,s.waste_type,
@@ -110,6 +110,19 @@ async function certificateSnapshot(tx:Db,serviceId:string){
       receiver_name,treatment FROM waste_records WHERE service_id=$1`,[serviceId]);
     if(!record||!["revisado","declarado"].includes(record.status))
       reject("Revise primero la ficha ambiental del servicio.");
+    let dispositionEvidence:{id:string;description:string;original_filename:string|null}|undefined;
+    if(documentType==="disposicion_final"){
+      if(!/disposici[oó]n\s+final/i.test(record.treatment)||!record.receiver_name.trim())
+        reject("Para disposición final, la ficha revisada debe identificar receptor y tratamiento de disposición final.");
+      const [support]=await tx.query<{id:string;description:string;original_filename:string|null}>(`
+        SELECT id,description,original_filename FROM service_evidence
+        WHERE service_id=$1 AND storage_key IS NOT NULL
+          AND (description ~* 'disposici[oó]n[[:space:]]+final'
+            OR coalesce(original_filename,'') ~* 'disposici[oó]n[[:space:]_-]+final')
+        ORDER BY created_at DESC LIMIT 1`,[serviceId]);
+      if(!support)reject("Adjunte al servicio un respaldo de disposición final del receptor, identificado como tal en su descripción o nombre.");
+      dispositionEvidence=support;
+    }
     const [evidence]=await tx.query<{total:string}>(`SELECT count(*)::text AS total FROM service_evidence
       WHERE service_id=$1 AND storage_key IS NOT NULL`,[serviceId]);
     if(Number(evidence.total)<1)reject("El servicio necesita un archivo de evidencia.");
@@ -129,6 +142,9 @@ async function certificateSnapshot(tx:Db,serviceId:string){
       ORDER BY i.issued_on DESC LIMIT 1`,[serviceId]);
     const snapshot:CertificateSnapshot={folio:`RER-${String(service.folio).padStart(5,"0")}`,
       client_name:service.client_name,site_name:service.site_name,service_type:service.service_type,waste_type:service.waste_type,
+      document_type:documentType,...(dispositionEvidence?{
+        disposition_evidence:dispositionEvidence.original_filename||dispositionEvidence.description,
+        disposition_evidence_id:dispositionEvidence.id}:{}),
       category:record.category,classification:record.classification,quantity_kg:record.quantity_kg,
       guide_number:record.guide_number,generator_name:record.generator_name,transporter_name:record.transporter_name,
       receiver_name:record.receiver_name,treatment:record.treatment,closed_at:service.closed_at.toISOString(),
@@ -138,10 +154,11 @@ async function certificateSnapshot(tx:Db,serviceId:string){
     return snapshot;
 }
 
-export async function saveCertificateDraft(actor:Actor,serviceId:string){
+export async function saveCertificateDraft(actor:Actor,serviceId:string,documentType:unknown="servicio"){
   admin(actor);uuid.parse(serviceId);
+  const selected=z.enum(["servicio","disposicion_final"]).parse(documentType);
   return transaction(async tx=>{
-    const snapshot=await certificateSnapshot(tx,serviceId);
+    const snapshot=await certificateSnapshot(tx,serviceId,selected);
     const [active]=await tx.query<{id:string}>("SELECT id FROM service_certificates WHERE service_id=$1 AND status='vigente'",[serviceId]);
     if(active)reject("Este servicio ya tiene un certificado vigente.");
     await tx.query(`INSERT INTO service_certificate_drafts (service_id,snapshot,prepared_by)
@@ -159,12 +176,12 @@ export async function issueCertificate(actor:Actor,serviceId:string,confirmation
   verificationBaseUrl();
   return transaction(async(tx)=>{
     // Se bloquea el servicio antes de comparar el borrador con el registro vigente.
-    const snapshot=await certificateSnapshot(tx,serviceId);
     const [active]=await tx.query<{id:string}>("SELECT id FROM service_certificates WHERE service_id=$1 AND status='vigente'",[serviceId]);
     if(active)return active.id;
     const [draft]=await tx.query<{snapshot:CertificateSnapshot}>(
       "SELECT snapshot FROM service_certificate_drafts WHERE service_id=$1 FOR UPDATE",[serviceId]);
     if(!draft)reject("Primero guarde y revise el borrador del certificado.");
+    const snapshot=await certificateSnapshot(tx,serviceId,draft.snapshot.document_type??"servicio");
     const keys=Object.keys(snapshot) as (keyof CertificateSnapshot)[];
     if(keys.length!==Object.keys(draft.snapshot).length||keys.some(key=>snapshot[key]!==draft.snapshot[key]))
       reject("El servicio cambió desde que se preparó el borrador. Actualícelo antes de emitir.");
@@ -178,7 +195,7 @@ export async function issueCertificate(actor:Actor,serviceId:string,confirmation
     await tx.query(`INSERT INTO audit_events (actor_id,action,entity_type,entity_id,next_value)
       VALUES ($1,'issue','service_certificate',$2,$3)`,[actor.id,certificate.id,JSON.stringify({service_id:serviceId,version})]);
     await tx.query(`INSERT INTO service_events (service_id,kind,description,actor_id)
-      VALUES ($1,'certificado',$2,$3)`,[serviceId,`Certificado operacional versión ${version} emitido.`,actor.id]);
+      VALUES ($1,'certificado',$2,$3)`,[serviceId,`Certificado ${snapshot.document_type==="disposicion_final"?"de disposición final":"de servicio"} versión ${version} emitido.`,actor.id]);
     return certificate.id;
   });
 }

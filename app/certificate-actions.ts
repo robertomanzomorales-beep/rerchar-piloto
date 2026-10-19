@@ -23,7 +23,7 @@ export async function issueCertificateAction(form:FormData){
 }
 export async function saveCertificateDraftAction(form:FormData){
   const actor=await requireActor();
-  try{await saveCertificateDraft(actor,value(form,"service_id"));}
+  try{await saveCertificateDraft(actor,value(form,"service_id"),value(form,"document_type")||"servicio");}
   catch(error){redirect(`/certificados?error=${encodeURIComponent(errorText(error))}`);}
   revalidatePath("/","layout");
   redirect("/certificados?borrador=1");

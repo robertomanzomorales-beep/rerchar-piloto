@@ -96,10 +96,23 @@ test("certificado PDF/QR conserva versión, permisos y revocación de ficha obse
     generator_name:"Empresa cliente",transporter_name:"RERCHAR",receiver_name:"Receptor de prueba",
     treatment:"Destino documentado",guide_number:"GUIA-01"});
   await compliance.reviewWasteRecord(owner,waste);
-  await certificates.saveCertificateDraft(owner,service.id);
+  await assert.rejects(()=>certificates.saveCertificateDraft(owner,service.id,"disposicion_final"),/tratamiento de disposición final/);
+  await compliance.observeWasteRecord(owner,waste,"Tratamiento confirmado por receptor");
+  await compliance.saveWasteRecord(operator,{service_id:service.id,category:"peligroso",classification:"Clasificación de prueba",
+    generator_name:"Empresa cliente",transporter_name:"RERCHAR",receiver_name:"Receptor de prueba",
+    treatment:"Disposición final",guide_number:"GUIA-01"});
+  await compliance.reviewWasteRecord(owner,waste);
+  await assert.rejects(()=>certificates.saveCertificateDraft(owner,service.id,"disposicion_final"),/respaldo de disposición final/);
+  await db.query(`INSERT INTO service_evidence (service_id,description,storage_key,original_filename,created_by)
+    VALUES ($1,'Respaldo disposición final del receptor','respaldo-final.pdf','disposicion-final.pdf',$2)`,[service.id,owner.id]);
+  await certificates.saveCertificateDraft(owner,service.id,"disposicion_final");
   const second=await certificates.issueCertificate(owner,service.id,"EMITIR");
   row=await certificates.getCertificate(owner,second);
   assert.equal(row.version,2);
+  assert.equal(row.snapshot.document_type,"disposicion_final");
+  assert.equal(row.snapshot.disposition_evidence,"disposicion-final.pdf");
+  const finalPdf=await PDFDocument.load(await renderCertificatePdf(row,certificates.verificationUrl(row.code)));
+  assert.match(finalPdf.getTitle()??"",/Certificado de disposición final/);
   await assert.rejects(()=>certificates.revokeCertificate(operator,second,"Motivo de prueba"),certificates.CertificateError);
   await certificates.revokeCertificate(owner,second,"Error en emisión");
   assert.equal((await certificates.publicVerification(row.code))?.status,"revocado");

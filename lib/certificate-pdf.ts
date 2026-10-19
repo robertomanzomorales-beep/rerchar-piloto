@@ -7,6 +7,7 @@ import type {PDFFont} from "pdf-lib";
 
 export type CertificateSnapshot={
   folio:string;client_name:string;site_name:string;service_type:string;waste_type:string;
+  document_type?:"servicio"|"disposicion_final";disposition_evidence?:string;disposition_evidence_id?:string;
   category:string;classification:string;quantity_kg:string;guide_number:string;
   generator_name:string;transporter_name:string;receiver_name:string;treatment:string;closed_at:string;
   movement_date?:string|null;valued_guide_number?:string|null;weight_ticket?:string|null;plate?:string|null;invoice_number?:string|null;
@@ -16,8 +17,9 @@ export type PrintableCertificate={code:string;version:number;issued_at:Date|stri
 export async function renderCertificatePdf(certificate:PrintableCertificate,verificationUrl:string){
   const doc=await PDFDocument.create();
   doc.registerFontkit(fontkit);
-  doc.setTitle(`RERCHAR | Certificado operacional ${certificate.snapshot.folio} v${certificate.version}`);
-  doc.setSubject("Constancia del servicio y sus datos revisados dentro de RERCHAR");
+  const finalDisposal=certificate.snapshot.document_type==="disposicion_final";
+  doc.setTitle(`RERCHAR | Certificado ${finalDisposal?"de disposición final":"de servicio"} ${certificate.snapshot.folio} v${certificate.version}`);
+  doc.setSubject(finalDisposal?"Disposición final con ficha revisada y respaldo adjunto":"Constancia del servicio y sus datos revisados dentro de RERCHAR");
   doc.setCreator("RERCHAR Industrial Waste Management System");
   const page=doc.addPage([595.28,841.89]);
   const regular=await doc.embedFont(await readFile(resolve(process.cwd(),"public/fonts/montserrat-regular.ttf")),{subset:true});
@@ -45,8 +47,8 @@ export async function renderCertificatePdf(certificate:PrintableCertificate,veri
   const logo=await doc.embedPng(await readFile(resolve(process.cwd(),"public/rerchar-logo-transparente.png")));
   page.drawImage(logo,{x:45,y:736,width:178,height:62});
   write("INDUSTRIAL WASTE MANAGEMENT SYSTEM",45,722,8,bold,muted,410);
-  write("CERTIFICADO OPERACIONAL",45,680,22,bold,ink,500);
-  write("DE SERVICIO",45,651,22,bold,green,500);
+  write(finalDisposal?"CERTIFICADO DE":"CERTIFICADO OPERACIONAL",45,680,22,bold,ink,500);
+  write(finalDisposal?"DISPOSICIÓN FINAL":"DE SERVICIO",45,651,22,bold,green,500);
   page.drawLine({start:{x:45,y:635},end:{x:550,y:635},thickness:1.3,color:line});
   write(`FOLIO ${certificate.snapshot.folio}`,45,612,12,bold,green,240);
   write(`VERSIÓN ${certificate.version}`,368,612,9,bold,muted,180);
@@ -87,6 +89,7 @@ export async function renderCertificatePdf(certificate:PrintableCertificate,veri
   write("Escanee el código para consultar vigencia y versión.",205,157,9,regular,ink,326);
   write(verificationUrl,205,133,8,regular,muted,330);
   write(`Código: ${certificate.code.slice(0,16).toUpperCase()}...`,205,105,8,bold,ink,320);
+  if(finalDisposal)write(`Respaldo: ${certificate.snapshot.disposition_evidence}`,205,82,7,regular,muted,328);
   page.drawLine({start:{x:45,y:57},end:{x:550,y:57},thickness:1,color:line});
   write("Constancia basada en los registros revisados. No reemplaza declaraciones oficiales ni documentos de terceros.",45,42,7,regular,muted,507);
   write("RERCHAR Industrial Waste Management System  |  Diseñado y potenciado por vialoop.cl",45,26,7,bold,muted,507);
