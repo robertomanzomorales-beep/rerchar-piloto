@@ -29,7 +29,7 @@ export type SupplierInvoice={id:string;issuer:"rerchar"|"e_y_j";supplier_tax_id:
   invoice_number:string;issued_on:Date|string;due_on:Date|string|null;description:string;net_clp:string|null;
   vat_clp:string|null;total_clp:string;cost_area:string|null;purchase_id:string|null;service_id:string|null;
   status:string;paid_clp:string;paid_on:Date|string|null;notes:string|null;created_at:Date};
-export type SupplierInvoiceDetail=SupplierInvoice&{purchase_folio:string|null;purchase_title:string|null;service_folio:string|null;service_company:Company|null};
+export type SupplierInvoiceDetail=SupplierInvoice&{purchase_folio:string|null;purchase_title:string|null;purchase_order_reference:string|null;service_folio:string|null;service_company:Company|null};
 export type SupplierPayment={id:string;amount_clp:string;paid_on:Date|string;reference:string;actor_name:string;created_at:Date};
 export type SupplierInvoiceFilter="pendientes"|"vencidas"|"proximas"|"sin_fecha"|"pagadas"|"todas";
 export type SupplierInvoiceOverview={overdue:string;upcoming:string;undated:string;outstanding:string};
@@ -68,6 +68,7 @@ export async function supplierInvoiceOverview(actor:Actor,company:Company|"",on=
 export async function getSupplierInvoice(actor:Actor,id:string){
   admin(actor);if(!uuid.safeParse(id).success)reject("Factura no encontrada.");
   const [invoice]=await db.query<SupplierInvoiceDetail>(`SELECT i.*,p.folio::text AS purchase_folio,p.title AS purchase_title,
+    p.order_reference AS purchase_order_reference,
     s.folio::text AS service_folio,s.operating_company AS service_company FROM supplier_invoices i
     LEFT JOIN purchase_requests p ON p.id=i.purchase_id
     LEFT JOIN service_requests s ON s.id=i.service_id WHERE i.id=$1`,[id]);
@@ -132,11 +133,12 @@ export async function createSupplierInvoice(actor:Actor,input:unknown){
   if(data.supplier_profile_id&&!profilesReady)reject("La ficha de proveedor todavía no está disponible.");
   return transaction(async tx=>{
     let supplierTaxId=data.supplier_tax_id,supplierName=data.supplier_name,profileId=data.supplier_profile_id;
-    let purchase:{issuer:string;supplier_profile_id?:string|null;supplier_tax_id:string|null}|undefined;
+    let purchase:{issuer:string;status:string;supplier_profile_id?:string|null;supplier_tax_id:string|null}|undefined;
     if(data.purchase_id){
-      [purchase]=await tx.query<{issuer:string;supplier_profile_id?:string|null;supplier_tax_id:string|null}>(`SELECT issuer,supplier_tax_id${purchaseProfilesReady?",supplier_profile_id":""}
+      [purchase]=await tx.query<{issuer:string;status:string;supplier_profile_id?:string|null;supplier_tax_id:string|null}>(`SELECT issuer,status,supplier_tax_id${purchaseProfilesReady?",supplier_profile_id":""}
         FROM purchase_requests WHERE id=$1`,[data.purchase_id]);
       if(!purchase||purchase.issuer!==data.issuer)reject("La solicitud de compra debe corresponder a la empresa receptora.");
+      if(purchase.status==="cancelada")reject("No se puede asociar una factura a una compra cancelada.");
       if(purchase.supplier_profile_id){
         if(profileId&&profileId!==purchase.supplier_profile_id)reject("La factura y la orden deben usar la misma ficha de proveedor.");
         profileId=purchase.supplier_profile_id;

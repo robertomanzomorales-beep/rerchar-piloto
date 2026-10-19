@@ -66,6 +66,15 @@ test("solicitud, aprobación, ejecución y verificación requieren personas y re
   const linkedInvoice=await createSupplierInvoice(requester,fromOrder);
   assert.equal((await getSupplierInvoice(requester,linkedInvoice)).invoice.supplier_profile_id,profileId);
   assert.equal((await getSupplierInvoice(requester,linkedInvoice)).invoice.supplier_tax_id,"76347909-9");
+  assert.equal((await getSupplierInvoice(requester,linkedInvoice)).invoice.purchase_order_reference,"OC-RER-000001");
+  const canceledPurchase=await supply.createPurchase(requester,{submission_key:randomUUID(),title:"Solicitud cancelada",
+    category:"repuestos",priority:"normal",item_id:stock,quantity:"1",notes:"No se concretó"});
+  await supply.approvePurchase(approver,canceledPurchase);
+  const canceledLine=(await supply.getPurchase(requester,canceledPurchase)).lines[0];
+  await supply.savePurchaseDraft(requester,canceledPurchase,{...draft,prices:{[canceledLine.id]:"5000"}});
+  await supply.cancelPurchase(approver,canceledPurchase,"Compra no concretada");
+  await assert.rejects(()=>createSupplierInvoice(requester,{...fromOrder,purchase_id:canceledPurchase,
+    invoice_number:"R-CANCELADA"}),/compra cancelada/);
   const data={supplier_tax_id:"76.347.909-9",supplier_name:"Proveedor A",issued_on:"2026-10-01",
     due_on:"2026-10-20",description:"Insumos",total_clp:"10000"};
   const invoice=await createSupplierInvoice(requester,{...data,issuer:"rerchar",invoice_number:"R-1",supplier_profile_id:profileId});
