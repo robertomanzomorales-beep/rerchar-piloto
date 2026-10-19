@@ -1,6 +1,6 @@
 import {db} from "./db";
 
-export type ModuleKey="guias"|"ingresos"|"stock"|"edp"|"edp_service_import"|"edp_billing"|"edp_client_order"|"edp_calendar"|"cotizaciones"|"certificados_borradores"|"material_sale_billing"|"supplier_transfers"|"counterparty_profiles";
+export type ModuleKey="guias"|"ingresos"|"stock"|"edp"|"edp_service_import"|"edp_billing"|"edp_client_order"|"edp_calendar"|"cotizaciones"|"certificados_borradores"|"material_sale_billing"|"supplier_transfers"|"counterparty_profiles"|"purchase_supplier_profile";
 
 // Sólo se consultan nombres fijos del esquema. Detectar la tabla sin sus columnas
 // evita mostrar un módulo parcialmente migrado como si estuviera operativo.
@@ -14,6 +14,8 @@ const requirements:Record<ModuleKey,{tables:string[];columns:[string,string][]}>
     columns:[["supplier_transfer_requests","payment_id"],["supplier_transfer_proofs","content"]]},
   counterparty_profiles:{tables:["counterparty_profiles","counterparty_documents","supplier_invoices"],
     columns:[["supplier_invoices","supplier_profile_id"],["counterparty_profiles","account_number"]]},
+  purchase_supplier_profile:{tables:["counterparty_profiles","purchase_requests"],
+    columns:[["purchase_requests","supplier_profile_id"]]},
   ingresos:{tables:["material_receipts","material_catalog","material_stock_balances"],
     columns:[["material_receipts","material_id"],["material_receipts","receipt_mode"]]},
   stock:{tables:["material_catalog","material_stock_balances","material_stock_movements"],columns:[]},

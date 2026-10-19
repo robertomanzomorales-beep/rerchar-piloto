@@ -36,6 +36,36 @@ test("solicitud, aprobación, ejecución y verificación requieren personas y re
   await assert.rejects(()=>counterparties.getCounterparty(viewer,profileId),/Sólo administración/);
   await assert.rejects(()=>counterparties.verifyCounterparty(requester,profileId),/Otra persona/);
   await counterparties.verifyCounterparty(approver,profileId);
+  const supply=await import("../lib/supply");
+  const stock=await supply.createStockItem(requester,{code:"REP-OC",name:"Repuesto para OC",unit:"un",minimum_qty:"0"});
+  const purchaseId=await supply.createPurchase(requester,{submission_key:randomUUID(),title:"Compra con ficha verificada",
+    category:"repuestos",priority:"normal",item_id:stock,quantity:"2",notes:"Proveedor validado por Carol"});
+  await supply.approvePurchase(approver,purchaseId);
+  const purchaseLine=(await supply.getPurchase(requester,purchaseId)).lines[0];
+  const draft={supplier_profile_id:profileId,supplier:"",supplier_tax_id:"99.999.999-9",supplier_address:"Domicilio incorrecto",
+    payment_terms:"",issuer:"rerchar",expected_date:"",vat_rate:"0.19",prices:{[purchaseLine.id]:"5000"},discounts:{}};
+  await assert.rejects(()=>supply.savePurchaseDraft(requester,purchaseId,{...draft,supplier_profile_id:randomUUID()}),/ficha de proveedor verificada/);
+  await supply.savePurchaseDraft(requester,purchaseId,draft);
+  const purchase=(await supply.getPurchase(requester,purchaseId)).purchase;
+  assert.equal(purchase.supplier_profile_id,profileId);
+  assert.equal(purchase.supplier,"Proveedor A");
+  assert.equal(purchase.supplier_tax_id,"76347909-9");
+  assert.equal(purchase.supplier_address,"Calle Principal 123");
+  assert.equal(purchase.payment_terms,"Crédito 30 días");
+  await counterparties.saveCounterparty(requester,{...profileInput,id:profileId,legal_address:"Calle Principal 456"});
+  await assert.rejects(()=>supply.issuePurchaseDraft(requester,purchaseId,"EMITIR"),/pendiente de revisión/);
+  await counterparties.verifyCounterparty(approver,profileId);
+  await assert.rejects(()=>supply.issuePurchaseDraft(requester,purchaseId,"EMITIR"),/ficha del proveedor cambió/);
+  await supply.savePurchaseDraft(requester,purchaseId,draft);
+  assert.equal((await supply.getPurchase(requester,purchaseId)).purchase.supplier_address,"Calle Principal 456");
+  await supply.issuePurchaseDraft(requester,purchaseId,"EMITIR");
+  assert.equal((await supply.getPurchase(requester,purchaseId)).purchase.order_reference,"OC-RER-000001");
+  const fromOrder={issuer:"rerchar",invoice_number:"R-OC",purchase_id:purchaseId,issued_on:"2026-10-01",
+    description:"Repuestos de la OC",total_clp:"10000",supplier_tax_id:"",supplier_name:""};
+  await assert.rejects(()=>createSupplierInvoice(requester,{...fromOrder,supplier_profile_id:randomUUID()}),/misma ficha/);
+  const linkedInvoice=await createSupplierInvoice(requester,fromOrder);
+  assert.equal((await getSupplierInvoice(requester,linkedInvoice)).invoice.supplier_profile_id,profileId);
+  assert.equal((await getSupplierInvoice(requester,linkedInvoice)).invoice.supplier_tax_id,"76347909-9");
   const data={supplier_tax_id:"76.347.909-9",supplier_name:"Proveedor A",issued_on:"2026-10-01",
     due_on:"2026-10-20",description:"Insumos",total_clp:"10000"};
   const invoice=await createSupplierInvoice(requester,{...data,issuer:"rerchar",invoice_number:"R-1",supplier_profile_id:profileId});
@@ -82,6 +112,7 @@ test("solicitud, aprobación, ejecución y verificación requieren personas y re
   assert.equal((await getSupplierInvoice(requester,other)).invoice.paid_clp,"0.00");
   const stale=await transfers.requestSupplierTransfer(requester,other,{...request,submission_key:randomUUID(),amount_clp:"1000"});
   await counterparties.saveCounterparty(requester,{...profileInput,id:profileId,account_number:"1122334455"});
+  await assert.rejects(()=>createSupplierInvoice(requester,{...fromOrder,invoice_number:"R-OC-2"}),/ficha de proveedor verificada/);
   await assert.rejects(()=>transfers.decideSupplierTransfer(approver,stale,"aprobada","Revisada"),/ficha bancaria cambió/);
   await transfers.decideSupplierTransfer(approver,stale,"rechazada","Cuenta reemplazada");
   await assert.rejects(()=>transfers.requestSupplierTransfer(requester,other,{...request,submission_key:randomUUID()}),/verifique la ficha bancaria/);

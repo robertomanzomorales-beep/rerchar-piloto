@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { Actor } from "./auth";
 import { canManage } from "./auth";
 import { db, transaction, type Db } from "./db";
+import {moduleReady} from "./schema-readiness";
 
 const uuid = z.uuid();
 const label = (max = 180) => z.string().trim().min(2).max(max);
@@ -72,7 +73,7 @@ export type Purchase = {
   id: string; folio: string; title: string; category: string; priority: string; status: string;
   notes: string | null; supplier: string | null; order_reference: string | null;
   order_sequence:string|null;without_order:boolean;
-  issuer:"rerchar"|"e_y_j";supplier_tax_id:string|null;supplier_address:string|null;supplier_contact:string|null;cost_center:string|null;
+  issuer:"rerchar"|"e_y_j";supplier_profile_id?:string|null;supplier_tax_id:string|null;supplier_address:string|null;supplier_contact:string|null;cost_center:string|null;
   payment_terms:string|null;vat_rate:string;ordered_at:Date|null;
   expected_date: Date | string | null; requested_by: string; requested_name: string;
   approved_name: string | null; created_at: Date; updated_at: Date;
@@ -175,14 +176,25 @@ export function purchaseTotals(lines:Pick<PurchaseLine,"quantity"|"unit_price_cl
 export async function savePurchaseDraft(actor: Actor, requestId: string, input: unknown) {
   requireOperations(actor);
   const id = uuid.parse(requestId);
-  const data = z.object({ supplier: label(160), expected_date: date,
+  const data = z.object({ supplier: optional(160), supplier_profile_id:z.union([uuid,z.literal("")]).default(""), expected_date: date,
     issuer:z.enum(["rerchar","e_y_j"]),supplier_tax_id:optional(20),supplier_address:optional(250),
-    supplier_contact:optional(120),cost_center:optional(120),payment_terms:label(120),
+    supplier_contact:optional(120),cost_center:optional(120),payment_terms:optional(120),
     vat_rate:z.enum(["0","0.19"]).default("0.19"),prices:z.record(uuid,z.union([z.string(),z.number()])),
     discounts:z.record(uuid,z.union([z.string(),z.number()])).default({}) }).parse(input);
+  const profilesReady=await moduleReady("purchase_supplier_profile");
+  if(data.supplier_profile_id&&!profilesReady)reject("El vínculo con la ficha de proveedor todavía no está disponible.");
   await transaction(async (tx) => {
     const [request] = await tx.query<{ status: string }>("SELECT status FROM purchase_requests WHERE id=$1 FOR UPDATE", [id]);
     if (!request || request.status !== "aprobada") reject("Apruebe la solicitud antes de preparar la orden.");
+    let supplier=data.supplier,taxId=data.supplier_tax_id,address=data.supplier_address,terms=data.payment_terms;
+    if(data.supplier_profile_id){
+      const [profile]=await tx.query<{legal_name:string;tax_id:string;legal_address:string;payment_terms:string;status:string;kind:string}>(
+        "SELECT legal_name,tax_id,legal_address,payment_terms,status,kind FROM counterparty_profiles WHERE id=$1",
+        [data.supplier_profile_id]);
+      if(!profile||profile.status!=="verificada"||profile.kind==="cliente")reject("Seleccione una ficha de proveedor verificada.");
+      supplier=profile.legal_name;taxId=profile.tax_id;address=profile.legal_address;
+      terms=profile.payment_terms==="contado"?"Contado":`Crédito ${profile.payment_terms} días`;
+    }else if(supplier.length<2||terms.length<2)reject("Indique proveedor y condiciones de pago, o seleccione una ficha verificada.");
     const lines=await tx.query<{id:string}>("SELECT id FROM purchase_lines WHERE request_id=$1 FOR UPDATE",[id]);
     if(!lines.length||Object.keys(data.prices).length!==lines.length||
        Object.keys(data.discounts).some(key=>!lines.some(line=>line.id===key)))
@@ -197,10 +209,11 @@ export async function savePurchaseDraft(actor: Actor, requestId: string, input: 
     }
     await tx.query(`UPDATE purchase_requests SET supplier=$2,order_reference=NULL,expected_date=NULLIF($3,'')::date,
       issuer=$4,supplier_tax_id=NULLIF($5,''),supplier_address=NULLIF($6,''),payment_terms=$7,vat_rate=$8,
-      supplier_contact=NULLIF($9,''),cost_center=NULLIF($10,''),updated_at=now()
-      WHERE id=$1`,[id,data.supplier,data.expected_date,data.issuer,data.supplier_tax_id,
-      data.supplier_address,data.payment_terms,data.vat_rate,data.supplier_contact,data.cost_center]);
-    await purchaseEvent(tx, actor, id, "draft_order", "Borrador de OC guardado sin número y sin emitir", data);
+      supplier_contact=NULLIF($9,''),cost_center=NULLIF($10,'')${profilesReady?",supplier_profile_id=NULLIF($11,'')::uuid":""},updated_at=now()
+      WHERE id=$1`,[id,supplier,data.expected_date,data.issuer,taxId,
+      address,terms,data.vat_rate,data.supplier_contact,data.cost_center,...(profilesReady?[data.supplier_profile_id]:[])]);
+    await purchaseEvent(tx, actor, id, "draft_order", "Borrador de OC guardado sin número y sin emitir",
+      {...data,supplier,supplier_tax_id:taxId,supplier_address:address,payment_terms:terms});
   });
 }
 
@@ -212,6 +225,15 @@ export async function issuePurchaseDraft(actor:Actor,requestId:string,confirmati
     const [request]=await tx.query<Purchase>("SELECT * FROM purchase_requests WHERE id=$1 FOR UPDATE",[id]);
     if(!request||request.status!=="aprobada"||!request.supplier||!request.payment_terms)
       reject("Guarde y revise el borrador antes de emitir la orden.");
+    if(request.supplier_profile_id){
+      const [profile]=await tx.query<{legal_name:string;tax_id:string;legal_address:string;payment_terms:string;status:string;kind:string}>(
+        "SELECT legal_name,tax_id,legal_address,payment_terms,status,kind FROM counterparty_profiles WHERE id=$1",
+        [request.supplier_profile_id]);
+      const terms=profile?.payment_terms==="contado"?"Contado":`Crédito ${profile?.payment_terms} días`;
+      if(!profile||profile.status!=="verificada"||profile.kind==="cliente"||profile.legal_name!==request.supplier||
+         profile.tax_id!==request.supplier_tax_id||profile.legal_address!==request.supplier_address||terms!==request.payment_terms)
+        reject("La ficha del proveedor cambió o está pendiente de revisión. Guarde nuevamente el borrador antes de emitir.");
+    }
     const lines=await tx.query<PurchaseLine>("SELECT * FROM purchase_lines WHERE request_id=$1 FOR UPDATE",[id]);
     if(!lines.length||lines.some(line=>line.unit_price_clp==null))reject("El borrador requiere precios para cada artículo.");
     let sequence:{last_number:string};
@@ -237,6 +259,7 @@ export async function receivePurchase(actor: Actor, requestId: string, input: un
   const data = z.object({ submission_key: uuid, line_id: uuid, warehouse_id: uuid, quantity,
     guide_number: z.string().trim().max(80), invoice_number: optional(80), payment_status: z.enum(["pendiente","pagada"]),
     without_order:z.boolean().default(false),supplier:optional(160),issuer:z.enum(["rerchar","e_y_j"]).optional() }).parse(input);
+  const profilesReady=await moduleReady("purchase_supplier_profile");
   if(!data.guide_number&&!data.invoice_number)reject("Indique el número de guía o de factura que respalda la recepción.");
   return transaction(async (tx) => {
     const [request] = await tx.query<{ status: string;without_order:boolean;issuer:string }>("SELECT status,without_order,issuer FROM purchase_requests WHERE id=$1 FOR UPDATE", [id]);
@@ -248,7 +271,7 @@ export async function receivePurchase(actor: Actor, requestId: string, input: un
     }
     if (request.status==="aprobada") {
       if(!data.without_order||!data.supplier||!data.issuer)reject("Para recibir sin OC, indique proveedor y empresa compradora.");
-      await tx.query("UPDATE purchase_requests SET supplier=$2,issuer=$3,without_order=true,order_reference=NULL,order_sequence=NULL WHERE id=$1",[id,data.supplier,data.issuer]);
+      await tx.query(`UPDATE purchase_requests SET supplier=$2,issuer=$3,without_order=true,order_reference=NULL,order_sequence=NULL${profilesReady?",supplier_profile_id=NULL":""} WHERE id=$1`,[id,data.supplier,data.issuer]);
     } else if (!["ordenada","parcial"].includes(request.status) || request.without_order!==data.without_order)
       reject("La compra aún no admite esta modalidad de recepción.");
     const [line] = await tx.query<{ item_id: string }>("SELECT item_id FROM purchase_lines WHERE id=$1 AND request_id=$2", [data.line_id,id]);

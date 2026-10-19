@@ -62,7 +62,7 @@ export async function savePurchaseDraftAction(form: FormData) {
   const actor = await requireActor(); const id = value(form,"request_id");
   const prices=Object.fromEntries([...form.entries()].filter(([key])=>key.startsWith("price_")).map(([key,val])=>[key.slice(6),String(val)]));
   const discounts=Object.fromEntries([...form.entries()].filter(([key])=>key.startsWith("discount_")).map(([key,val])=>[key.slice(9),String(val)]));
-  await run(purchasePath(id), () => savePurchaseDraft(actor,id,{ supplier: value(form,"supplier"), expected_date: value(form,"expected_date"),
+  await run(purchasePath(id), () => savePurchaseDraft(actor,id,{ supplier: value(form,"supplier"), supplier_profile_id:value(form,"supplier_profile_id"), expected_date: value(form,"expected_date"),
     issuer:value(form,"issuer"),supplier_tax_id:value(form,"supplier_tax_id"),supplier_address:value(form,"supplier_address"),
     supplier_contact:value(form,"supplier_contact"),cost_center:value(form,"cost_center"),
     payment_terms:value(form,"payment_terms"),vat_rate:value(form,"vat_rate"),prices,discounts }));

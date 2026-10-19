@@ -128,19 +128,29 @@ export async function createSupplierInvoice(actor:Actor,input:unknown){
   if(data.net_clp!==""&&data.vat_clp!==""&&Math.abs(invoiceReconciliation({net_clp:data.net_clp,vat_clp:data.vat_clp,total_clp:data.total_clp})??0)>0.01)
     reject("Neto más IVA no coincide con el total informado.");
   const profilesReady=await moduleReady("counterparty_profiles");
+  const purchaseProfilesReady=await moduleReady("purchase_supplier_profile");
   if(data.supplier_profile_id&&!profilesReady)reject("La ficha de proveedor todavía no está disponible.");
-  if(!data.supplier_profile_id&&(data.supplier_tax_id.length<5||data.supplier_name.length<2))
-    reject("Indique el proveedor o seleccione una ficha verificada.");
   return transaction(async tx=>{
-    let supplierTaxId=data.supplier_tax_id,supplierName=data.supplier_name;
-    if(data.supplier_profile_id){
+    let supplierTaxId=data.supplier_tax_id,supplierName=data.supplier_name,profileId=data.supplier_profile_id;
+    let purchase:{issuer:string;supplier_profile_id?:string|null;supplier_tax_id:string|null}|undefined;
+    if(data.purchase_id){
+      [purchase]=await tx.query<{issuer:string;supplier_profile_id?:string|null;supplier_tax_id:string|null}>(`SELECT issuer,supplier_tax_id${purchaseProfilesReady?",supplier_profile_id":""}
+        FROM purchase_requests WHERE id=$1`,[data.purchase_id]);
+      if(!purchase||purchase.issuer!==data.issuer)reject("La solicitud de compra debe corresponder a la empresa receptora.");
+      if(purchase.supplier_profile_id){
+        if(profileId&&profileId!==purchase.supplier_profile_id)reject("La factura y la orden deben usar la misma ficha de proveedor.");
+        profileId=purchase.supplier_profile_id;
+      }
+    }
+    if(profileId){
       const [profile]=await tx.query<{tax_id:string;legal_name:string;status:string;kind:string}>(
-        "SELECT tax_id,legal_name,status,kind FROM counterparty_profiles WHERE id=$1",[data.supplier_profile_id]);
+        "SELECT tax_id,legal_name,status,kind FROM counterparty_profiles WHERE id=$1",[profileId]);
       if(!profile||profile.status!=="verificada"||profile.kind==="cliente")reject("Seleccione una ficha de proveedor verificada.");
       supplierTaxId=profile.tax_id;supplierName=profile.legal_name;
     }
-    if(data.purchase_id){const [purchase]=await tx.query<{issuer:string}>("SELECT issuer FROM purchase_requests WHERE id=$1",[data.purchase_id]);
-      if(!purchase||purchase.issuer!==data.issuer)reject("La orden de compra debe corresponder a la empresa receptora.");}
+    if(supplierTaxId.length<5||supplierName.length<2)reject("Indique el proveedor o seleccione una ficha verificada.");
+    if(purchase?.supplier_tax_id&&purchase.supplier_tax_id.replace(/[.\s]/g,"").toUpperCase()!==supplierTaxId.replace(/[.\s]/g,"").toUpperCase())
+      reject("El RUT del proveedor en la factura no coincide con la solicitud u orden de compra.");
     if(data.service_id){const [service]=await tx.query<{operating_company:string|null}>("SELECT operating_company FROM service_requests WHERE id=$1 AND deleted_at IS NULL",[data.service_id]);
       if(!service||service.operating_company!==data.issuer)reject("El servicio debe tener confirmada la misma empresa receptora.");}
     const [duplicate]=await tx.query("SELECT id FROM supplier_invoices WHERE issuer=$1 AND supplier_tax_id=$2 AND invoice_number=$3",
@@ -152,9 +162,9 @@ export async function createSupplierInvoice(actor:Actor,input:unknown){
         $10,NULLIF($11,''),NULLIF($12,'')::uuid,NULLIF($13,'')::uuid,NULLIF($14,''),$15${profilesReady?",NULLIF($16,'')::uuid":""}) RETURNING id`,
       [data.issuer,supplierTaxId,supplierName,data.invoice_number,data.issued_on,data.due_on,
        data.description,data.net_clp,data.vat_clp,data.total_clp,data.cost_area,data.purchase_id,data.service_id,data.notes,actor.id,
-       ...(profilesReady?[data.supplier_profile_id]:[])]);
+       ...(profilesReady?[profileId]:[])]);
     await tx.query("INSERT INTO audit_events(actor_id,action,entity_type,entity_id,next_value) VALUES ($1,'create','supplier_invoice',$2,$3)",
-      [actor.id,row.id,JSON.stringify({issuer:data.issuer,supplier_tax_id:supplierTaxId,supplier_profile_id:data.supplier_profile_id||null,
+      [actor.id,row.id,JSON.stringify({issuer:data.issuer,supplier_tax_id:supplierTaxId,supplier_profile_id:profileId||null,
         invoice_number:data.invoice_number,total_clp:data.total_clp})]);
     return row.id;
   });
