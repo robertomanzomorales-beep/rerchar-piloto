@@ -10,6 +10,7 @@ import {quotePrincipals,quoteUnits,validQuoteSegment} from "./quote-catalog";
 import {wasteCategories,segmentWasteCategory,destinationNeeded,categoryName} from "./destination-catalog";
 import {calculateQuoteCost,type QuoteCosting} from "./quote-planning";
 import {catalogName,MaterialStockError} from "./material-stock";
+import {normalizeQuoteText} from "./quote-text";
 export {quoteFolio} from "./companies";
 
 const uuid=z.uuid();
@@ -243,7 +244,8 @@ export async function createQuote(actor:Actor,input:unknown){
     const [quote]=await tx.query<{id:string;folio:string}>(`INSERT INTO client_quotes
       (submission_key,client_id,issuer,client_name,client_tax_id,client_email,client_address,title,company_intro,proposal_objective,notes,issued_on,valid_until,vat_rate,created_by,commercial_kind,tax_review_status)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NULLIF($9,''),NULLIF($10,''),NULLIF($11,''),$12,$13,$14,$15,$16,$17) RETURNING id,folio`,
-      [data.submission_key,data.client_id,data.issuer,client.name,client.tax_id,client.email,client.address,data.title,data.company_intro,data.proposal_objective,data.notes,
+      [data.submission_key,data.client_id,data.issuer,client.name,client.tax_id,client.email,client.address,data.title,
+       normalizeQuoteText(data.company_intro),normalizeQuoteText(data.proposal_objective),normalizeQuoteText(data.notes),
        data.issued_on,data.valid_until,kind==="compra_material"?"0":data.vat_rate,actor.id,kind,kind==="compra_material"?"pendiente":"no_aplica"]);
     const displayFolio=`COT-${data.issuer==="rerchar"?"RER":"EYJ"}-${String(quote.folio).padStart(5,"0")}`;
     await tx.query("UPDATE client_quotes SET display_folio=$2,route_required=$3 WHERE id=$1",
@@ -262,17 +264,22 @@ export async function createQuote(actor:Actor,input:unknown){
 }
 export async function updateQuotePresentation(actor:Actor,quoteId:string,input:unknown){
   canEdit(actor);const id=uuid.parse(quoteId);
-  const data=z.object({company_intro:z.string().trim().max(700),proposal_objective:z.string().trim().max(700)}).parse(input);
+  const data=z.object({company_intro:z.string().trim().max(700),proposal_objective:z.string().trim().max(700),
+    notes:z.string().trim().max(1000).optional()}).parse(input);
   if(!data.company_intro||!data.proposal_objective)reject("Complete la presentación de la empresa y el objetivo de la propuesta.");
   await transaction(async tx=>{
-    const [current]=await tx.query<{company_intro:string|null;proposal_objective:string|null}>(
-      "SELECT company_intro,proposal_objective FROM client_quotes WHERE id=$1 AND status='borrador' FOR UPDATE",[id]);
+    const [current]=await tx.query<{company_intro:string|null;proposal_objective:string|null;notes:string|null}>(
+      "SELECT company_intro,proposal_objective,notes FROM client_quotes WHERE id=$1 AND status='borrador' FOR UPDATE",[id]);
     if(!current)reject("La presentación sólo puede corregirse mientras la cotización está en borrador.");
-    if(current.company_intro===data.company_intro&&current.proposal_objective===data.proposal_objective)return;
-    await tx.query("UPDATE client_quotes SET company_intro=$2,proposal_objective=$3 WHERE id=$1",
-      [id,data.company_intro,data.proposal_objective]);
+    const company_intro=normalizeQuoteText(data.company_intro).trim();
+    const proposal_objective=normalizeQuoteText(data.proposal_objective).trim();
+    const notes=data.notes===undefined?current.notes??"":normalizeQuoteText(data.notes).trim();
+    if(current.company_intro===company_intro&&current.proposal_objective===proposal_objective&&(current.notes??"")===notes)return;
+    await tx.query("UPDATE client_quotes SET company_intro=$2,proposal_objective=$3,notes=NULLIF($4,'') WHERE id=$1",
+      [id,company_intro,proposal_objective,notes]);
     await tx.query(`INSERT INTO audit_events(actor_id,action,entity_type,entity_id,previous_value,next_value)
-      VALUES($1,'update_presentation','client_quote',$2,$3,$4)`,[actor.id,id,JSON.stringify(current),JSON.stringify(data)]);
+      VALUES($1,'update_presentation','client_quote',$2,$3,$4)`,[actor.id,id,JSON.stringify(current),
+        JSON.stringify({company_intro,proposal_objective,notes})]);
   });
 }
 export async function addQuoteLine(actor:Actor,quoteId:string,input:unknown){

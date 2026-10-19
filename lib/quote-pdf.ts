@@ -5,6 +5,7 @@ import {PDFDocument,rgb,type PDFFont,type PDFPage} from "pdf-lib";
 import {issuers,quoteFolio,type Quote,type QuoteLine,type PublicQuoteRoute,quoteTotals} from "./quotes";
 import {quotePrincipalLabel,quoteSegmentLabel} from "./quote-catalog";
 import {categoryName} from "./destination-catalog";
+import {normalizeQuoteText} from "./quote-text";
 
 export async function renderQuotePdf(quote:Quote,lines:QuoteLine[],warning="",route:PublicQuoteRoute|null=null){
   const doc=await PDFDocument.create();doc.registerFontkit(fontkit);
@@ -12,7 +13,7 @@ export async function renderQuotePdf(quote:Quote,lines:QuoteLine[],warning="",ro
   const bold=await doc.embedFont(await readFile(resolve(process.cwd(),"public/fonts/montserrat-bold.ttf")),{subset:true});
   const logo=quote.issuer==="rerchar"?await doc.embedPng(await readFile(resolve(process.cwd(),"public/rerchar-logo-transparente.png"))):null;
   const dark=rgb(0.12,0.18,0.16),green=rgb(0,0.45,0.32),gray=rgb(0.43,0.48,0.46),rule=rgb(0.82,0.87,0.84),pale=rgb(0.96,0.98,0.96);
-  const safe=(s:unknown)=>[...String(s??"").normalize("NFC").replace(/\r\n?|\n|\u2028|\u2029|\t/g," ").replace(/\u2011/g,"-")]
+  const safe=(s:unknown)=>[...normalizeQuoteText(s).replace(/\n/g," ").replace(/\u2011/g,"-")]
     .map(ch=>/[\u0020-\u024f\u2013\u2014\u2018\u2019\u201c\u201d\u2022\u2026]/.test(ch)?ch:"?").join("");
   const money=(n:number)=>`$${n.toLocaleString("es-CL")}`;
   const fmt=(d:Date|string)=>new Intl.DateTimeFormat("es-CL",{dateStyle:"long",timeZone:"UTC"}).format(new Date(d));
@@ -68,7 +69,7 @@ export async function renderQuotePdf(quote:Quote,lines:QuoteLine[],warning="",ro
   let y=proposalTop-proposalHeight-23;
   function presentation(label:string,body:string|null){
     if(!body?.trim())return;
-    const paragraphs=body.split(/\r\n?|\n|\u2028|\u2029/).filter(part=>part.trim());
+    const paragraphs=normalizeQuoteText(body).split("\n").filter(part=>part.trim());
     if(!paragraphs.length)return;
     function nextPage(continuation=false){
       page=doc.addPage([595.28,841.89]);pages.push(page);header(true);y=682;
@@ -141,7 +142,7 @@ export async function renderQuotePdf(quote:Quote,lines:QuoteLine[],warning="",ro
       noteY-=18;
     }
     notesHeading();
-    for(const paragraph of quote.notes.split(/\r\n?|\n|\u2028|\u2029/)){
+    for(const paragraph of normalizeQuoteText(quote.notes).split("\n")){
       if(!paragraph.trim()){noteY-=7;continue;}
       for(const line of wrap(paragraph,regular,8,490)){
         if(noteY<60){nextNotesPage();notesHeading(true);}

@@ -14,6 +14,8 @@ test("compra de Carol conserva materiales, observaciones e IVA confirmado hasta 
   const materials=await import("../lib/materials");
   const {moduleReady}=await import("../lib/schema-readiness");
   const {renderQuotePdf}=await import("../lib/quote-pdf");
+  const {normalizeQuoteText}=await import("../lib/quote-text");
+  assert.equal(normalizeQuoteText("Vigencia\u000bBanco\u0085Correo\r\nFirma"),"Vigencia\nBanco\nCorreo\nFirma");
   assert.equal(await moduleReady("cotizaciones"),false,"una instalación sin migrar no abre el formulario incompleto");
   for(const name of (await readdir(resolve(process.cwd(),"db"))).filter(file=>/^\d+.*\.sql$/.test(file)).sort()){
     const sql=await readFile(resolve(process.cwd(),`db/${name}`),"utf8");
@@ -57,7 +59,11 @@ test("compra de Carol conserva materiales, observaciones e IVA confirmado hasta 
   const expandedPdf=await PDFDocument.load(await renderQuotePdf(shell.quote,shell.lines));
   assert.ok(expandedPdf.getPageCount()>=2,"la presentación extensa fluye a otra página antes de la tabla de precios");
   await quotes.updateQuotePresentation(actor,shellId,{company_intro:shellInput.company_intro,
-    proposal_objective:shellInput.proposal_objective});
+    proposal_objective:shellInput.proposal_objective,notes:"Condiciones de pago\u000bEntregar antecedentes antes del servicio."});
+  assert.equal((await quotes.getQuote(actor,shellId)).quote.notes,"Condiciones de pago\nEntregar antecedentes antes del servicio.");
+  await quotes.updateQuotePresentation(actor,shellId,{company_intro:shellInput.company_intro,
+    proposal_objective:shellInput.proposal_objective,notes:""});
+  assert.equal((await quotes.getQuote(actor,shellId)).quote.notes,null,"el borrador puede borrar condiciones incorrectas");
   await assert.rejects(()=>quotes.createQuote(actor,{...shellInput,submission_key:randomUUID(),commercial_kind:"compra_material"}),quotes.QuoteError);
   const purchaseShellId=await quotes.createQuote(actor,{...shellInput,submission_key:randomUUID(),issuer:"rerchar",commercial_kind:"compra_material"});
   const purchaseShell=await quotes.getQuote(actor,purchaseShellId);

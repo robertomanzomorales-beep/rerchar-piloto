@@ -20,7 +20,7 @@ export async function createQuoteAction(form:FormData){
 }
 export async function updateQuotePresentationAction(form:FormData){
   const actor=await requireActor(),id=v(form,"quote_id"),path=`/cotizaciones/${encodeURIComponent(id)}`;
-  try{await updateQuotePresentation(actor,id,{company_intro:v(form,"company_intro"),proposal_objective:v(form,"proposal_objective")});}
+  try{await updateQuotePresentation(actor,id,{company_intro:v(form,"company_intro"),proposal_objective:v(form,"proposal_objective"),notes:v(form,"notes")});}
   catch(error){redirect(`${path}?error=${encodeURIComponent(message(error))}`);}
   revalidatePath("/","layout");redirect(`${path}?ok=1`);
 }
