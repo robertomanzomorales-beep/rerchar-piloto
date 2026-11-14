@@ -1,182 +1,254 @@
-/* Enterprise operating surfaces. This layer supersedes the legacy compact theme. */
+/* Product UI: one spacing scale, quiet surfaces and restrained company accents. */
 @media screen {
-  body { font-family: system-ui, -apple-system, "Segoe UI", Arial, sans-serif; font-size: 14px; color: #25323a; }
-  .app-shell { --company-accent: #365361; --company-strong: #284451; --company-soft: #eef2f4; --company-border: #cbd9df; background: #f5f7f7; }
-  .app-shell[data-company="rerchar"] { --company-accent: #17684c; --company-strong: #164e3e; --company-soft: #eef5f0; --company-border: #bfd8c9; background: #f5f8f6; }
-  .app-shell[data-company="e_y_j"] { --company-accent: #315b80; --company-strong: #294c69; --company-soft: #eef3f7; --company-border: #c4d5e2; background: #f5f7f9; }
-  .app-shell .sidebar { background: #fff; border-right: 1px solid #dfe5e6; }
-  .app-shell[data-company="rerchar"] .sidebar { background: #fff; border-right-color: #dce8df; }
-  .app-shell[data-company="e_y_j"] .sidebar { background: #fff; border-right-color: #dce5ec; }
-  .app-shell .topbar { border-top: 0; border-bottom: 1px solid #e0e6e7; }
-  .app-shell .topbar-label { font-size: 13px; }
-  .app-shell .topbar-user { font-size: 12px; }
-  .app-shell .eyebrow { font-size: 11px; font-weight: 700; letter-spacing: .105em; }
-  .app-shell .page-intro { font-size: 14px; line-height: 1.5; color: #64717a; }
-  .app-shell .page-title-row h1 { font-size: clamp(26px, 2.3vw, 32px); line-height: 1.2; font-weight: 690; letter-spacing: -.035em; }
-  .app-shell .back-link { font-size: 12px; color: #586c76; }
-  .app-shell .button { min-height: 39px; padding: 8px 13px; font-size: 13px; font-weight: 640; }
-  .app-shell .section-card, .app-shell .company-metric, .app-shell .stat-card { border: 1px solid #dfe6e6; border-radius: 8px; box-shadow: none; }
-  .app-shell .section-card { padding: 20px 22px; margin-bottom: 16px; }
-  .app-shell .section-heading h2 { font-size: 18px; line-height: 1.35; }
-  .app-shell .company-metric-grid { gap: 10px; margin: 21px 0 17px; grid-template-columns: repeat(auto-fit, minmax(178px, 1fr)); }
-  .app-shell .company-metric { min-height: 118px; gap: 7px; padding: 16px 17px; transition: border-color .16s, background-color .16s; }
-  .app-shell .company-metric:hover { background: #fdfefe; border-color: var(--company-accent); }
-  .app-shell .company-metric span { font-size: 12px; color: #52636d; font-weight: 630; }
-  .app-shell .company-metric strong { color: #1e3039; font-size: 29px; font-weight: 690; line-height: 1.15; font-variant-numeric: tabular-nums; letter-spacing: -.035em; }
-  .app-shell .company-metric small { margin-top: auto; font-size: 12px; color: #687780; }
-  .app-shell .company-analytics { gap: 16px; margin-bottom: 4px; }
-  .app-shell .company-chart-card { min-height: 328px; }
-  .app-shell .company-analytics .company-chart-card h2 { font-size: 19px; margin: 5px 0 0; line-height: 1.25; font-weight: 680; }
-  .chart-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 16px; }
-  .chart-heading > strong { color: #26343c; font-size: 23px; font-weight: 680; font-variant-numeric: tabular-nums; white-space: nowrap; }
-  .chart-heading > strong span { font-size: 11px; font-weight: 520; color: #74818a; }
-  .app-shell .company-trend { display: block; width: 100%; height: auto; margin: 0; }
-  .company-trend svg { display: block; width: 100%; height: auto; max-height: 250px; overflow: visible; }
-  .company-trend figcaption { margin: -2px 0 0 36px; color: #77848a; font-size: 11px; }
-  .chart-gridline { stroke: #e7eced; stroke-width: 1; }
-  .chart-axis-label, .chart-month-label { fill: #687981; font: 12px system-ui, sans-serif; }
-  .chart-month-label { font-weight: 600; text-transform: capitalize; }
-  .chart-column { fill: var(--company-accent); opacity: .16; }
-  .chart-trend-line { fill: none; stroke: var(--company-accent); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
-  .chart-trend-point { fill: #fff; stroke: var(--company-accent); stroke-width: 2.5; }
-  .chart-value-label { fill: #344650; font: 600 11px system-ui, sans-serif; }
-  .app-shell .company-status-chart { display: grid; gap: 16px; margin-top: 22px; }
-  .company-status-segments { display: flex; width: 100%; height: 26px; overflow: hidden; background: #ecf0f1; border-radius: 3px; gap: 2px; }
-  .company-status-segments > span { min-width: 0; height: 100%; }
-  .company-status-segments .company-status-empty { width: 100%; background: #ecf0f1; }
-  .company-status-legend { display: grid; gap: 0; }
-  .app-shell .company-status-row { display: grid; grid-template-columns: 10px minmax(0,1fr) 40px 40px; gap: 10px; min-height: 35px; align-items: center; border-bottom: 1px solid #edf0f1; font-size: 12px; color: #53636c; }
-  .company-status-row:last-child { border-bottom: 0; }
-  .company-status-row .company-status-swatch { width: 8px; height: 8px; border-radius: 2px; }
-  .company-status-row strong { font-size: 13px; color: #26343c; text-align: right; font-variant-numeric: tabular-nums; }
-  .company-status-row small { font-size: 11px; color: #76858c; text-align: right; font-variant-numeric: tabular-nums; }
-  .app-shell .helper-text { font-size: 12px; line-height: 1.5; color: #6d7c83; }
-  .app-shell .company-alert { min-height: 61px; padding: 12px 14px; border-radius: 6px; }
-  .app-shell .company-alert strong { font-size: 22px; font-variant-numeric: tabular-nums; }
-  .app-shell .company-alert span, .app-shell .company-process-links a { font-size: 13px; }
-  .app-shell .company-process-links a { min-height: 48px; border-radius: 6px; padding: 12px 14px; }
-  .app-shell .data-table { font-size: 13px; }
-  .app-shell .data-table th { font-size: 11px; }
-  .app-shell .data-table td { padding: 10px 12px; }
-  .app-shell .table-sub, .app-shell .text-link { font-size: 12px; }
-  .app-shell .form-grid label, .app-shell .form-stack label { font-size: 13px; }
-  .app-shell input:not([type="checkbox"]):not([type="file"]), .app-shell select, .app-shell textarea { min-height: 40px; font-size: 13px; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Arial, sans-serif; color: #27363c; line-height: 1.48; }
+  .app-shell { --company-accent: #42606c; --company-strong: #344e59; --company-soft: #f1f5f5; --company-border: #d4dfe1; --pine: var(--company-accent); background: #f7f8f8; }
+  .app-shell[data-company="rerchar"] { --company-accent: #20634e; --company-strong: #254b3e; --company-soft: #f0f5f2; --company-border: #d1e0d7; }
+  .app-shell[data-company="e_y_j"] { --company-accent: #365b7a; --company-strong: #354e66; --company-soft: #f1f4f7; --company-border: #d3dce5; }
+  .app-shell .sidebar, .app-shell[data-company="rerchar"] .sidebar, .app-shell[data-company="e_y_j"] .sidebar { background: #fff; border-right: 1px solid #e2e7e8; }
+  .app-shell .topbar { border: 0; border-bottom: 1px solid #e3e8e9; background: #fff; }
+  .app-shell .topbar-label { color: #35454b; font-size: 12px; font-weight: 580; }
+  .app-shell .topbar-label > span { margin-left: 11px; color: #89969a; font-weight: 450; }
+  .app-shell .topbar-user { color: #78868b; font-size: 12px; font-weight: 500; }
+  .app-shell .topbar-search-trigger { position: static; margin-left: auto; border-radius: 4px; box-shadow: none; }
+  .app-shell .eyebrow { color: var(--company-accent); font-size: 10px; font-weight: 680; letter-spacing: .11em; }
+  .app-shell .page-intro { color: #758187; font-size: 12px; line-height: 1.5; }
+  .app-shell .page-title-row h1 { margin: 5px 0 6px; color: #25353a; font-size: clamp(23px, 2vw, 27px); font-weight: 620; line-height: 1.2; letter-spacing: -.035em; }
+  .app-shell .back-link { display: inline-flex; gap: 6px; align-items: center; margin-bottom: 13px; color: #7d8b90; font-size: 11px; font-weight: 550; }
+  .app-shell .back-link:hover { color: var(--company-accent); }
+  .app-shell .button { min-height: 36px; padding: 7px 12px; border-radius: 4px; font-size: 12px; font-weight: 610; box-shadow: none; }
+  .app-shell .button:hover { transform: none; }
+  .app-shell .button-primary { background: var(--company-accent); }
+  .app-shell .section-card, .app-shell .stat-card { border: 1px solid #e1e7e8; border-radius: 5px; box-shadow: none; }
+  .app-shell .section-card { padding: 19px 22px; margin-bottom: 14px; }
+  .app-shell .section-heading { margin-bottom: 13px; }
+  .app-shell .section-heading h2 { color: #293b41; font-size: 16px; font-weight: 620; line-height: 1.35; }
+  .app-shell .count-pill { background: #f2f5f5; color: #718087; border: 1px solid #e6ebec; font-size: 11px; font-weight: 550; }
+  .app-shell .helper-text { color: #77858a; font-size: 11px; line-height: 1.55; }
+  .app-shell .text-link { color: var(--company-accent); font-size: 11px; font-weight: 620; }
+  .app-shell .data-table { font-size: 12px; }
+  .app-shell .data-table th { padding: 9px 11px; background: #f7f9f9; color: #718087; font-size: 10px; font-weight: 670; letter-spacing: .055em; }
+  .app-shell .data-table td { padding: 10px 11px; border-top-color: #e9eeef; }
+  .app-shell .table-sub { font-size: 11px; }
+  .app-shell .form-grid label, .app-shell .form-stack label { font-size: 12px; font-weight: 580; }
+  .app-shell input:not([type="checkbox"]):not([type="file"]), .app-shell select, .app-shell textarea { min-height: 38px; border-radius: 4px; border-color: #d7e0e2; font-size: 12px; }
 
-  .selector-heading { max-width: 680px; margin: 12px 0 25px; }
-  .app-shell .selector-title { font-size: clamp(28px, 3.2vw, 38px); font-weight: 690; line-height: 1.15; letter-spacing: -.04em; margin: 10px 0; }
-  .app-shell .company-selector { gap: 18px; margin: 26px 0 20px; }
-  .app-shell .company-choice { display: flex; flex-direction: column; gap: 0; overflow: hidden; min-height: 343px; padding: 0; background: #fff; border: 1px solid #dce4e6; border-radius: 7px; box-shadow: none; transition: border-color .16s, box-shadow .16s; }
+  /* A workspace selector, rather than two marketing cards. */
+  .selector-heading { max-width: 660px; margin: 14px 0 26px; }
+  .app-shell .selector-title { margin: 8px 0; color: #25353a; font-size: clamp(26px, 3vw, 32px); font-weight: 620; letter-spacing: -.04em; }
+  .app-shell .company-selector { display: grid; grid-template-columns: 1fr; gap: 0; margin: 27px 0 18px; background: #fff; border: 1px solid #e0e6e8; border-radius: 5px; overflow: hidden; }
+  .app-shell .company-choice { --choice-accent: #20634e; display: grid; grid-template-columns: minmax(210px,.82fr) minmax(220px,1.28fr) 74px; gap: 28px; align-items: center; min-height: 142px; padding: 24px 31px; background: #fff; border: 0; border-left: 3px solid var(--choice-accent); border-bottom: 1px solid #e6ebec; border-radius: 0; box-shadow: none; color: #27373d; transition: background-color .2s ease; }
+  .app-shell .company-choice:last-child { border-bottom: 0; }
   .app-shell .company-choice::before { display: none; }
-  .app-shell .company-choice:hover, .app-shell .company-choice:focus-visible { transform: none; border-color: var(--choice-accent); box-shadow: 0 10px 24px rgba(21, 39, 46, .08); }
-  .company-choice-banner { display: flex; flex-direction: column; justify-content: center; align-items: flex-start; min-height: 155px; padding: 25px 30px; width: 100%; color: #fff; background: var(--choice-accent); }
-  .company-choice-banner > span { font-size: 11px; letter-spacing: .13em; font-weight: 690; opacity: .8; }
-  .app-shell .company-choice-banner > strong { margin: 11px 0 2px; color: #fff; font-size: 31px; font-weight: 730; letter-spacing: -.04em; }
-  .company-choice-banner > small { font-size: 12px; opacity: .82; line-height: 1.4; }
-  .company-choice-body { display: flex; flex: 1; flex-direction: column; align-items: flex-start; width: 100%; padding: 22px 30px 20px; }
-  .company-choice-description { max-width: 330px; color: #435660; font-size: 14px; line-height: 1.5; }
-  .company-choice-processes { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; margin: 17px 0 22px; color: #738088; font-size: 12px; }
-  .company-choice-processes span { width: 3px; height: 3px; border-radius: 50%; background: #9caab0; }
-  .app-shell .company-choice .company-choice-action { margin-top: auto; width: 100%; padding-top: 14px; border-top: 1px solid #e9edee; color: var(--choice-accent); justify-content: space-between; font-size: 13px; font-weight: 700; }
-  .app-shell .company-choice--rerchar { --choice-accent: #165f47; }
-  .app-shell .company-choice--eyj { --choice-accent: #315b80; }
-  .app-shell .selector-note { font-size: 12px; }
+  .app-shell .company-choice--eyj { --choice-accent: #365b7a; }
+  .app-shell .company-choice:hover, .app-shell .company-choice:focus-visible { transform: none; border-color: var(--choice-accent); border-bottom-color: #e6ebec; box-shadow: none; background: #fafcfc; }
+  .company-choice-identity { display: grid; gap: 3px; min-width: 0; }
+  .company-choice-kicker { color: var(--choice-accent); font-size: 10px; font-weight: 650; letter-spacing: .105em; }
+  .app-shell .company-choice-identity strong { color: #25363d; font-size: 25px; font-weight: 660; letter-spacing: -.04em; line-height: 1.22; }
+  .company-choice-identity small { color: #879399; font-size: 11px; line-height: 1.4; }
+  .company-choice-details { display: grid; gap: 9px; color: #53666e; font-size: 13px; line-height: 1.5; }
+  .company-choice-details small { color: #8a969b; font-size: 11px; }
+  .app-shell .company-choice-action { display: inline-block; margin: 0; padding: 0; border: 0; color: var(--choice-accent); font-size: 12px; font-weight: 630; text-align: right; white-space: nowrap; }
+  .app-shell .company-choice:hover .company-choice-action { text-decoration: underline; text-underline-offset: 3px; }
+  .app-shell .selector-note { color: #809096; font-size: 11px; }
 
-  .app-shell .company-switcher { grid-template-columns: 1fr; gap: 3px; padding: 0 4px 4px; }
-  .app-shell .company-switch { width: 100%; min-height: 52px; border: 1px solid transparent; border-left: 3px solid transparent; border-radius: 4px; box-shadow: none; background: transparent; gap: 10px; padding: 7px 9px; }
-  .app-shell .company-switch:hover { background: #f5f8f8; border-color: #e5eaea; border-left-color: var(--switch-accent); box-shadow: none; }
-  .app-shell .company-switch.selected { background: var(--switch-soft); border-color: transparent; border-left-color: var(--switch-accent); box-shadow: none; }
-  .app-shell .company-switch--rerchar { --switch-accent: #17684c; --switch-soft: #edf5f0; }
-  .app-shell .company-switch--eyj { --switch-accent: #315b80; --switch-soft: #eef3f7; }
-  .app-shell .switch-mark { width: 30px; height: 30px; border-radius: 4px; background: var(--switch-accent); font-size: 13px; }
-  .app-shell .company-switch--eyj .switch-mark { font-size: 10px; }
+  /* A restrained, inline company disclosure. */
+  .company-picker { margin: 0 4px 3px; }
+  .company-picker-trigger { display: flex; align-items: center; width: 100%; min-height: 53px; gap: 10px; padding: 8px 10px; border: 1px solid #e0e7e8; border-radius: 4px; background: #fff; text-align: left; color: #3a4a51; transition: border-color .2s, background-color .2s; }
+  .company-picker-trigger:hover { border-color: #becdd1; background: #fbfcfc; }
+  .company-picker-line { flex: none; width: 3px; height: 27px; border-radius: 1px; background: var(--company-accent); }
+  .company-picker-copy { display: grid; flex: 1; min-width: 0; gap: 1px; }
+  .company-picker-copy strong { color: #293a40; font-size: 12px; font-weight: 660; }
+  .company-picker-copy small { color: #8a979b; font-size: 10px; }
+  .company-picker-trigger svg { color: #839198; transition: transform .25s ease; }
+  .company-picker.expanded .company-picker-trigger svg { transform: rotate(180deg); }
+  .company-picker-panel { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows .3s cubic-bezier(.22,1,.36,1), opacity .22s ease; }
+  .company-picker.expanded .company-picker-panel { grid-template-rows: 1fr; opacity: 1; }
+  .company-picker-inner { min-height: 0; overflow: hidden; display: grid; gap: 1px; padding: 0 1px; }
+  .company-picker.expanded .company-picker-inner { padding-top: 5px; }
+  .app-shell .company-switch { display: flex; min-height: 48px; align-items: center; gap: 11px; padding: 7px 10px; border: 0; border-radius: 3px; background: transparent; box-shadow: none; color: #41525a; }
+  .app-shell .company-switch:hover { background: #f6f9f9; border: 0; box-shadow: none; }
+  .app-shell .company-switch.selected { background: var(--company-soft); border: 0; box-shadow: none; }
+  .app-shell .switch-mark { width: 3px; height: 24px; border-radius: 1px; background: #20634e; }
+  .app-shell .company-switch--eyj .switch-mark { background: #365b7a; }
   .app-shell .company-switch > span:nth-child(2) { display: grid; flex: 1; min-width: 0; gap: 1px; }
-  .app-shell .company-switch strong { font-size: 12px; font-weight: 690; line-height: 1.25; }
-  .app-shell .company-switch small { color: #6c7b83; font-size: 11px; line-height: 1.25; }
-  .app-shell .switch-indicator { width: 6px; height: 6px; border-radius: 50%; background: transparent; }
-  .app-shell .company-switch.selected .switch-indicator { background: var(--switch-accent); }
+  .app-shell .company-switch strong { color: #3b4d54; font-size: 12px; font-weight: 620; }
+  .app-shell .company-switch small { color: #8a989d; font-size: 10px; }
+  .app-shell .switch-indicator { flex: none; width: 5px; height: 5px; border-radius: 50%; background: transparent; }
+  .app-shell .company-switch.selected .switch-indicator { background: var(--company-accent); }
+
+  /* Operational navigation and hierarchy. */
+  .app-shell .nav-link { border-radius: 3px; font-weight: 500; }
+  .app-shell .nav-link.active { background: var(--company-soft); color: var(--company-strong); box-shadow: inset 2px 0 var(--company-accent); font-weight: 620; }
+  .app-shell .nav-link:hover { background: #f5f8f8; color: #273e45; }
+  .app-shell .nav-link.active:hover { background: var(--company-soft); }
+  .app-shell .nav-group-toggle { color: #748188; font-weight: 600; }
+  .app-shell .nav-group-panel { transition: grid-template-rows .32s cubic-bezier(.22,1,.36,1),opacity .24s ease; }
+  .app-shell .nav-group-inner { border-left-color: #e3e9e9; }
+  .app-shell .sidebar-search-trigger { box-shadow: none; border-radius: 4px; color: #87959a; }
+  .app-shell .sidebar-search-trigger:hover { border-color: #bacbd0; color: #354f58; }
+  .app-shell .profile-avatar { border-radius: 3px; background: #e9eff0; color: #3d606b; }
+
+  /* Dashboard: process rail, single metric surface, calm analytic detail. */
+  .company-dashboard-heading { padding: 1px 0 19px; border-bottom: 1px solid #dfe7e8; }
+  .company-workflow { display: grid; grid-template-columns: 156px minmax(0,1fr); gap: 20px; align-items: center; padding: 16px 0 18px; border-bottom: 1px solid #e0e7e8; }
+  .company-workflow-label { display: grid; gap: 3px; }
+  .company-workflow-label span { color: var(--company-accent); font-size: 10px; font-weight: 650; letter-spacing: .1em; }
+  .company-workflow-label strong { color: #51656d; font-size: 11px; font-weight: 530; }
+  .company-workflow ol { display: flex; gap: 0; align-items: stretch; overflow-x: auto; margin: 0; padding: 0; list-style: none; scrollbar-width: thin; }
+  .company-workflow li { display: flex; flex: 1 0 125px; border-left: 1px solid #e1e7e8; }
+  .company-workflow li a { display: grid; align-content: center; min-height: 46px; padding: 1px 12px; gap: 3px; color: #40545c; font-size: 11px; font-weight: 570; line-height: 1.3; transition: color .18s, background .18s; }
+  .company-workflow li a:hover { color: var(--company-accent); background: #f8faf9; }
+  .workflow-index { color: #9ca9ae; font-size: 10px; font-variant-numeric: tabular-nums; font-weight: 540; }
+  .app-shell .company-metric-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(175px,1fr)); gap: 0; margin: 17px 0 15px; border: 1px solid #e2e8e9; border-radius: 5px; background: #fff; overflow: hidden; }
+  .app-shell .company-metric { min-width: 0; min-height: 94px; padding: 15px 18px; gap: 4px; background: transparent; border: 0; border-right: 1px solid #e8edee; border-radius: 0; box-shadow: none; transition: background-color .18s; }
+  .app-shell .company-metric:last-child { border-right: 0; }
+  .app-shell .company-metric:hover { border-color: #e8edee; background: #f8fafa; }
+  .app-shell .company-metric span { color: #748289; font-size: 11px; font-weight: 550; }
+  .app-shell .company-metric strong { color: #273941; font-size: 25px; font-weight: 620; font-variant-numeric: tabular-nums; letter-spacing: -.03em; line-height: 1.13; }
+  .app-shell .company-metric small { margin-top: auto; color: #92a0a5; font-size: 10px; line-height: 1.35; }
+  .app-shell .company-analytics { grid-template-columns: minmax(0,1.18fr) minmax(0,1fr); gap: 14px; margin-bottom: 0; }
+  .app-shell .company-chart-card { min-height: 0; padding: 19px 21px 14px; }
+  .app-shell .company-analytics .company-chart-card h2 { margin: 5px 0 0; color: #2b3e44; font-size: 16px; font-weight: 615; line-height: 1.3; }
+  .chart-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 8px; }
+  .chart-heading > strong { color: #2c3e44; font-size: 18px; font-weight: 630; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .chart-heading > strong span { color: #98a5a9; font-size: 10px; font-weight: 480; }
+  .app-shell .company-trend { display: block; width: 100%; height: auto; margin: 0; }
+  .company-trend svg { display: block; width: 100%; height: auto; max-height: 236px; }
+  .company-trend figcaption { margin: -4px 0 0 34px; color: #9aa6aa; font-size: 10px; }
+  .chart-gridline { stroke: #e9eeee; stroke-width: 1; }
+  .chart-axis-label, .chart-month-label { fill: #89979c; font: 10px -apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif; }
+  .chart-month-label { text-transform: capitalize; }
+  .chart-trend-line { fill: none; stroke: var(--company-accent); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .chart-trend-point { fill: #fff; stroke: var(--company-accent); stroke-width: 2; }
+  .chart-observation { outline: none; cursor: default; }
+  .chart-observation-hit { fill: transparent; }
+  .chart-observation-guide { stroke: var(--company-accent); stroke-width: 1; stroke-dasharray: 3 4; opacity: 0; }
+  .chart-observation-tip { opacity: 0; pointer-events: none; transition: opacity .18s; }
+  .chart-observation-tip rect { fill: #30434a; }
+  .chart-observation-tip text { fill: #fff; font: 11px -apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif; }
+  .chart-observation:hover .chart-observation-guide, .chart-observation:focus-visible .chart-observation-guide, .chart-observation:hover .chart-observation-tip, .chart-observation:focus-visible .chart-observation-tip { opacity: 1; }
+  .chart-observation:focus-visible .chart-trend-point { stroke-width: 3; }
+  .app-shell .company-status-chart { display: grid; gap: 2px; margin-top: 13px; }
+  .app-shell .company-status-row { display: grid; grid-template-columns: minmax(90px,1.05fr) minmax(80px,1.2fr) 24px 34px; align-items: center; gap: 10px; min-height: 39px; padding: 2px 0; border-bottom: 1px solid #edf1f1; color: #52646c; font-size: 11px; line-height: 1.25; }
+  .app-shell .company-status-row:last-child { border-bottom: 0; }
+  .app-shell .company-status-row:hover { color: var(--company-accent); }
+  .status-track { display: block; height: 5px; background: #edf1f2; border-radius: 2px; overflow: hidden; }
+  .status-track > span { display: block; height: 100%; border-radius: 2px; }
+  .company-status-row strong { color: #30434a; font-size: 11px; font-weight: 630; text-align: right; font-variant-numeric: tabular-nums; }
+  .company-status-row small { color: #9aa6aa; font-size: 10px; text-align: right; font-variant-numeric: tabular-nums; }
+  .app-shell .company-chart-card > .helper-text { margin-top: 10px; font-size: 10px; }
+  .app-shell .company-alerts { margin-top: 0; }
+  .app-shell .company-alert-list { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 0 18px; }
+  .app-shell .company-alert { display: flex; min-height: 46px; gap: 11px; align-items: center; padding: 8px 3px; background: transparent; border: 0; border-bottom: 1px solid #e9eeee; border-radius: 0; color: #475b62; }
+  .app-shell .company-alert:hover { color: var(--company-accent); background: #fbfcfc; }
+  .app-shell .company-alert strong { min-width: 27px; color: #9b7351; font-size: 16px; font-weight: 650; font-variant-numeric: tabular-nums; text-align: right; }
+  .app-shell .company-alert span { flex: 1; font-size: 11px; line-height: 1.4; }
+  .company-alert-more { margin-top: 8px; }
+  .company-alert-more summary { width: max-content; padding: 7px 3px; cursor: pointer; color: var(--company-accent); font-size: 11px; font-weight: 620; }
+  .company-alert-more .company-alert-list { border-top: 1px solid #e8edee; }
+  .app-shell .company-unclassified { border-radius: 4px; font-size: 11px; }
+
+  .quote-steps { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); margin: 16px 0 19px; border-top: 1px solid #e0e7e8; border-bottom: 1px solid #e0e7e8; background: #fff; }
+  .quote-steps > a, .quote-steps > span { display: flex; align-items: center; gap: 10px; min-height: 49px; min-width: 0; padding: 9px 13px; border-left: 1px solid #e7ebec; color: #76878d; font-size: 11px; font-weight: 550; line-height: 1.3; }
+  .quote-steps > :first-child { border-left: 0; }
+  .quote-steps > a:hover { background: #f8faf9; color: var(--company-accent); }
+  .quote-steps .current { color: var(--company-strong); background: var(--company-soft); box-shadow: inset 0 -2px var(--company-accent); font-weight: 650; }
+  .quote-steps b { flex: none; color: #9aa8ac; font-size: 10px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .quote-steps .current b { color: var(--company-accent); }
+  #presentacion, #conceptos, #entrega { scroll-margin-top: 20px; }
+  .app-shell .quote-line-editor summary { color: #395059; }
+  .app-shell .quote-line-editor summary strong { color: var(--company-accent); font-weight: 610; }
+  .app-shell .quote-line-editor[open] summary { color: #263a42; }
 }
 @media screen and (min-width: 861px) {
-  .app-shell { grid-template-columns: 250px minmax(0,1fr); }
-  .app-shell .sidebar { padding: 12px 10px 10px; }
-  .app-shell .brand-sidebar { min-height: 84px; }
-  .app-shell .sidebar-section-label { font-size: 10px; margin: 12px 12px 7px; }
-  .app-shell .nav-link { min-height: 38px; font-size: 12px; padding: 7px 10px; }
-  .app-shell .nav-group-toggle { font-size: 11px; padding: 9px 10px; }
-  .app-shell .sidebar-search-trigger { font-size: 12px; min-height: 37px; }
-  .app-shell .profile-info strong { font-size: 12px; }
-  .app-shell .profile-info small, .app-shell .logout { font-size: 11px; }
-  .app-shell .page-content { max-width: 1280px; padding: 28px clamp(22px, 2.4vw, 38px) 58px; }
+  .app-shell { grid-template-columns: 234px minmax(0,1fr); }
+  .app-shell .sidebar { padding: 12px 9px 9px; }
+  .app-shell .brand-sidebar { min-height: 71px; }
+  .app-shell .brand-sidebar .brand-art { max-width: 112px; background: transparent; }
+  .app-shell .sidebar-section-label { margin: 10px 11px 6px; color: #9aa5a9; font-size: 9px; font-weight: 660; }
+  .app-shell .nav-link { min-height: 35px; padding: 6px 9px; font-size: 11px; }
+  .app-shell .nav-group-toggle { padding: 8px 9px; font-size: 10px; }
+  .app-shell .sidebar-search-trigger { min-height: 36px; padding: 7px 9px; font-size: 11px; }
+  .app-shell .profile-info strong { font-size: 11px; }
+  .app-shell .profile-info small, .app-shell .logout { font-size: 10px; }
+  .app-shell .page-content { max-width: 1300px; padding: 25px clamp(21px,2.3vw,35px) 52px; }
+}
+@media screen and (max-width: 1100px) and (min-width: 861px) {
+  .app-shell .company-analytics { grid-template-columns: 1fr; }
 }
 @media screen and (max-width: 860px) {
   .app-shell .topbar { height: 58px; border-bottom: 1px solid var(--company-border); }
-  .app-shell .mobile-nav-trigger, .app-shell .topbar-search-trigger { background: #fff; border: 1px solid #dbe4e7; color: #354c58; border-radius: 5px; }
-  .app-shell .mobile-nav-drawer { width: min(100%, 410px); }
-  .app-shell .mobile-nav-heading { background: #fff; border-top: 3px solid var(--company-accent); padding: 17px 20px; }
-  .app-shell .mobile-nav-heading strong { font-size: 19px; }
-  .app-shell .mobile-nav-heading small, .app-shell .mobile-nav-caption { font-size: 11px; }
+  .app-shell .topbar-search-trigger, .app-shell .mobile-nav-trigger { background: #fff; border: 1px solid #e0e7e9; border-radius: 4px; color: #4f656d; }
+  .app-shell .mobile-nav-drawer { width: min(100%,410px); }
+  .app-shell .mobile-nav-heading { background: #fff; border-top: 2px solid var(--company-accent); padding: 17px 19px; }
+  .app-shell .mobile-nav-heading strong { font-size: 17px; font-weight: 630; }
+  .app-shell .mobile-nav-heading small, .app-shell .mobile-nav-caption { font-size: 10px; }
   .app-shell .mobile-nav-heading button { border: 0; background: transparent; }
-  .app-shell .mobile-nav-scroll { padding: 17px 19px 27px; }
-  .app-shell .mobile-nav-drawer .company-switcher { gap: 4px; padding-bottom: 16px; }
-  .app-shell .mobile-nav-drawer .company-switch { min-height: 57px; padding: 8px 11px; }
-  .app-shell .mobile-nav-drawer .company-switch strong { font-size: 13px; }
-  .app-shell .mobile-nav-drawer .company-switch small { font-size: 12px; }
-  .app-shell .mobile-nav-drawer .nav-link { font-size: 13px; }
-  .app-shell .mobile-nav-drawer .nav-group-toggle { font-size: 13px; }
-  .app-shell .page-content { padding: 22px 19px 48px; }
+  .app-shell .mobile-nav-scroll { padding: 15px 19px 27px; }
+  .app-shell .mobile-nav-drawer .company-picker { margin: 0 0 13px; }
+  .app-shell .mobile-nav-drawer .company-switch { min-height: 51px; }
+  .app-shell .mobile-nav-drawer .nav-link { font-size: 12px; }
+  .app-shell .mobile-nav-drawer .nav-group-toggle { font-size: 12px; }
+  .app-shell .page-content { padding: 20px 18px 45px; }
+  .app-shell .company-analytics { grid-template-columns: 1fr; }
+  .company-workflow { grid-template-columns: 1fr; gap: 11px; }
 }
 @media screen and (max-width: 600px) {
-  .app-shell .company-selector { gap: 13px; }
-  .app-shell .company-choice { min-height: 298px; }
-  .company-choice-banner { min-height: 120px; padding: 18px 22px; }
-  .company-choice-body { padding: 18px 22px; }
-  .app-shell .company-metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-  .app-shell .company-metric { min-height: 111px; padding: 13px; }
-  .app-shell .company-metric strong { font-size: 26px; }
-  .app-shell .company-metric small { font-size: 11px; }
-  .app-shell .company-chart-card { min-height: 0; }
-  .app-shell .section-card { padding: 18px 16px; }
-  .app-shell .page-title-row h1 { font-size: 27px; }
+  .app-shell .mobile-nav-drawer { width: 100%; box-shadow: none; }
+  .app-shell .company-choice { grid-template-columns: 1fr; gap: 11px; min-height: 0; padding: 19px 21px; }
+  .company-choice-details { gap: 4px; font-size: 12px; }
+  .app-shell .company-choice-action { text-align: left; }
+  .app-shell .company-metric-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .app-shell .company-metric { min-height: 93px; padding: 13px 15px; border-bottom: 1px solid #e8edee; }
+  .app-shell .company-metric:nth-child(2n) { border-right: 0; }
+  .app-shell .company-metric strong { font-size: 23px; }
+  .app-shell .company-metric small { font-size: 10px; }
+  .app-shell .company-alert-list { grid-template-columns: 1fr; }
+  .app-shell .section-card { padding: 17px 16px; }
+  .app-shell .page-title-row h1 { font-size: 24px; }
   .app-shell .page-title-row .button { width: 100%; }
-  .company-trend figcaption { margin-left: 22px; }
+  .company-trend figcaption { margin-left: 20px; }
+  .quote-steps > a, .quote-steps > span { display: grid; align-content: center; gap: 3px; min-height: 58px; padding: 8px 10px; font-size: 10px; }
 }
 @media screen and (max-width: 380px) {
   .app-shell .company-metric-grid { grid-template-columns: 1fr; }
-  .app-shell .company-metric { min-height: 92px; }
-  .company-choice-processes { gap: 5px; font-size: 11px; }
+  .app-shell .company-metric { border-right: 0; }
+  .app-shell .company-status-row { grid-template-columns: minmax(70px,1fr) minmax(60px,1fr) 22px 31px; gap: 6px; }
+  .quote-steps > a, .quote-steps > span { padding: 7px; font-size: 9px; }
 }
-@media (prefers-reduced-motion: reduce) {
-  .app-shell .company-choice, .app-shell .company-metric, .app-shell .company-switch { transition: none; }
+@media screen and (prefers-reduced-motion: reduce) {
+  .app-shell .company-choice, .app-shell .company-switch, .app-shell .nav-group-panel, .company-picker-panel, .company-picker-trigger svg { transition: none; }
 }
 
-/* The sign-in screen uses the same company identities without competing badges. */
+/* A quiet sign-in composition shared by both companies. */
 @media screen {
-  .login-page { display: grid; grid-template-columns: minmax(250px, 1fr) minmax(340px, 430px); align-items: center; gap: clamp(50px, 8vw, 130px); width: 100%; min-height: 100dvh; padding: clamp(30px, 6vw, 90px) max(32px, calc((100vw - 1140px)/2)); background: #f3f6f6; }
-  .login-intro { justify-self: end; max-width: 490px; }
-  .login-intro-label { color: #315a56; font-size: 11px; font-weight: 750; letter-spacing: .14em; }
-  .login-intro h2 { max-width: 480px; margin: 15px 0; color: #21363e; font-size: clamp(34px, 4vw, 53px); line-height: 1.12; letter-spacing: -.05em; font-weight: 690; }
-  .login-intro p { max-width: 370px; color: #65767c; font-size: 15px; line-height: 1.6; }
-  .login-company-list { display: grid; gap: 0; margin-top: 54px; max-width: 370px; border-top: 1px solid #d4dedf; }
-  .login-company-list > span { display: grid; grid-template-columns: 120px 1fr; align-items: center; gap: 20px; padding: 16px 0 16px 12px; border-bottom: 1px solid #d4dedf; border-left: 3px solid #17684c; }
-  .login-company-list > span + span { border-left-color: #315b80; }
-  .login-company-list strong { color: #263b42; font-size: 16px; font-weight: 720; }
-  .login-company-list small { color: #687a80; font-size: 12px; }
-  .login-card { justify-self: start; width: min(100%, 430px); padding: 38px 38px 25px; border: 1px solid #dce4e5; border-top: 3px solid #315a56; border-radius: 7px; box-shadow: 0 15px 35px rgba(24, 44, 50, .06); }
-  .login-form-mark { display: flex; align-items: center; gap: 10px; color: #17684c; font-size: 13px; font-weight: 750; letter-spacing: .035em; }
-  .login-form-mark span:last-child { color: #315b80; }
-  .login-form-mark i { display: block; width: 1px; height: 15px; background: #c5d1d3; }
-  .login-card h1 { margin: 27px 0 7px; color: #243941; font-size: 25px; font-weight: 690; letter-spacing: -.035em; }
-  .login-card p { margin: 0 0 28px; color: #687980; font-size: 13px; line-height: 1.5; }
-  .login-card .form-stack { gap: 16px; }
-  .login-card .form-stack label { color: #435860; font-size: 13px; font-weight: 610; }
-  .login-card input:not([type="checkbox"]):not([type="file"]) { min-height: 43px; font-size: 14px; border-radius: 5px; border-color: #cfdcde; }
-  .login-card input:not([type="checkbox"]):not([type="file"]):focus { border-color: #315b80; }
-  .login-card .button-primary { min-height: 44px; margin-top: 6px; background: #284f5d; font-size: 14px; border-radius: 5px; }
-  .login-card .button-primary:hover { background: #1f3f4b; }
-  .login-foot { margin-top: 27px; padding-top: 18px; color: #829094; font-size: 11px; line-height: 1.6; }
-  .login-foot a { color: #456975; }
+  .login-page { display: grid; grid-template-columns: minmax(250px,1fr) minmax(340px,420px); align-items: center; gap: clamp(40px,7vw,110px); width: 100%; min-height: 100dvh; padding: clamp(28px,5vw,80px) max(30px,calc((100vw - 1100px)/2)); background: #f5f7f7; }
+  .login-intro { justify-self: end; max-width: 480px; }
+  .login-intro-label { color: #3d625a; font-size: 10px; font-weight: 660; letter-spacing: .12em; }
+  .login-intro h2 { max-width: 455px; margin: 16px 0; color: #293a40; font-size: clamp(32px,3.6vw,46px); line-height: 1.15; letter-spacing: -.045em; font-weight: 620; }
+  .login-intro p { max-width: 365px; color: #7a898d; font-size: 13px; line-height: 1.6; }
+  .login-company-list { display: grid; margin-top: 42px; max-width: 370px; border-top: 1px solid #dfe6e7; }
+  .login-company-list > span { display: grid; grid-template-columns: 120px 1fr; align-items: center; gap: 16px; padding: 14px 0 14px 12px; border-bottom: 1px solid #dfe6e7; border-left: 2px solid #20634e; }
+  .login-company-list > span + span { border-left-color: #365b7a; }
+  .login-company-list strong { color: #32464c; font-size: 13px; font-weight: 630; }
+  .login-company-list small { color: #849296; font-size: 11px; }
+  .login-card { justify-self: start; width: min(100%,420px); padding: 34px 35px 24px; border: 1px solid #e0e7e8; border-top: 2px solid #426069; border-radius: 5px; box-shadow: 0 13px 30px rgba(33,53,58,.04); }
+  .login-form-mark { display: flex; align-items: center; gap: 10px; color: #20634e; font-size: 11px; font-weight: 700; letter-spacing: .02em; }
+  .login-form-mark span:last-child { color: #365b7a; }
+  .login-form-mark i { display: block; width: 1px; height: 13px; background: #d3dddf; }
+  .login-card h1 { margin: 27px 0 7px; color: #293a40; font-size: 22px; font-weight: 620; letter-spacing: -.035em; }
+  .login-card p { margin: 0 0 25px; color: #78888d; font-size: 12px; line-height: 1.5; }
+  .login-card .form-stack { gap: 15px; }
+  .login-card .form-stack label { color: #50636a; font-size: 12px; font-weight: 590; }
+  .login-card input:not([type="checkbox"]):not([type="file"]) { min-height: 41px; border: 1px solid #d3dfe1; border-radius: 4px; font-size: 13px; }
+  .login-card input:not([type="checkbox"]):not([type="file"]):focus { border-color: #426069; }
+  .login-card .button-primary { min-height: 41px; margin-top: 5px; border-radius: 4px; background: #355763; font-size: 12px; }
+  .login-card .button-primary:hover { background: #284750; }
+  .login-foot { margin-top: 25px; padding-top: 17px; color: #94a0a4; font-size: 10px; line-height: 1.6; }
+  .login-foot a { color: #5d7881; }
 }
 @media screen and (max-width: 760px) {
-  .login-page { display: grid; grid-template-columns: minmax(0, 430px); justify-content: center; padding: 18px; background: #f3f6f6; }
+  .login-page { display: grid; grid-template-columns: minmax(0,420px); justify-content: center; padding: 18px; }
   .login-intro { display: none; }
-  .login-card { justify-self: center; padding: 28px 24px 22px; }
+  .login-card { justify-self: center; padding: 27px 23px 21px; }
 }

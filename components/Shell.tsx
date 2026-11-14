@@ -20,10 +20,11 @@ export default function Shell({ actor, children }: { actor: Actor; children: Rea
   const [selectedCompany,setSelectedCompany]=useState<"rerchar"|"e_y_j"|null>(null);
   const [searchOpen,setSearchOpen]=useState(false);
   const [mobileOpen,setMobileOpen]=useState(false);
+  const [companyOpen,setCompanyOpen]=useState(false);
   const mobileToggle=useRef<HTMLButtonElement>(null);
   const mobileClose=useRef<HTMLButtonElement>(null);
   const mobileDrawer=useRef<HTMLElement>(null);
-  const [expanded,setExpanded]=useState<Record<string,boolean>>({"Comercial":true,"Operación":true});
+  const [expanded,setExpanded]=useState<Record<string,boolean>>({"Comercial":true});
   useEffect(()=>{const onKey=(event:KeyboardEvent)=>{if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==="k"){
     event.preventDefault();setSearchOpen(true);
   }};window.addEventListener("keydown",onKey);return()=>window.removeEventListener("keydown",onKey);},[]);
@@ -55,9 +56,13 @@ export default function Shell({ actor, children }: { actor: Actor; children: Rea
   },[mobileOpen]);
   const activeCompany=pathname==="/"?null:routeCompany??selectedCompany;
   const selectedName=activeCompany==="e_y_j"?"E y J":activeCompany==="rerchar"?"RERCHAR":null;
-  const companyOptions=<div className="company-switcher" aria-label="Empresa operadora">
-    <Link href="/empresa/rerchar" aria-current={activeCompany==="rerchar"?"page":undefined} onClick={()=>setMobileOpen(false)} className={`company-switch company-switch--rerchar ${activeCompany==="rerchar"?"selected":""}`}><span className="switch-mark" aria-hidden="true">R</span><span><strong>RERCHAR</strong><small>Gestión de materiales</small></span><span className="switch-indicator" aria-hidden="true"/></Link>
-    <Link href="/empresa/e_y_j" aria-current={activeCompany==="e_y_j"?"page":undefined} onClick={()=>setMobileOpen(false)} className={`company-switch company-switch--eyj ${activeCompany==="e_y_j"?"selected":""}`}><span className="switch-mark" aria-hidden="true">EJ</span><span><strong>E y J</strong><small>Servicios industriales</small></span><span className="switch-indicator" aria-hidden="true"/></Link>
+  const companyExpanded=companyOpen;
+  const companyOptions=<div className={`company-picker ${companyExpanded?"expanded":""}`}>
+    <button type="button" className="company-picker-trigger" aria-expanded={companyExpanded} onClick={()=>setCompanyOpen(open=>!open)}><span className="company-picker-line" aria-hidden="true"/><span className="company-picker-copy"><strong>{selectedName??"Elegir empresa"}</strong><small>{activeCompany==="rerchar"?"Gestión de materiales":activeCompany==="e_y_j"?"Servicios industriales":"Seleccione una operación"}</small></span><ChevronDown size={16} aria-hidden="true"/></button>
+    <div className="company-picker-panel" inert={!companyExpanded}><div className="company-picker-inner" aria-label="Empresa operadora">
+      <Link href="/empresa/rerchar" aria-current={activeCompany==="rerchar"?"page":undefined} onClick={()=>{setCompanyOpen(false);setMobileOpen(false);}} className={`company-switch company-switch--rerchar ${activeCompany==="rerchar"?"selected":""}`}><span className="switch-mark" aria-hidden="true"/><span><strong>RERCHAR</strong><small>Gestión de materiales</small></span><span className="switch-indicator" aria-hidden="true"/></Link>
+      <Link href="/empresa/e_y_j" aria-current={activeCompany==="e_y_j"?"page":undefined} onClick={()=>{setCompanyOpen(false);setMobileOpen(false);}} className={`company-switch company-switch--eyj ${activeCompany==="e_y_j"?"selected":""}`}><span className="switch-mark" aria-hidden="true"/><span><strong>E y J</strong><small>Servicios industriales</small></span><span className="switch-indicator" aria-hidden="true"/></Link>
+    </div></div>
   </div>;
   const companyHref=(href:string)=>activeCompany&&["/cotizaciones","/solicitudes","/agenda","/seguimiento-guias","/facturas-recibidas","/transferencias","/transacciones","/finanzas","/cobros-extraordinarios","/cobranzas"].includes(href)?`${href}?empresa=${activeCompany}`:activeCompany&&href==="/reportes"?`${href}?company=${activeCompany}`:href;
   const links = [
@@ -116,8 +121,8 @@ export default function Shell({ actor, children }: { actor: Actor; children: Rea
       </div>
     </aside>
     <div className="main-area">
-      <header className="topbar"><Link href={activeCompany?`/empresa/${activeCompany}`:"/"} className="mobile-brand" aria-label={selectedName?`Panel de ${selectedName}`:"Seleccionar empresa"}>{activeCompany==="rerchar"?<span className="mobile-brand-mark rerchar-mark">R</span>:activeCompany==="e_y_j"?<span className="mobile-brand-mark eyj-mark">EJ</span>:<span className="mobile-brand-mark platform-mark">R/EJ</span>}<span className="mobile-brand-copy"><strong>{selectedName??"Plataforma operativa"}</strong><small>{activeCompany==="rerchar"?"RECICLAJE INDUSTRIAL":activeCompany==="e_y_j"?"SERVICIOS INTEGRALES":"RERCHAR · E Y J"}</small></span></Link><span className="topbar-label">{selectedName??"RERCHAR / E y J"} <span>Plataforma operativa</span><span className="topbar-dot"/> Beta</span><button type="button" className="topbar-search-trigger" onClick={()=>setSearchOpen(true)} aria-label="Buscar"><Search size={19}/><span>Buscar módulos</span></button><span className="topbar-user">{actor.name}</span>
-        <button type="button" ref={mobileToggle} className="mobile-nav-trigger" aria-label="Abrir menú" aria-expanded={mobileOpen} aria-controls="mobile-navigation" onClick={()=>setMobileOpen(true)}><Menu size={22}/></button>
+      <header className="topbar"><Link href={activeCompany?`/empresa/${activeCompany}`:"/"} className="mobile-brand" aria-label={selectedName?`Panel de ${selectedName}`:"Seleccionar empresa"}>{activeCompany==="rerchar"?<span className="mobile-brand-mark rerchar-mark">R</span>:activeCompany==="e_y_j"?<span className="mobile-brand-mark eyj-mark">EJ</span>:<span className="mobile-brand-mark platform-mark">R/EJ</span>}<span className="mobile-brand-copy"><strong>{selectedName??"Plataforma operativa"}</strong><small>{activeCompany==="rerchar"?"GESTIÓN DE MATERIALES":activeCompany==="e_y_j"?"SERVICIOS INDUSTRIALES":"RERCHAR · E Y J"}</small></span></Link><span className="topbar-label">{selectedName??"RERCHAR / E y J"} <span>Plataforma operativa</span></span><button type="button" className="topbar-search-trigger" onClick={()=>setSearchOpen(true)} aria-label="Buscar"><Search size={19}/><span>Buscar módulos</span></button><span className="topbar-user">{actor.name}</span>
+        <button type="button" ref={mobileToggle} className="mobile-nav-trigger" aria-label="Abrir menú" aria-expanded={mobileOpen} aria-controls="mobile-navigation" onClick={()=>{setCompanyOpen(true);setMobileOpen(true);}}><Menu size={22}/></button>
       </header>
       <div className="page-content">{children}</div>
     </div>
