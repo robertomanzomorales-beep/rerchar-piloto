@@ -184,6 +184,11 @@ export async function finishServiceAction(form: FormData) {
   const actor = await requireActor(); const id = value(form,"id");
   await run(servicePath(id), () => finishService(actor, id, {
     gross_kg: value(form,"gross_kg"), tare_kg: value(form,"tare_kg"), guide_number: value(form,"guide_number"),
+    confirm_guide:form.get("confirm_guide")==="on",confirm_sheet:form.get("confirm_sheet")==="on",
+    confirm_ticket:form.get("confirm_ticket")==="on",confirm_material:form.get("confirm_material")==="on",
+    confirm_weight:form.get("confirm_weight")==="on",confirm_impurities:form.get("confirm_impurities")==="on",
+    material_name:value(form,"material_name"),impurity_kg:value(form,"impurity_kg"),
+    missing_ticket_reason:value(form,"missing_ticket_reason"),review_note:value(form,"review_note"),
   }));
 }
 export async function addEvidenceAction(form: FormData) {

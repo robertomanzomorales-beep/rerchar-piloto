@@ -11,6 +11,7 @@ test("transportista tercero se acredita y opera por medio de operaciones, sin cu
   const {db,transaction}=await import("../lib/db");
   const pilot=await import("../lib/pilot");
   const personnel=await import("../lib/personnel");
+  const ledger=await import("../lib/service-ledger");
   for(const name of (await readdir(resolve(process.cwd(),"db"))).filter(name=>/^\d+.*\.sql$/.test(name)).sort()){
     const sql=await readFile(resolve(process.cwd(),`db/${name}`),"utf8");
     await transaction(async tx=>{for(const part of sql.split(/;\s*(?:\n|$)/).map(s=>s.trim()).filter(Boolean))await tx.query(part);});
@@ -63,10 +64,20 @@ test("transportista tercero se acredita y opera por medio de operaciones, sin cu
   const jpg=()=>new File([new Uint8Array([0xff,0xd8,0xff,0xd9])],"respaldo.jpg",{type:"image/jpeg"});
   await pilot.addEvidence(ops,service,"Guía",jpg(),"guia_traslado");
   await pilot.addEvidence(ops,service,"Hoja",jpg(),"hoja_servicio");
+  await pilot.addEvidence(ops,service,"Ticket de pesaje",jpg(),"ticket_pesaje");
   await pilot.handoffService(ops,service);
   assert.equal((await pilot.getService(owner,service)).status,"pendiente_revision");
-  await pilot.finishService(owner,service,{gross_kg:100,tare_kg:20,guide_number:"G-EX"});
+  await assert.rejects(()=>ledger.saveGuideFollowup(owner,service,{requested_on:"2026-11-25"}),/Cierre primero la revisión/);
+  const review={gross_kg:100,tare_kg:20,guide_number:"G-EX",material_name:"Chatarra",impurity_kg:0,
+    confirm_guide:true,confirm_sheet:true,confirm_material:true,confirm_weight:true,confirm_impurities:true};
+  await assert.rejects(()=>pilot.finishService(owner,service,review),/Coteje el ticket/);
+  await pilot.finishService(owner,service,{...review,confirm_ticket:true});
   assert.equal((await pilot.getService(owner,service)).status,"completada");
+  await ledger.saveGuideFollowup(owner,service,{requested_on:"2026-11-25"});
+  const [reviewed]=await db.query<{ticket_evidence_id:string|null;missing_ticket_reason:string|null}>(
+    "SELECT ticket_evidence_id,missing_ticket_reason FROM purchase_closure_reviews WHERE service_id=$1",[service]);
+  assert.ok(reviewed.ticket_evidence_id);
+  assert.equal(reviewed.missing_ticket_reason,null);
   const [audit]=await db.query<{name:string}>(`SELECT u.name FROM service_events e JOIN users u ON u.id=e.actor_id
     WHERE e.service_id=$1 AND e.kind='documentacion_entregada'`,[service]);
   assert.equal(audit.name,"Operaciones","queda registrado quién ingresó los documentos");

@@ -629,8 +629,15 @@ export async function handoffService(actor: Actor, id: string) {
 }
 
 export async function finishService(actor: Actor, id: string, input: unknown) {
-  const data = z.object({ gross_kg: positive, tare_kg: z.coerce.number().min(0), guide_number: optional(50) }).parse(input);
+  const data = z.object({ gross_kg: positive, tare_kg: z.coerce.number().min(0), guide_number: optional(50),
+    confirm_guide:z.boolean().optional().default(false),confirm_sheet:z.boolean().optional().default(false),
+    confirm_ticket:z.boolean().optional().default(false),confirm_material:z.boolean().optional().default(false),
+    confirm_weight:z.boolean().optional().default(false),confirm_impurities:z.boolean().optional().default(false),
+    missing_ticket_reason:optional(500),material_name:optional(160),impurity_kg:z.coerce.number().min(0).optional().default(0),
+    review_note:optional(1000),
+  }).parse(input);
   if (data.gross_kg < data.tare_kg) reject("El peso bruto no puede ser inferior a la tara.");
+  if(data.impurity_kg>data.gross_kg-data.tare_kg)reject("Las impurezas no pueden superar el peso neto.");
   return transaction(async (tx) => {
     const [service] = await tx.query<{ service_type:string;status: string; driver_id: string | null; request_category:string }>(
       "SELECT service_type,status,driver_id,request_category FROM service_requests WHERE id=$1 AND deleted_at IS NULL FOR UPDATE", [id],
@@ -641,10 +648,26 @@ export async function finishService(actor: Actor, id: string, input: unknown) {
     if(!canManage(actor)||service.status!=="pendiente_revision")
       reject("La operación debe ser entregada por terreno y validada por administración antes del pesaje y cierre.");
     if(purchase){
-      const documents=await tx.query<{document_kind:string}>(
-        "SELECT DISTINCT document_kind FROM service_evidence WHERE service_id=$1 AND storage_key IS NOT NULL AND document_kind IN ('guia_traslado','hoja_servicio')",[id]);
-      if(new Set(documents.map(document=>document.document_kind)).size!==2)
+      const documents=await tx.query<{id:string;document_kind:string}>(
+        "SELECT id,document_kind FROM service_evidence WHERE service_id=$1 AND storage_key IS NOT NULL AND document_kind IN ('guia_traslado','hoja_servicio','ticket_pesaje') ORDER BY created_at DESC,id DESC",[id]);
+      const guide=documents.find(document=>document.document_kind==="guia_traslado");
+      const sheet=documents.find(document=>document.document_kind==="hoja_servicio");
+      const ticket=documents.find(document=>document.document_kind==="ticket_pesaje");
+      if(!guide||!sheet)
         reject("Faltan la Guía de Traslado o la Hoja de Servicio.");
+      if(!data.guide_number)reject("Indique el número de la Guía de Traslado revisada.");
+      if(!data.confirm_guide||!data.confirm_sheet||!data.confirm_material||!data.confirm_weight||!data.confirm_impurities)
+        reject("Confirme la revisión de guía, hoja, material, pesaje e impurezas antes del cierre.");
+      if(!data.material_name||data.material_name.length<2)reject("Indique el material realmente recibido.");
+      if(ticket&&!data.confirm_ticket)reject("Coteje el ticket de pesaje adjunto antes de cerrar.");
+      if(!ticket&&data.missing_ticket_reason.length<5)reject("Indique por qué no se recibió ticket de pesaje.");
+      if(data.impurity_kg>0&&data.review_note.length<5)reject("Describa las impurezas detectadas en las observaciones.");
+      await tx.query(`INSERT INTO purchase_closure_reviews
+        (service_id,guide_evidence_id,sheet_evidence_id,ticket_evidence_id,missing_ticket_reason,material_name,
+         gross_kg,tare_kg,impurity_kg,observations,reviewed_by)
+        VALUES ($1,$2,$3,$4,NULLIF($5,''),$6,$7,$8,$9,NULLIF($10,''),$11)`,
+        [id,guide.id,sheet.id,ticket?.id??null,ticket?"":data.missing_ticket_reason,
+          data.material_name,data.gross_kg,data.tare_kg,data.impurity_kg,data.review_note,actor.id]);
     } else {
       const [evidence]=await tx.query("SELECT id FROM service_evidence WHERE service_id=$1 AND storage_key IS NOT NULL LIMIT 1",[id]);
       if(!evidence)reject("Adjunte al menos una fotografía o documento antes de cerrar.");
@@ -655,7 +678,9 @@ export async function finishService(actor: Actor, id: string, input: unknown) {
       [id, data.gross_kg, data.tare_kg, data.guide_number],
     );
     await event(tx, id, actor, "servicio_cerrado", purchase?"Documentos revisados y pesaje validado por administración":"Servicio completado y pesaje registrado",
-      { status: service.status }, { status: "completada", gross_kg: data.gross_kg, tare_kg: data.tare_kg, net_kg: data.gross_kg - data.tare_kg });
+      { status: service.status }, { status: "completada", gross_kg: data.gross_kg, tare_kg: data.tare_kg,
+        net_kg: data.gross_kg - data.tare_kg,...(purchase?{material_name:data.material_name,impurity_kg:data.impurity_kg,
+          ticket_status:data.confirm_ticket?"revisado":"no_entregado",review_note:data.review_note}: {}) });
   });
 }
 

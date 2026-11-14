@@ -82,9 +82,14 @@ export async function saveGuideFollowup(actor:Actor,serviceId:string,input:unkno
   if(data.due_on&&!data.responsible_user_id)reject("Asigne a quien gestionará la guía valorizada.");
   if(!data.requested_on&&(data.due_on||data.responsible_user_id))reject("Registre la solicitud antes de asignar el seguimiento.");
   return transaction(async tx=>{
-    const [service]=await tx.query<{operating_company:Company|null}>("SELECT operating_company FROM service_requests WHERE id=$1 AND deleted_at IS NULL",[serviceId]);
+    const [service]=await tx.query<{operating_company:Company|null;request_category:string;status:string}>(
+      "SELECT operating_company,request_category,status FROM service_requests WHERE id=$1 AND deleted_at IS NULL",[serviceId]);
     if(!service)reject("Servicio no encontrado.");
     if(service.operating_company==="e_y_j"&&(data.requested_on||data.received_on||data.due_on||data.responsible_user_id))reject("E y J no utiliza guías valorizadas. Registre sólo su cierre documental.");
+    if(service.operating_company==="rerchar"&&service.request_category==="compra"&&data.requested_on){
+      const [review]=await tx.query("SELECT service_id FROM purchase_closure_reviews WHERE service_id=$1",[serviceId]);
+      if(service.status!=="completada"||!review)reject("Cierre primero la revisión administrativa de guía, hoja, material, pesaje e impurezas antes de solicitar la guía valorizada.");
+    }
     if(data.responsible_user_id){
       const [owner]=await tx.query("SELECT id FROM users WHERE id=$1 AND active=true AND role IN ('admin','operaciones')",[data.responsible_user_id]);
       if(!owner)reject("Seleccione un responsable activo de administración u operaciones.");

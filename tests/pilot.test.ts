@@ -13,7 +13,7 @@ test("solicitud, permisos, planificación, checklist, evidencia y cierre", async
   try {
     const { db, transaction } = await import("../lib/db");
     const { createClient, createSite, createAsset, createService, assignService, cancelService, reportFleetIncident, resolveFleetIncident, listFleet, reportServices, normalizeReportFilters, saveChecklist, startService, addEvidence, handoffService, finishService, getService, listServices, listAgenda, PilotError } = await import("../lib/pilot");
-    for (const migration of ["001_piloto.sql", "002_flota_y_despacho.sql", "003_abastecimiento.sql", "004_mantenimiento_combustible.sql", "005_contenedores.sql", "006_acreditacion.sql", "007_finanzas.sql", "008_trazabilidad_ambiental.sql", "009_certificados.sql", "010_evidencia_persistente.sql", "011_operacion_real_2026.sql", "018_empresa_operadora.sql", "022_entrega_conductor.sql","023_conductores_terceros.sql","027_solicitudes_arriendo.sql","033_checklist_a_mantenimiento.sql","035_ficha_flota.sql","036_programacion_semanal.sql","058_evidencia_area_checklist.sql"]) {
+    for (const migration of ["001_piloto.sql", "002_flota_y_despacho.sql", "003_abastecimiento.sql", "004_mantenimiento_combustible.sql", "005_contenedores.sql", "006_acreditacion.sql", "007_finanzas.sql", "008_trazabilidad_ambiental.sql", "009_certificados.sql", "010_evidencia_persistente.sql", "011_operacion_real_2026.sql", "018_empresa_operadora.sql", "022_entrega_conductor.sql","023_conductores_terceros.sql","027_solicitudes_arriendo.sql","033_checklist_a_mantenimiento.sql","035_ficha_flota.sql","036_programacion_semanal.sql","058_evidencia_area_checklist.sql","066_revision_administrativa_compra.sql"]) {
       const sql = await readFile(resolve(process.cwd(), `db/${migration}`), "utf8");
       await transaction(async (tx) => {
         for (const statement of sql.split(/;\s*(?:\n|$)/).map((text) => text.trim()).filter(Boolean)) await tx.query(statement);
@@ -142,8 +142,19 @@ test("solicitud, permisos, planificación, checklist, evidencia y cierre", async
     await handoffService(secondOperator,purchase);
     assert.equal((await getService(planner,purchase)).status,"pendiente_revision");
     await assert.rejects(()=>handoffService(secondOperator,purchase),PilotError,"la entrega no se duplica");
-    await finishService(planner,purchase,{gross_kg:100,tare_kg:10,guide_number:"G-002"});
+    const review={gross_kg:100,tare_kg:10,guide_number:"G-002",material_name:"Chatarra metálica",impurity_kg:2,
+      confirm_guide:true,confirm_sheet:true,confirm_material:true,confirm_weight:true,confirm_impurities:true,
+      missing_ticket_reason:"Cliente no entregó ticket",review_note:"Dos kilos de impurezas retiradas"};
+    await assert.rejects(()=>finishService(planner,purchase,{gross_kg:100,tare_kg:10,guide_number:"G-002"}),/Confirme la revisión/);
+    await assert.rejects(()=>finishService(planner,purchase,{...review,impurity_kg:91}),/impurezas no pueden superar/);
+    await finishService(planner,purchase,review);
     assert.equal((await getService(planner,purchase)).status,"completada");
+    const [validated]=await db.query<{material_name:string;impurity_kg:string;missing_ticket_reason:string;reviewed_by:string}>(
+      "SELECT material_name,impurity_kg,missing_ticket_reason,reviewed_by FROM purchase_closure_reviews WHERE service_id=$1",[purchase]);
+    assert.equal(validated.material_name,"Chatarra metálica");
+    assert.equal(Number(validated.impurity_kg),2);
+    assert.equal(validated.missing_ticket_reason,"Cliente no entregó ticket");
+    assert.equal(validated.reviewed_by,planner.id);
   } finally {
     await rm(uploadDir, { recursive: true, force: true });
   }
