@@ -4,7 +4,7 @@ import {redirect} from "next/navigation";
 import {revalidatePath} from "next/cache";
 import {ZodError} from "zod";
 import {requireActor} from "@/lib/auth";
-import {PaymentStatementError,createPaymentStatement,saveStatementCharge,saveStatementOperation,addStatementService,linkStatementInvoice,saveStatementClientOrder,deletePaymentStatementLine,setPaymentStatementStatus} from "@/lib/payment-statements";
+import {PaymentStatementError,createPaymentStatement,saveStatementCharge,saveStatementOperation,addStatementService,linkStatementInvoice,saveStatementClientOrder,deletePaymentStatementLine,setPaymentStatementStatus,sendPaymentStatement,recordManualStatementDelivery,resolveStatementDelivery} from "@/lib/payment-statements";
 
 const val=(form:FormData,key:string)=>String(form.get(key)??"");
 const select=(form:FormData,fields:readonly string[])=>Object.fromEntries(fields.map(key=>[key,val(form,key)]));
@@ -50,7 +50,20 @@ export async function deleteStatementLineAction(form:FormData){
 }
 export async function setStatementStatusAction(form:FormData){
   const actor=await requireActor(),id=val(form,"statement_id");
+  if(val(form,"status")==="enviado")redirect(`${path(id)}?error=${encodeURIComponent("Registre el envío real o la constancia de entrega manual.")}`);
   await run(path(id),()=>setPaymentStatementStatus(actor,id,val(form,"status")));
+}
+export async function sendStatementAction(form:FormData){
+  const actor=await requireActor(),id=val(form,"statement_id");
+  await run(path(id),()=>sendPaymentStatement(actor,id,val(form,"recipient")));
+}
+export async function manualStatementDeliveryAction(form:FormData){
+  const actor=await requireActor(),id=val(form,"statement_id");
+  await run(path(id),()=>recordManualStatementDelivery(actor,id,select(form,["channel","recipient","reference"])));
+}
+export async function resolveStatementDeliveryAction(form:FormData){
+  const actor=await requireActor(),id=val(form,"statement_id");
+  await run(path(id),()=>resolveStatementDelivery(actor,id,select(form,["outcome","reference"])));
 }
 export async function linkStatementInvoiceAction(form:FormData){
   const actor=await requireActor(),id=val(form,"statement_id");

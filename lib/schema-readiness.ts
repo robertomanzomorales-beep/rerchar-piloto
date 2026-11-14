@@ -1,6 +1,6 @@
 import {db} from "./db";
 
-export type ModuleKey="guias"|"ingresos"|"stock"|"edp"|"edp_service_import"|"edp_billing"|"edp_client_order"|"edp_calendar"|"cotizaciones"|"certificados_borradores"|"material_sale_billing"|"supplier_transfers"|"counterparty_profiles"|"purchase_supplier_profile";
+export type ModuleKey="guias"|"ingresos"|"stock"|"edp"|"edp_delivery"|"edp_service_import"|"edp_billing"|"edp_client_order"|"edp_calendar"|"cotizaciones"|"certificados_borradores"|"material_sale_billing"|"supplier_transfers"|"counterparty_profiles"|"purchase_supplier_profile";
 
 // Sólo se consultan nombres fijos del esquema. Detectar la tabla sin sus columnas
 // evita mostrar un módulo parcialmente migrado como si estuviera operativo.
@@ -21,6 +21,8 @@ const requirements:Record<ModuleKey,{tables:string[];columns:[string,string][]}>
   stock:{tables:["material_catalog","material_stock_balances","material_stock_movements"],columns:[]},
   edp:{tables:["payment_statements","payment_statement_operations","payment_statement_charges"],
     columns:[["payment_statements","issuer_contact"],["payment_statements","contract_manager"]]},
+  edp_delivery:{tables:["payment_statement_deliveries"],
+    columns:[["payment_statement_deliveries","pdf"],["payment_statement_deliveries","status"]]},
   edp_service_import:{tables:["payment_statement_operations","service_day_reports","service_commercial_details","service_guide_controls"],
     columns:[["payment_statement_operations","service_id"],["service_guide_controls","departure_ticket"]]},
   edp_billing:{tables:["payment_statements","extra_receivable_invoices","service_invoices"],

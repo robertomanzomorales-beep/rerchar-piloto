@@ -1,7 +1,10 @@
 import {z} from "zod";
+import {createHash} from "node:crypto";
+import nodemailer from "nodemailer";
 import type {Actor} from "./auth";
 import {canManage} from "./auth";
 import {db,transaction,type Db} from "./db";
+import {renderPaymentStatementPdf} from "./payment-statement-pdf";
 
 const uuid=z.uuid();
 const optional=(max:number)=>z.string().trim().max(max).default("");
@@ -43,13 +46,17 @@ export type StatementInvoice={id:string;source:"servicio"|"edp";invoice_number:s
   due_on:Date|string;total_clp:string;paid_clp:string;status:"emitida"|"anulada";service_id:string|null};
 export type StatementTotals={lines:{charge:Charge;quantity:number|null;total_clp:number|null}[];net_clp:number|null;
   vat_clp:number|null;total_clp:number|null;disposal_tons:number|null};
+export type StatementDelivery={id:string;statement_id:string;channel:"smtp"|"correo_manual"|"presencial"|"otro";
+  status:"enviando"|"verificar"|"enviado"|"no_enviado";recipient:string|null;reference:string|null;
+  created_at:Date|string;confirmed_at:Date|string|null};
 
 export function statementTotals(operations:Operation[],charges:Charge[]):StatementTotals{
   const disposal=operations.filter(o=>o.is_disposal&&o.weight_kg!=null);
   const disposalTons=disposal.length?Math.round(disposal.reduce((sum,o)=>sum+Number(o.weight_kg),0)*100)/100000:null;
   const lines=charges.map(charge=>{
-    const qty=charge.pricing==="uf_ton"?disposalTons:Number(charge.quantity??0);
-    const total=qty==null?null:Math.round(Number(charge.unit_value)*qty*(charge.pricing==="clp_servicio"?1:Number(charge.uf_value_clp)));
+    const qty=charge.pricing==="uf_ton"?disposalTons:charge.quantity==null?null:Number(charge.quantity);
+    const rate=charge.pricing==="clp_servicio"?1:charge.uf_value_clp==null?null:Number(charge.uf_value_clp);
+    const total=qty==null||rate==null?null:Math.round(Number(charge.unit_value)*qty*rate);
     return {charge,quantity:qty,total_clp:total};
   });
   const net=lines.length&&lines.every(l=>l.total_clp!=null)?lines.reduce((sum,l)=>sum+l.total_clp!,0):null;
@@ -70,6 +77,106 @@ export async function getPaymentStatement(actor:Actor,id:string){
     db.query<Charge>("SELECT * FROM payment_statement_charges WHERE statement_id=$1 ORDER BY line_number",[id]),
   ]);
   return {statement,operations,charges,totals:statementTotals(operations,charges)};
+}
+export async function latestStatementDelivery(actor:Actor,statementId:string):Promise<StatementDelivery|null>{
+  read(actor);if(!uuid.safeParse(statementId).success)reject("Estado de pago no encontrado.");
+  const [delivery]=await db.query<StatementDelivery>(`SELECT id,statement_id,channel,status,recipient,reference,created_at,confirmed_at
+    FROM payment_statement_deliveries WHERE statement_id=$1 ORDER BY created_at DESC,id DESC LIMIT 1`,[statementId]);
+  return delivery??null;
+}
+async function pendingDelivery(tx:Db,statementId:string){
+  // Las bases antiguas aún pueden servir EDP mientras se aplica la migración.
+  const [schema]=await tx.query<{present:string|null}>("SELECT to_regclass('payment_statement_deliveries')::text AS present");
+  if(!schema.present)return false;
+  const [latest]=await tx.query<{status:StatementDelivery["status"]}>(`SELECT status FROM payment_statement_deliveries
+    WHERE statement_id=$1 ORDER BY created_at DESC,id DESC LIMIT 1`,[statementId]);
+  return latest?.status==="enviando"||latest?.status==="verificar";
+}
+async function prepareStatementDelivery(tx:Db,statementId:string){
+  const [statement]=await tx.query<Statement>("SELECT * FROM payment_statements WHERE id=$1 AND issuer='e_y_j' FOR UPDATE",[statementId]);
+  if(!statement||!["borrador","observado"].includes(statement.status))reject("Sólo puede entregar un EDP en borrador u observado.");
+  if(await pendingDelivery(tx,statementId))reject("Hay un envío sin confirmar. Revise el correo saliente antes de reintentar o corregir el EDP.");
+  const [operations,charges]=await Promise.all([
+    tx.query<Operation>("SELECT * FROM payment_statement_operations WHERE statement_id=$1 ORDER BY line_number",[statementId]),
+    tx.query<Charge>("SELECT * FROM payment_statement_charges WHERE statement_id=$1 ORDER BY line_number",[statementId]),
+  ]);
+  const totals=statementTotals(operations,charges);
+  if(!operations.length||!charges.length||totals.total_clp==null)
+    reject("Complete respaldo operativo y valorización antes de enviar el EDP.");
+  const pdf=Buffer.from(await renderPaymentStatementPdf({...statement,status:"enviado"},operations,totals));
+  return {statement,pdf,sha256:createHash("sha256").update(pdf).digest("hex")};
+}
+export function statementMailConfigured(){
+  return Boolean(process.env.SMTP_HOST&&process.env.SMTP_PORT&&process.env.SMTP_USER&&process.env.SMTP_PASSWORD&&process.env.SMTP_FROM);
+}
+export async function recordManualStatementDelivery(actor:Actor,statementId:string,input:unknown){
+  admin(actor);const id=uuid.parse(statementId);
+  const data=z.object({channel:z.enum(["correo_manual","presencial","otro"]),recipient:z.union([z.email(),z.literal("")]).default(""),
+    reference:z.string().trim().min(10).max(500)}).parse(input);
+  if(data.channel==="correo_manual"&&!data.recipient)reject("Indique el correo al que ya entregó el PDF.");
+  await transaction(async tx=>{
+    const {pdf,sha256}=await prepareStatementDelivery(tx,id);
+    const [delivery]=await tx.query<{id:string}>(`INSERT INTO payment_statement_deliveries
+      (statement_id,channel,status,recipient,reference,pdf,sha256,recorded_by,confirmed_at)
+      VALUES($1,$2,'enviado',$3,$4,$5,$6,$7,now()) RETURNING id`,
+      [id,data.channel,data.recipient||null,data.reference,pdf,sha256,actor.id]);
+    await tx.query("UPDATE payment_statements SET status='enviado',updated_at=now() WHERE id=$1",[id]);
+    await audit(tx,actor,"manual_delivery","payment_statement",id,{...data,delivery_id:delivery.id,sha256});
+  });
+}
+export async function sendPaymentStatement(actor:Actor,statementId:string,recipientInput:unknown){
+  admin(actor);const id=uuid.parse(statementId),recipient=z.email().max(254).parse(recipientInput);
+  if(!statementMailConfigured())reject("Configure el correo SMTP del sistema antes de enviar el EDP.");
+  const port=Number(process.env.SMTP_PORT);
+  if(!Number.isInteger(port)||port<1||port>65535)reject("El puerto SMTP configurado no es válido.");
+  const prepared=await transaction(async tx=>{
+    const {statement,pdf,sha256}=await prepareStatementDelivery(tx,id);
+    const [delivery]=await tx.query<{id:string}>(`INSERT INTO payment_statement_deliveries
+      (statement_id,channel,status,recipient,pdf,sha256,recorded_by)
+      VALUES($1,'smtp','enviando',$2,$3,$4,$5) RETURNING id`,[id,recipient,pdf,sha256,actor.id]);
+    await audit(tx,actor,"prepare_send","payment_statement",id,{delivery_id:delivery.id,recipient,sha256});
+    return {statement,pdf,deliveryId:delivery.id};
+  });
+  try{
+    const transport=nodemailer.createTransport({host:process.env.SMTP_HOST,port,secure:port===465,
+      auth:{user:process.env.SMTP_USER,pass:process.env.SMTP_PASSWORD},connectionTimeout:15000,
+      greetingTimeout:15000,socketTimeout:30000});
+    await transport.sendMail({from:process.env.SMTP_FROM,to:recipient,
+      subject:`Estado de pago N° ${prepared.statement.number} · E y J`,
+      text:`Estimados:\n\nAdjuntamos el estado de pago N° ${prepared.statement.number} de ${prepared.statement.client_name}, período ${day(prepared.statement.period_on)}. Favor revisar y confirmar su recepción.\n\nSaludos cordiales,\nEMPRESA DE SERVICIOS INTEGRALES E Y J LTDA.`,
+      attachments:[{filename:`edp-eyj-${prepared.statement.number.replace(/[^a-z0-9-]+/gi,"-")}.pdf`,content:prepared.pdf,contentType:"application/pdf"}]});
+    await transaction(async tx=>{
+      const [statement]=await tx.query<{status:string}>("SELECT status FROM payment_statements WHERE id=$1 FOR UPDATE",[id]);
+      if(!statement||!["borrador","observado"].includes(statement.status))reject("El estado del EDP cambió durante el envío; revise el correo saliente.");
+      const [attempt]=await tx.query<{id:string}>(`UPDATE payment_statement_deliveries SET status='enviado',confirmed_at=now()
+        WHERE id=$1 AND status='enviando' RETURNING id`,[prepared.deliveryId]);
+      if(!attempt)reject("El intento fue modificado durante el envío; revise el correo saliente.");
+      await tx.query("UPDATE payment_statements SET status='enviado',updated_at=now() WHERE id=$1",[id]);
+      await audit(tx,actor,"send","payment_statement",id,{delivery_id:prepared.deliveryId,recipient});
+    });
+  }catch(error){
+    console.error("Envío EDP sin confirmación",error);
+    await db.query("UPDATE payment_statement_deliveries SET status='verificar' WHERE id=$1 AND status='enviando'",[prepared.deliveryId]);
+    reject("No fue posible confirmar el envío. Revise el correo saliente y resuelva el intento antes de reenviar.");
+  }
+}
+export async function resolveStatementDelivery(actor:Actor,statementId:string,input:unknown){
+  admin(actor);const id=uuid.parse(statementId);
+  const data=z.object({outcome:z.enum(["enviado","no_enviado"]),reference:z.string().trim().min(10).max(500)}).parse(input);
+  await transaction(async tx=>{
+    const [statement]=await tx.query<{status:string}>("SELECT status FROM payment_statements WHERE id=$1 FOR UPDATE",[id]);
+    if(!statement||!["borrador","observado"].includes(statement.status))reject("El EDP ya no requiere verificar el envío.");
+    const [delivery]=await tx.query<StatementDelivery>(`SELECT * FROM payment_statement_deliveries
+      WHERE statement_id=$1 ORDER BY created_at DESC,id DESC LIMIT 1 FOR UPDATE`,[id]);
+    if(!delivery||!["enviando","verificar"].includes(delivery.status))reject("No existe un envío pendiente de verificación.");
+    if(delivery.status==="enviando"&&Date.now()-new Date(delivery.created_at).getTime()<120_000)
+      reject("El envío aún está en curso. Espere dos minutos antes de verificar el correo saliente.");
+    await tx.query(`UPDATE payment_statement_deliveries SET status=$2,reference=$3,
+      confirmed_at=now() WHERE id=$1`,[delivery.id,data.outcome,data.reference]);
+    if(data.outcome==="enviado")
+      await tx.query("UPDATE payment_statements SET status='enviado',updated_at=now() WHERE id=$1",[id]);
+    await audit(tx,actor,"resolve_send","payment_statement",id,{delivery_id:delivery.id,...data});
+  });
 }
 
 export async function getStatementInvoice(actor:Actor,statement:Statement):Promise<StatementInvoice|null>{
@@ -363,6 +470,7 @@ async function editable(tx:Db,id:string){
     "SELECT statement_type,status FROM payment_statements WHERE id=$1 FOR UPDATE",[id]);
   if(!statement)reject("Estado de pago no encontrado.");
   if(!["borrador","observado"].includes(statement.status))reject("Devuelva el estado de pago a borrador para corregirlo.");
+  if(await pendingDelivery(tx,id))reject("Revise el envío pendiente antes de modificar el EDP.");
   return statement;
 }
 const operationSchema=z.object({line_id:z.union([uuid,z.literal("")]).default(""),line_number:z.coerce.number().int().min(1).max(200),
@@ -459,6 +567,7 @@ export async function setPaymentStatementStatus(actor:Actor,id:string,next:unkno
   return transaction(async tx=>{
     const [current]=await tx.query<{status:Statement["status"]}>("SELECT status FROM payment_statements WHERE id=$1 FOR UPDATE",[id]);
     if(!current)reject("Estado de pago no encontrado.");
+    if(await pendingDelivery(tx,id))reject("Revise el envío pendiente antes de cambiar el estado del EDP.");
     const allowed:Record<Statement["status"],string[]>={borrador:["enviado"],enviado:["aprobado","observado"],
       observado:["borrador","enviado"],aprobado:[]};
     if(!allowed[current.status].includes(to))reject("Esa transición no corresponde al estado actual.");
