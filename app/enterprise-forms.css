@@ -59,6 +59,7 @@
   .app-shell :is(input,select,textarea):hover:not(:disabled):not(:focus) { border-color: #aebfc4; }
   .app-shell :is(input,select,textarea):focus-visible { outline: 2px solid var(--company-accent); outline-offset: 1px; border-color: var(--company-accent); box-shadow: 0 0 0 3px var(--company-soft); }
   .app-shell :is(input,select,textarea):user-invalid { border-color: #b87668; }
+  .app-shell :is(input[type="number"],input[type="date"],input[type="datetime-local"]) { font-variant-numeric: tabular-nums; }
   .app-shell :is(input,select,textarea):disabled, .app-shell input[readonly], .app-shell textarea[readonly] { color: #708189; background-color: #f5f7f7; opacity: 1; cursor: default; }
   .app-shell textarea { min-height: 84px; resize: vertical; }
   .app-shell input[type="file"] {
