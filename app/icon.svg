@@ -1,4 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <path d="M45 15a23 23 0 1 0 2 32" fill="none" stroke="#00b67d" stroke-width="11" stroke-linecap="round"/>
-  <path d="M35 42c1-9 7-16 17-19-1 10-7 17-17 19Z" fill="#008660"/>
+  <title>RERCHAR</title>
+  <rect width="64" height="64" rx="10" fill="#163c2e"/>
+  <path d="M47 17A25 25 0 1 0 32 57" fill="none" stroke="#18aa73" stroke-width="10"/>
+  <path d="M43 7h12v21H34V17h9z" fill="#18aa73"/>
 </svg>

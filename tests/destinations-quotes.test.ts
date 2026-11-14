@@ -3,6 +3,7 @@ import {randomUUID} from "node:crypto";
 import {readFile,readdir} from "node:fs/promises";
 import {resolve} from "node:path";
 import test from "node:test";
+import {PDFDocument} from "pdf-lib";
 import type {Actor} from "../lib/auth";
 
 test("destinos de Carol bloquean entrega inválida y conservan cotizaciones anteriores",async()=>{
@@ -70,6 +71,12 @@ test("destinos de Carol bloquean entrega inválida y conservan cotizaciones ante
   await assert.rejects(()=>planning.applySuggestedQuotePrice(owner,quoteId),planning.QuotePlanningError);
   assert.equal(await planning.saveQuoteRoute(owner,quoteId,{...places,pickup_km:"10",destination_km:"17",return_km:"19",
     reviewed_for_truck:true,correction_reason:"Ruta apta verificada con conductor"}),46);
+  const routedQuote=await quotes.getQuote(owner,quoteId);
+  assert.deepEqual([routedQuote.route?.pickup_km,routedQuote.route?.destination_km,routedQuote.route?.return_km],
+    ["10.00","17.00","19.00"],"los tramos revisados llegan al documento comercial");
+  const {renderQuotePdf}=await import("../lib/quote-pdf");
+  const routePdf=await PDFDocument.load(await renderQuotePdf(routedQuote.quote,routedQuote.lines,"",routedQuote.route));
+  assert.ok(routePdf.getPageCount()>=1,"la cotización con recorrido se puede entregar");
   const costing={trips:"2",asset_id:"",equipment:"Camión tolva",capacity:"10",capacity_unit:"tonelada",km_per_liter:"2",
     fuel_price_clp:"1000",equipment_cost_clp:"10000",tolls_clp:"2000",driver_hours:"3",driver_hour_clp:"5000",
     support_hours:"2",support_hour_clp:"2000",per_diem_clp:"3000",loading_clp:"1000",disposal_quantity:"1.5",

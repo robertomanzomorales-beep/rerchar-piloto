@@ -98,11 +98,11 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
   const chartArea=`${chartPath} L ${chartX(months.length-1)} 190 L ${chartX(0)} 190 Z`;
   const monthLabel=new Intl.DateTimeFormat("es-CL",{month:"short",timeZone:"UTC"});
   const serviceBars=[
-    {label:"Solicitadas",status:"solicitada",count:value(s?.requested),color:"#9aaab0"},
-    {label:"Programadas",status:"programada",count:value(s?.scheduled),color:"#879ca5"},
-    {label:"En ruta",status:"en_ruta",count:value(s?.in_route),color:"#5b8490"},
-    {label:"En revisión",status:"pendiente_revision",count:value(s?.pending_review),color:"#738995"},
-    {label:"Completadas",status:"completada",count:value(s?.completed),color:"#577a6d"},
+    {label:"Solicitadas",status:"solicitada",count:value(s?.requested),color:selected==="rerchar"?"#b1c7bb":"#b6c6d4"},
+    {label:"Programadas",status:"programada",count:value(s?.scheduled),color:selected==="rerchar"?"#80aa91":"#83a5bf"},
+    {label:"En ruta",status:"en_ruta",count:value(s?.in_route),color:selected==="rerchar"?"#438468":"#537fa3"},
+    {label:"En revisión",status:"pendiente_revision",count:value(s?.pending_review),color:selected==="rerchar"?"#b39756":"#aa8c61"},
+    {label:"Completadas",status:"completada",count:value(s?.completed),color:selected==="rerchar"?"#185a42":"#284f76"},
   ];
   const chartTotal=serviceBars.reduce((sum,item)=>sum+item.count,0);
   const maxStatus=Math.max(1,...serviceBars.map(item=>item.count));
@@ -171,7 +171,7 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
   ];
   return <>
     <Link href="/" className="back-link"><ArrowLeft size={15}/> Empresas</Link>
-    <div className="page-title-row company-dashboard-heading"><div><div className="eyebrow">{company.name}</div><h1>Panel operativo</h1><p className="page-intro">Seguimiento de {company.short} · datos registrados en esta operación.</p></div>
+    <div className="page-title-row company-dashboard-heading"><div><div className="eyebrow">{company.name}</div><h1>{selected==="rerchar"?"RERCHAR":"E y J"}</h1><p className="page-intro">{selected==="rerchar"?"Materiales, valorización y trazabilidad":"Servicios industriales, contratos y estados de pago"} · panel operativo</p></div>
       {canManage(actor) && <Link href={`/cotizaciones/nueva?empresa=${selected}`} className="button button-primary"><Plus size={17}/> Nueva cotización</Link>}
     </div>
     {value(unclassified[0]?.total)>0&&<p className="company-unclassified"><AlertTriangle size={17}/><span><strong>{value(unclassified[0]?.total)} servicios anteriores por clasificar.</strong> No se suman a ninguna empresa hasta confirmar sus documentos de origen.</span><Link href="/solicitudes?empresa=pendiente">Revisar <ArrowRight size={15}/></Link></p>}

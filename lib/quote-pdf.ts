@@ -13,7 +13,12 @@ export async function renderQuotePdf(quote:Quote,lines:QuoteLine[],warning="",ro
   const bold=await doc.embedFont(await readFile(resolve(process.cwd(),"public/fonts/montserrat-bold.ttf")),{subset:true});
   const logo=quote.issuer==="rerchar"?await doc.embedPng(await readFile(resolve(process.cwd(),"public/rerchar-logo-transparente.png"))):null;
   const certifications=quote.issuer==="rerchar"?await doc.embedPng(await readFile(resolve(process.cwd(),"public/rerchar-certificaciones-iso.png"))):null;
-  const dark=rgb(0.12,0.18,0.16),green=rgb(0,0.45,0.32),gray=rgb(0.43,0.48,0.46),rule=rgb(0.82,0.87,0.84),pale=rgb(0.96,0.98,0.96);
+  const isRerchar=quote.issuer==="rerchar";
+  const dark=isRerchar?rgb(0.12,0.18,0.16):rgb(0.12,0.18,0.25);
+  const green=isRerchar?rgb(0,0.45,0.32):rgb(0.16,0.31,0.46);
+  const gray=isRerchar?rgb(0.43,0.48,0.46):rgb(0.39,0.45,0.52);
+  const rule=isRerchar?rgb(0.82,0.87,0.84):rgb(0.80,0.85,0.89);
+  const pale=isRerchar?rgb(0.96,0.98,0.96):rgb(0.95,0.97,0.99);
   const safe=(s:unknown)=>[...normalizeQuoteText(s).replace(/\n/g," ").replace(/\u2011/g,"-")]
     .map(ch=>/[\u0020-\u024f\u2013\u2014\u2018\u2019\u201c\u201d\u2022\u2026]/.test(ch)?ch:"?").join("");
   const money=(n:number)=>`$${n.toLocaleString("es-CL")}`;
@@ -48,7 +53,7 @@ export async function renderQuotePdf(quote:Quote,lines:QuoteLine[],warning="",ro
   function header(continuation=false){
     page.drawRectangle({x:0,y:830,width:595.28,height:12,color:green});
     if(logo)page.drawImage(logo,{x:45,y:755,width:175,height:61});
-    else write("E Y J LIMITADA",45,785,17,bold,green);
+    else {write("E y J",45,781,25,bold,green);write("SERVICIOS INTEGRALES",46,761,8,bold,gray);}
     if(certifications)page.drawImage(certifications,{x:234,y:767,width:103.5,height:36});
     write(issuer.name,45,736,9,bold);write(`RUT ${issuer.tax_id}`,45,721,8,regular,gray);
     write(continuation?"COTIZACIÓN · CONTINUACIÓN":"COTIZACIÓN COMERCIAL",350,791,10,bold,green);
@@ -127,13 +132,19 @@ export async function renderQuotePdf(quote:Quote,lines:QuoteLine[],warning="",ro
     parts.forEach((part,i)=>write(part,45,footerY-i*12,8));footerY-=parts.length*12+17;
   }
   if(route){
+    const km=(value:string)=>`${Number(value).toLocaleString("es-CL",{maximumFractionDigits:2})} km`;
     const details=[`Origen: ${route.origin}`,`Retiro: ${route.pickup}`,`Destino final: ${route.destination}`,
-      `Regreso: ${route.return_to}`,`Circuito revisado: ${Number(route.total_km).toLocaleString("es-CL",{maximumFractionDigits:2})} km`]
+      `Regreso: ${route.return_to}`,`Planta a retiro: ${km(route.pickup_km)} · Retiro a destino: ${km(route.destination_km)}`,
+      `Destino a planta: ${km(route.return_km)} · Circuito total: ${km(route.total_km)}`]
       .flatMap(value=>wrap(value,regular,8,490));
-    if(footerY-details.length*12<60){page=doc.addPage([595.28,841.89]);pages.push(page);header(true);footerY=680;}
+    const routeLink=route.route_url.startsWith("https://www.google.com/maps/dir/")?route.route_url:null;
+    const linkLines=routeLink?wrap(`Mapa de referencia: ${routeLink}`,regular,7,490):[];
+    const space=details.length*12+34+linkLines.length*11;
+    if(footerY-space<60){page=doc.addPage([595.28,841.89]);pages.push(page);header(true);footerY=680;}
     write("RECORRIDO DEL SERVICIO",45,footerY,8,bold,green);
     details.forEach((line,i)=>write(line,45,footerY-16-i*12,8));
-    footerY-=details.length*12+34;
+    linkLines.forEach((line,i)=>write(line,45,footerY-16-details.length*12-i*11,7,regular,green));
+    footerY-=space;
   }
   if(quote.notes?.trim()){
     let noteY=footerY;
@@ -158,6 +169,6 @@ export async function renderQuotePdf(quote:Quote,lines:QuoteLine[],warning="",ro
       {x:45,y:30,size:7,font:regular,color:gray});
   }
   doc.setTitle(`Cotización ${quoteFolio(quote)} - ${quote.client_name}`);
-  doc.setCreator("RERCHAR Industrial Waste Management System");
+  doc.setCreator("Plataforma operativa · RERCHAR y E y J");
   return doc.save();
 }

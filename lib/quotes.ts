@@ -43,7 +43,8 @@ export type QuoteLine={id:string;position:number;description:string;quantity:str
   currency:"CLP"|"UF";unit_price_uf:string|null;
   principal:string|null;segment:string|null;waste_category:string|null;destination_id:string|null;destination_name:string|null;destination_required:boolean;
   material_id:string|null;line_note:string|null};
-export type PublicQuoteRoute={origin:string;pickup:string;destination:string;return_to:string;total_km:string};
+export type PublicQuoteRoute={origin:string;pickup:string;destination:string;return_to:string;
+  pickup_km:string;destination_km:string;return_km:string;total_km:string;route_url:string;calculated_at:Date|string};
 function checkClassification(data:z.infer<typeof item>,required:boolean){
   if(!data.principal&&!data.segment){if(required)reject("Seleccione Principal y Segmentación para el concepto.");return;}
   if(!validQuoteSegment(data.principal,data.segment))reject("Seleccione una Segmentación correspondiente a Principal.");
@@ -214,7 +215,7 @@ export async function getQuote(actor:Actor,quoteId:string){
   const [quote]=await db.query<Quote>("SELECT * FROM client_quotes WHERE id=$1",[quoteId]);
   if(!quote||actor.role==="conductor"||(actor.role==="cliente"&&(actor.client_id!==quote.client_id||!["enviada","aceptada","rechazada"].includes(quote.status))))reject("Cotización no disponible.");
   const lines=await db.query<QuoteLine>("SELECT * FROM client_quote_lines WHERE quote_id=$1 ORDER BY position",[quoteId]);
-  const [route]=await db.query<PublicQuoteRoute>(`SELECT origin,pickup,destination,return_to,total_km FROM client_quote_routes
+  const [route]=await db.query<PublicQuoteRoute>(`SELECT origin,pickup,destination,return_to,pickup_km,destination_km,return_km,total_km,route_url,calculated_at FROM client_quote_routes
     WHERE quote_id=$1 AND reviewed_for_truck=true`,[quoteId]);
   return {quote,lines,route:route??null,totals:quoteTotals(lines,Number(quote.vat_rate))};
 }
@@ -387,7 +388,7 @@ export async function recordManualQuoteDelivery(actor:Actor,quoteId:string,input
     const lines=await tx.query<QuoteLine>("SELECT * FROM client_quote_lines WHERE quote_id=$1 ORDER BY position",[id]);
     const issues=await quoteDeliveryIssues(quote,lines,tx);
     if(issues.length)reject(`Antes de entregar: ${issues[0]}`);
-    const [route]=await tx.query<PublicQuoteRoute>(`SELECT origin,pickup,destination,return_to,total_km FROM client_quote_routes
+    const [route]=await tx.query<PublicQuoteRoute>(`SELECT origin,pickup,destination,return_to,pickup_km,destination_km,return_km,total_km,route_url,calculated_at FROM client_quote_routes
       WHERE quote_id=$1 AND reviewed_for_truck=true`,[id]);
     const pdf=Buffer.from(await renderQuotePdf(quote,lines,"",route??null));
     await tx.query(`INSERT INTO client_quote_pdf_snapshots(quote_id,pdf,sha256,channel,recorded_by)
@@ -484,7 +485,7 @@ export async function sendQuote(actor:Actor,quoteId:string,ccInput=""){
     const lines=await tx.query<QuoteLine>("SELECT * FROM client_quote_lines WHERE quote_id=$1 ORDER BY position",[id]);
     const issues=await quoteDeliveryIssues(quote,lines,tx);
     if(issues.length)reject(`Antes de enviar: ${issues[0]}`);
-    const [route]=await tx.query<PublicQuoteRoute>(`SELECT origin,pickup,destination,return_to,total_km FROM client_quote_routes
+    const [route]=await tx.query<PublicQuoteRoute>(`SELECT origin,pickup,destination,return_to,pickup_km,destination_km,return_km,total_km,route_url,calculated_at FROM client_quote_routes
       WHERE quote_id=$1 AND reviewed_for_truck=true`,[id]);
     const pdf=Buffer.from(await renderQuotePdf(quote,lines,"",route??null));
     await tx.query(`INSERT INTO client_quote_pdf_snapshots(quote_id,pdf,sha256,channel,recorded_by)
