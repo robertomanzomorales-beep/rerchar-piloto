@@ -31,7 +31,7 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
   const company = companies[selected];
   const showQuotes = actor.role !== "conductor";
   const today = new Intl.DateTimeFormat("sv-SE",{timeZone:"America/Santiago",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
-  const [quotes,services,serviceStats,quoteStats,months,guideAlerts,invoiceAlerts,unclassified,materials,payments,receiptGuides,receiptClosure,billingCalendar,checklistFaults,dayIssues,extraChargePending,receivables,edpInvoices,transferStats,unbilledServices,clientOrdersPending,credentialAlerts] = await Promise.all([
+  const [quotes,services,serviceStats,quoteStats,months,guideAlerts,invoiceAlerts,unclassified,materials,payments,receiptGuides,receiptClosure,billingCalendar,checklistFaults,dayIssues,extraChargePending,receivables,edpInvoices,transferStats,unbilledServices,clientOrdersPending,credentialAlerts,tariffNotices] = await Promise.all([
     showQuotes ? listQuotes(actor,"",selected) : Promise.resolve([]),
     listServices(actor,"","",selected),
     db.query<ServiceMetrics>(`SELECT count(*)::text AS total,
@@ -85,6 +85,9 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
         AND NOT EXISTS (SELECT 1 FROM service_invoices f WHERE f.valuation_id=v.id AND f.status='emitida')`,[selected]):Promise.resolve([]),
     actor.role==="admin"?pendingClientOrders(actor,selected):Promise.resolve(0),
     canManage(actor)?listCredentialAlerts(actor,selected):Promise.resolve([]),
+    actor.role==="admin"?db.query<{total:string}>(`SELECT count(*)::text AS total FROM tariff_change_notices n
+      JOIN service_tariffs t ON t.id=n.new_tariff_id JOIN client_contracts c ON c.id=t.contract_id
+      WHERE n.status='pendiente' AND c.operating_company=$1`,[selected]):Promise.resolve([]),
   ]);
   const s=serviceStats[0],q=quoteStats[0];
   const maxMonth=Math.max(1,...months.map(m=>value(m.total)));
@@ -114,6 +117,7 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
       {label:"Facturas anteriores por conciliar",count:Number(receivables.legacy),href:`/cobranzas?empresa=${selected}`}]:[]),
     ...(actor.role==="admin"?[{label:"Servicios valorizados sin factura individual · revisar EDP si corresponde",count:value(unbilledServices[0]?.total),href:`/finanzas?empresa=${selected}&facturacion=pendiente`}]:[]),
     ...(actor.role==="admin"?[{label:"Servicios cerrados con OC del cliente requerida y pendiente",count:clientOrdersPending,href:`/finanzas?empresa=${selected}&oc=pendiente`}]:[]),
+    ...(actor.role==="admin"?[{label:"Cambios de tarifa por comunicar al cliente",count:value(tariffNotices[0]?.total),href:`/finanzas?empresa=${selected}`}]:[]),
     ...(selected==="rerchar"&&canManage(actor)?[
       {label:"Guías valorizadas atrasadas a mi cargo",count:value(guideAlerts?.my_overdue),href:"/seguimiento-guias?estado=mias"},
       {label:"Guías valorizadas atrasadas",count:value(guideAlerts?.overdue),href:"/seguimiento-guias?estado=atrasadas"},

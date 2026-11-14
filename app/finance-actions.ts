@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { ZodError } from "zod";
 import { requireActor } from "@/lib/auth";
-import { addServiceCost, classifyContractCompany, confirmServiceInvoiceTotal, createContract, createTariff, FinanceError, registerInvoice, registerPayment, updateClientOrderReference, valueService, voidInvoice } from "@/lib/finance";
+import { addServiceCost, classifyContractCompany, confirmServiceInvoiceTotal, createContract, createTariff, FinanceError, recordTariffNotice, registerInvoice, registerPayment, reviseTariff, updateClientOrderReference, valueService, voidInvoice } from "@/lib/finance";
 
 const value=(form:FormData,key:string)=>String(form.get(key)??"");
 const detail=(id:string)=>`/finanzas/${encodeURIComponent(id)}`;
@@ -28,6 +28,10 @@ export async function classifyContractCompanyAction(form:FormData){const actor=a
 export async function createTariffAction(form:FormData){const actor=await requireActor();const company=value(form,"company_view");await run(`/finanzas?empresa=${company==="e_y_j"?"e_y_j":"rerchar"}`,()=>createTariff(actor,{
   contract_id:value(form,"contract_id"),service_type:value(form,"service_type"),waste_type:value(form,"waste_type"),unit:value(form,"unit"),
   unit_price_clp:value(form,"unit_price_clp"),valid_from:value(form,"valid_from"),valid_until:value(form,"valid_until")}));}
+export async function reviseTariffAction(form:FormData){const actor=await requireActor();const company=value(form,"company_view");await run(`/finanzas?empresa=${company==="e_y_j"?"e_y_j":"rerchar"}`,()=>reviseTariff(actor,value(form,"tariff_id"),{
+  unit_price_clp:value(form,"unit_price_clp"),valid_from:value(form,"valid_from"),reason:value(form,"reason")}));}
+export async function recordTariffNoticeAction(form:FormData){const actor=await requireActor();const company=value(form,"company_view");await run(`/finanzas?empresa=${company==="e_y_j"?"e_y_j":"rerchar"}`,()=>recordTariffNotice(actor,value(form,"notice_id"),{
+  channel:value(form,"channel"),recipient:value(form,"recipient"),notified_on:value(form,"notified_on"),reference:value(form,"reference")}));}
 export async function valueServiceAction(form:FormData){const actor=await requireActor();const id=value(form,"service_id");await run(detail(id),()=>valueService(actor,id,{
   tariff_id:value(form,"tariff_id"),client_order_reference:value(form,"client_order_reference")}));}
 export async function updateClientOrderReferenceAction(form:FormData){const actor=await requireActor();const id=value(form,"service_id");await run(detail(id),()=>updateClientOrderReference(actor,id,{

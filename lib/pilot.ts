@@ -9,6 +9,7 @@ import { hashPassword } from "./password";
 import { findMissingExternalRequirements, findMissingRequirements } from "./personnel";
 import type { Company } from "./companies";
 import {catalogName} from "./material-stock";
+import {requestTypesFromQuote} from "./request-kind";
 
 const uuid = z.uuid();
 const required = (max = 180) => z.string().trim().min(2).max(max);
@@ -276,6 +277,9 @@ export async function createService(actor: Actor, input: unknown) {
       if (!quote || quote.status !== "aceptada" || quote.client_id !== data.client_id || quote.issuer !== data.operating_company)
         reject("La cotización debe estar aceptada y corresponder al mismo cliente y empresa.");
       if((quote.commercial_kind==="compra_material")!==(category==="compra"))reject("La clase de solicitud debe coincidir con la propuesta aceptada.");
+      const concepts=await tx.query<{principal:string|null}>("SELECT principal FROM client_quote_lines WHERE quote_id=$1",[data.quote_id]);
+      if(!requestTypesFromQuote(quote.commercial_kind as "general"|"compra_material",concepts.map(item=>item.principal)).some(type=>type===data.service_type))
+        reject("El tipo de solicitud no corresponde a los conceptos de la cotización aceptada.");
       if(category==="compra"){
         if(data.material_id)reject("Los materiales de una propuesta aceptada se copian automáticamente.");
         const [existing]=await tx.query<{id:string;submission_key:string;created_by:string}>(

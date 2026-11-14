@@ -26,6 +26,9 @@ async function audit(tx:Db,actor:Actor,action:string,entity:string,id:string,cha
 export type Contract={id:string;client_id:string;site_id:string|null;client_name:string;site_name:string|null;code:string;operating_company:Company|null;starts_on:Date|string;ends_on:Date|string|null;notes:string|null;active:boolean};
 export type Tariff={id:string;contract_id:string;contract_code:string;client_name:string;site_name:string|null;service_type:string;waste_type:string|null;
   unit:string;unit_price_clp:string;valid_from:Date|string;valid_until:Date|string|null;active:boolean};
+export type TariffNotice={id:string;contract_code:string;client_name:string;client_email:string|null;service_type:string;waste_type:string|null;
+  old_price:string;new_price:string;unit:string;valid_from:Date|string;reason:string;status:"pendiente"|"enviado";
+  notified_on:Date|string|null;channel:string|null;recipient:string|null;reference:string|null};
 export type FinancialService={id:string;folio:string;client_id:string;site_id:string;client_name:string;site_name:string;service_type:string;waste_type:string;
   operating_company:Company|null;
   gross_kg:string|null;tare_kg:string|null;status:string;closed_at:Date|null;valuation_id:string|null;quantity:string|null;unit_price_clp:string|null;
@@ -54,7 +57,7 @@ const serviceSelect=`SELECT s.id,s.folio,s.client_id,s.site_id,s.operating_compa
 export async function listFinance(actor:Actor,company="rerchar",clientOcOnly=false){
   admin(actor);
   if(!["rerchar","e_y_j","pendiente"].includes(company))reject("Empresa inválida.");
-  const [services,contracts,tariffs,clients,sites]=await Promise.all([
+  const [services,contracts,tariffs,clients,sites,notices]=await Promise.all([
     db.query<FinancialService>(`SELECT * FROM (${serviceSelect} WHERE s.deleted_at IS NULL AND s.status='completada'
       AND ($1='pendiente' AND s.operating_company IS NULL OR s.operating_company=$1)) AS service
       WHERE ($2::boolean=false OR (requires_client_oc AND client_oc_reference IS NULL AND invoice_id IS NULL AND NOT in_payment_statement))
@@ -70,8 +73,15 @@ export async function listFinance(actor:Actor,company="rerchar",clientOcOnly=fal
     db.query<{id:string;name:string}>("SELECT id,name FROM clients WHERE deleted_at IS NULL ORDER BY name"),
     db.query<{id:string;client_id:string;name:string;client_name:string}>(`SELECT s.id,s.client_id,s.name,c.name AS client_name FROM client_sites s JOIN clients c ON c.id=s.client_id
       WHERE s.deleted_at IS NULL AND c.deleted_at IS NULL ORDER BY c.name,s.name`),
+    db.query<TariffNotice>(`SELECT n.id,c.code AS contract_code,cl.name AS client_name,cl.email AS client_email,
+      t.service_type,t.waste_type,t.unit,old.unit_price_clp AS old_price,t.unit_price_clp AS new_price,t.valid_from,
+      n.reason,n.status,n.notified_on,n.channel,n.recipient,n.reference
+      FROM tariff_change_notices n JOIN service_tariffs t ON t.id=n.new_tariff_id
+      JOIN service_tariffs old ON old.id=n.old_tariff_id JOIN client_contracts c ON c.id=t.contract_id
+      JOIN clients cl ON cl.id=c.client_id WHERE c.operating_company=$1
+      ORDER BY CASE n.status WHEN 'pendiente' THEN 0 ELSE 1 END,n.created_at DESC LIMIT 100`,[company]),
   ]);
-  return {services,contracts,tariffs,clients,sites};
+  return {services,contracts,tariffs,clients,sites,notices};
 }
 
 export async function pendingClientOrders(actor:Actor,company:Company){
@@ -164,6 +174,52 @@ export async function createTariff(actor:Actor,input:unknown){
       [data.contract_id,data.service_type,data.waste_type,data.unit,data.unit_price_clp,data.valid_from,data.valid_until,actor.id]);
     await audit(tx,actor,"create","service_tariff",tariff.id,data);
     return tariff.id;
+  });
+}
+
+export async function reviseTariff(actor:Actor,tariffId:string,input:unknown){
+  admin(actor);const id=uuid.parse(tariffId);
+  const data=z.object({unit_price_clp:money,valid_from:z.iso.date(),reason:z.string().trim().min(10).max(500)}).parse(input);
+  return transaction(async tx=>{
+    const [old]=await tx.query<{contract_id:string;service_type:string;waste_type:string|null;unit:string;unit_price_clp:string;
+      valid_from:Date|string;valid_until:Date|string|null;active:boolean}>("SELECT * FROM service_tariffs WHERE id=$1 FOR UPDATE",[id]);
+    if(!old?.active)reject("La tarifa no está activa.");
+    const [contract]=await tx.query<{active:boolean}>("SELECT active FROM client_contracts WHERE id=$1 FOR UPDATE",[old.contract_id]);
+    if(!contract?.active)reject("El contrato ya no está activo.");
+    const day=(value:Date|string)=>value instanceof Date?value.toISOString().slice(0,10):String(value).slice(0,10);
+    if(data.valid_from<=day(old.valid_from)||old.valid_until&&data.valid_from>day(old.valid_until))
+      reject("La nueva vigencia debe empezar después de la tarifa anterior y dentro de su período.");
+    if(Number(data.unit_price_clp)===Number(old.unit_price_clp))reject("El precio no cambió.");
+    const [later]=await tx.query("SELECT id FROM service_tariffs WHERE contract_id=$1 AND id<>$2 AND active=true AND service_type=$3 AND lower(coalesce(waste_type,''))=lower($4) AND valid_from>=$5::date LIMIT 1",
+      [old.contract_id,id,old.service_type,old.waste_type??"",data.valid_from]);
+    if(later)reject("Hay otra tarifa posterior para este concepto. Revise el calendario antes de modificarlo.");
+    const [valued]=await tx.query(`SELECT v.id FROM service_valuations v JOIN service_requests s ON s.id=v.service_id
+      WHERE v.tariff_id=$1 AND (s.closed_at AT TIME ZONE 'America/Santiago')::date >= $2::date LIMIT 1`,[id,data.valid_from]);
+    if(valued)reject("Ya existen servicios valorizados desde la nueva fecha. Revise esos registros antes de cambiar la vigencia.");
+    await tx.query("UPDATE service_tariffs SET valid_until=$2::date-1 WHERE id=$1",[id,data.valid_from]);
+    const [tariff]=await tx.query<{id:string}>(`INSERT INTO service_tariffs
+      (contract_id,service_type,waste_type,unit,unit_price_clp,valid_from,valid_until,created_by)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
+      [old.contract_id,old.service_type,old.waste_type,old.unit,data.unit_price_clp,data.valid_from,old.valid_until,actor.id]);
+    const [notice]=await tx.query<{id:string}>(`INSERT INTO tariff_change_notices(old_tariff_id,new_tariff_id,reason)
+      VALUES($1,$2,$3) RETURNING id`,[id,tariff.id,data.reason]);
+    await audit(tx,actor,"revise","service_tariff",tariff.id,{old_tariff_id:id,old_price:old.unit_price_clp,
+      new_price:data.unit_price_clp,valid_from:data.valid_from,reason:data.reason,notice_id:notice.id});
+    return tariff.id;
+  });
+}
+
+export async function recordTariffNotice(actor:Actor,noticeId:string,input:unknown){
+  admin(actor);const id=uuid.parse(noticeId);
+  const data=z.object({channel:z.enum(["correo","presencial"]),recipient:z.string().trim().min(2).max(254),
+    notified_on:z.iso.date(),reference:z.string().trim().min(10).max(500)}).parse(input);
+  if(data.channel==="correo"&&!z.email().safeParse(data.recipient).success)reject("Ingrese el correo real que recibió el aviso.");
+  await transaction(async tx=>{
+    const [notice]=await tx.query<{status:string}>("SELECT status FROM tariff_change_notices WHERE id=$1 FOR UPDATE",[id]);
+    if(notice?.status!=="pendiente")reject("El aviso ya fue registrado o no existe.");
+    await tx.query(`UPDATE tariff_change_notices SET status='enviado',notified_on=$2,channel=$3,recipient=$4,reference=$5,recorded_by=$6 WHERE id=$1`,
+      [id,data.notified_on,data.channel,data.recipient,data.reference,actor.id]);
+    await audit(tx,actor,"notice","tariff_change_notice",id,data);
   });
 }
 

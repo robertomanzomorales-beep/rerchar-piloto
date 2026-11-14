@@ -36,6 +36,8 @@ test("E y J cotiza disposición, cliente responde y OC/respaldo siguen el mismo 
   detail=await quotes.getQuote(staff,quoteId);
   assert.equal(detail.totals.net,102500,"la equivalencia CLP se recalcula sin alterar 2,5 UF pactadas");
   assert.ok((await quotes.quoteDeliveryIssues(detail.quote,detail.lines)).some(issue=>issue.includes("destino")));
+  await quotes.addQuoteLine(staff,quoteId,{description:"Arriendo de equipo de apoyo",principal:"arriendo",segment:"arriendo_equipo",
+    quantity:"1",unit:"día",unit_price_clp:"100000"});
   await db.query("UPDATE client_quotes SET status='enviada' WHERE id=$1",[quoteId]);
   await assert.rejects(()=>quotes.recordQuoteDecision(stranger,quoteId,"aceptada"),quotes.QuoteError);
   await quotes.recordQuoteDecision(viewer,quoteId,"aceptada");
@@ -43,6 +45,9 @@ test("E y J cotiza disposición, cliente responde y OC/respaldo siguen el mismo 
   await assert.rejects(()=>followup.recordQuoteClientOrder(viewer,quoteId,{reference:"OC-326",received_on:"2026-10-19"}),followup.QuoteFollowupError);
   const [site]=await db.query<{id:string}>("INSERT INTO client_sites(client_id,name) VALUES($1,'Faena piloto') RETURNING id",[client.id]);
   const pilot=await import("../lib/pilot");
+  await assert.rejects(()=>pilot.createService(staff,{submission_key:randomUUID(),client_id:client.id,site_id:site.id,
+    quote_id:quoteId,operating_company:"e_y_j",request_category:"venta",service_type:"venta",waste_type:"Material",
+    estimated_kg:"",origin:"Bodega Calama",destination:"Faena piloto",priority:"normal",notes:""}),/tipo de solicitud no corresponde|clase de solicitud debe coincidir/);
   const service=await pilot.createService(staff,{submission_key:randomUUID(),client_id:client.id,site_id:site.id,
     quote_id:quoteId,operating_company:"e_y_j",request_category:"servicios",service_type:"arriendo",waste_type:"Equipo industrial",
     estimated_kg:"",origin:"Bodega Calama",destination:"Faena piloto",rental_from:"2026-10-20",rental_to:"2026-10-21",
@@ -62,6 +67,9 @@ test("E y J cotiza disposición, cliente responde y OC/respaldo siguen el mismo 
     issued_on:"2026-10-18",valid_until:"2026-10-28",line:{description:"Arriendo de equipo",principal:"arriendo",segment:"arriendo_equipo",
       quantity:"1",unit:"día",unit_price_clp:"100000"}});
   await db.query("UPDATE client_quotes SET status='aceptada' WHERE id=$1",[exceptionQuoteId]);
+  await assert.rejects(()=>pilot.createService(staff,{submission_key:randomUUID(),client_id:client.id,site_id:site.id,
+    quote_id:exceptionQuoteId,operating_company:"e_y_j",request_category:"servicios",service_type:"traslado",waste_type:"Equipo",
+    estimated_kg:"",origin:"Bodega Calama",destination:"Faena piloto",priority:"normal",notes:""}),/tipo de solicitud no corresponde/);
   const exceptionService=await pilot.createService(staff,{submission_key:randomUUID(),client_id:client.id,site_id:site.id,
     quote_id:exceptionQuoteId,operating_company:"e_y_j",request_category:"servicios",service_type:"arriendo",waste_type:"Equipo industrial",
     estimated_kg:"",origin:"Bodega Calama",destination:"Faena piloto",rental_from:"2026-10-20",rental_to:"2026-10-21",

@@ -39,6 +39,21 @@ test("tarifa vigente, valorización, reemisión, pagos y margen conservan saldos
   await assert.rejects(()=>finance.createTariff(owner,{contract_id:contract,service_type:"retiro",waste_type:"",unit:"servicio",unit_price_clp:"200",valid_from:"2026-06-01",valid_until:""}),finance.FinanceError);
   await finance.valueService(owner,service.id,{tariff_id:tariff,client_order_reference:"OC-CLIENTE-1"});
   await assert.rejects(()=>finance.valueService(owner,service.id,{tariff_id:tariff,client_order_reference:""}));
+  await assert.rejects(()=>finance.reviseTariff(ops,tariff,{unit_price_clp:"1200",valid_from:"2026-10-01",reason:"Acuerdo enviado al cliente"}),finance.FinanceError);
+  const newTariff=await finance.reviseTariff(owner,tariff,{unit_price_clp:"1200",valid_from:"2026-10-01",reason:"Acuerdo comercial del 30 de septiembre"});
+  const [previousRate,currentRate]=await Promise.all([
+    db.query<{until:string}>("SELECT valid_until::text AS until FROM service_tariffs WHERE id=$1",[tariff]),
+    db.query<{since:string;price:string}>("SELECT valid_from::text AS since,unit_price_clp::text AS price FROM service_tariffs WHERE id=$1",[newTariff]),
+  ]);
+  assert.equal(previousRate[0].until,"2026-09-30");
+  assert.equal(currentRate[0].since,"2026-10-01");
+  assert.equal(currentRate[0].price,"1200.00");
+  const [notice]=(await finance.listFinance(owner,"rerchar")).notices;
+  assert.equal(notice.status,"pendiente");
+  await assert.rejects(()=>finance.recordTariffNotice(owner,notice.id,{channel:"correo",recipient:"No es correo",notified_on:"2026-10-01",reference:"Correo enviado el 1 de octubre"}),finance.FinanceError);
+  await finance.recordTariffNotice(owner,notice.id,{channel:"correo",recipient:"cliente@example.cl",notified_on:"2026-10-01",reference:"Correo enviado el 1 de octubre"});
+  assert.equal((await finance.listFinance(owner,"rerchar")).notices[0].status,"enviado");
+  await assert.rejects(()=>finance.recordTariffNotice(owner,notice.id,{channel:"correo",recipient:"cliente@example.cl",notified_on:"2026-10-01",reference:"Intento de duplicar aviso"}),finance.FinanceError);
   let {service:detail}=await finance.getFinancialService(owner,service.id);
   assert.equal(detail.quantity,"50.00");
   assert.equal(detail.total_clp,"50000.00");
