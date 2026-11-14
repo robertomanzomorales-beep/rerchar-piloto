@@ -77,6 +77,7 @@ test("destinos de Carol bloquean entrega inválida y conservan cotizaciones ante
   const {renderQuotePdf}=await import("../lib/quote-pdf");
   const routePdf=await PDFDocument.load(await renderQuotePdf(routedQuote.quote,routedQuote.lines,"",routedQuote.route));
   assert.ok(routePdf.getPageCount()>=1,"la cotización con recorrido se puede entregar");
+  assert.ok(routePdf.getPages().some(page=>Boolean(page.node.Annots()?.size())),"el mapa se abre desde el PDF");
   const costing={trips:"2",asset_id:"",equipment:"Camión tolva",capacity:"10",capacity_unit:"tonelada",km_per_liter:"2",
     fuel_price_clp:"1000",equipment_cost_clp:"10000",tolls_clp:"2000",driver_hours:"3",driver_hour_clp:"5000",
     support_hours:"2",support_hour_clp:"2000",per_diem_clp:"3000",loading_clp:"1000",disposal_quantity:"1.5",
