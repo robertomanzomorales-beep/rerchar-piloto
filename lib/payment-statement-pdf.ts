@@ -19,8 +19,8 @@ export async function renderPaymentStatementPdf(statement:Statement,operations:O
   const doc=await PDFDocument.create();doc.registerFontkit(fontkit);
   const regular=await doc.embedFont(await readFile(resolve(process.cwd(),"public/fonts/montserrat-regular.ttf")),{subset:true});
   const bold=await doc.embedFont(await readFile(resolve(process.cwd(),"public/fonts/montserrat-bold.ttf")),{subset:true});
-  const ink=rgb(.14,.20,.18),green=rgb(.02,.40,.29),muted=rgb(.40,.46,.43);
-  const pale=rgb(.95,.975,.96),line=rgb(.80,.86,.82),white=rgb(1,1,1),alert=rgb(.995,.94,.88);
+  const ink=rgb(.12,.18,.25),blue=rgb(.16,.31,.46),muted=rgb(.39,.45,.52);
+  const pale=rgb(.95,.97,.99),line=rgb(.80,.85,.89),white=rgb(1,1,1),alert=rgb(.995,.94,.88);
   const pages:PDFPage[]=[];let page!:PDFPage;let y=0;
 
   function text(value:unknown,x:number,at:number,size=8,font:PDFFont=regular,color=ink){
@@ -49,13 +49,14 @@ export async function renderPaymentStatementPdf(statement:Statement,operations:O
   }
   function pageHeader(continuation=false){
     page=doc.addPage([width,height]);pages.push(page);
-    page.drawRectangle({x:0,y:height-10,width,height:10,color:green});
-    text("EMPRESA DE SERVICIOS INTEGRALES E Y J LTDA.",margin,height-37,11,bold,green);
+    page.drawRectangle({x:0,y:height-10,width,height:10,color:blue});
+    text("EMPRESA DE SERVICIOS INTEGRALES E Y J LTDA.",margin,height-37,11,bold,blue);
     text("RUT 76.347.909-9",margin,height-55,8,regular,muted);
+    if(statement.issuer_contact)text(`Contacto: ${statement.issuer_contact}`,margin,height-68,7,regular,muted);
     text(continuation?"ESTADO DE PAGO · CONTINUACIÓN":"ESTADO DE PAGO",margin,height-84,16,bold);
     const heading=`N° ${statement.number}`;
     const headingSize=Math.min(16,16*(width/2-12)/bold.widthOfTextAtSize(safe(heading),16));
-    right(heading,width-margin,height-83,headingSize,bold,green);
+    right(heading,width-margin,height-83,headingSize,bold,blue);
     page.drawLine({start:{x:margin,y:height-94},end:{x:width-margin,y:height-94},thickness:1,color:line});
     y=height-104;
   }
@@ -97,12 +98,12 @@ export async function renderPaymentStatementPdf(statement:Statement,operations:O
   const status=statement.status.toUpperCase();
   const statusText=incomplete?`${status} · DATOS PENDIENTES DE REVISIÓN`:status;
   page.drawRectangle({x:margin,y:y-21,width:tableWidth,height:21,color:incomplete?alert:pale});
-  text(statusText,margin+9,y-14,8,bold,incomplete?rgb(.57,.29,.12):green);
+  text(statusText,margin+9,y-14,8,bold,incomplete?rgb(.57,.29,.12):blue);
   y-=rental?38:30;
 
   function section(title:string){
     ensure(68);
-    text(title.toUpperCase(),margin,y,10,bold,green);
+    text(title.toUpperCase(),margin,y,10,bold,blue);
     page.drawLine({start:{x:margin,y:y-8},end:{x:width-margin,y:y-8},thickness:.6,color:line});
     y-=rental?22:19;
   }
@@ -111,7 +112,7 @@ export async function renderPaymentStatementPdf(statement:Statement,operations:O
     section(title);
     const header=()=>{
       ensure(38);
-      page.drawRectangle({x:margin,y:y-28,width:tableWidth,height:28,color:green});
+      page.drawRectangle({x:margin,y:y-28,width:tableWidth,height:28,color:blue});
       let x=margin;
       for(const col of columns){
         wrap(col.title,bold,7,col.width-8).forEach((part,index)=>text(part,x+4,y-10-index*9,7,bold,white));
@@ -168,7 +169,7 @@ export async function renderPaymentStatementPdf(statement:Statement,operations:O
   page.drawLine({start:{x:summaryX,y},end:{x:width-margin,y},thickness:1,color:line});
   text("TOTAL NETO ESTADO DE PAGO",summaryX,y-19,8,bold);right(money(totals.net_clp),width-margin-5,y-19,8,bold);
   text("IVA 19%",summaryX,y-38,8);right(money(totals.vat_clp),width-margin-5,y-38,8);
-  page.drawRectangle({x:summaryX-4,y:y-72,width:239,height:26,color:green});
+  page.drawRectangle({x:summaryX-4,y:y-72,width:239,height:26,color:blue});
   text("TOTAL ESTADO DE PAGO",summaryX+2,y-63,8,bold,white);
   right(money(totals.total_clp),width-margin-5,y-63,9,bold,white);
   if(!rental&&totals.disposal_tons!=null)
@@ -196,6 +197,6 @@ export async function renderPaymentStatementPdf(statement:Statement,operations:O
     p.drawText(disclaimer,{x:width-margin-regular.widthOfTextAtSize(disclaimer,7),y:27,size:7,font:regular,color:muted});
   }
   doc.setTitle(`Estado de pago N° ${statement.number} - ${statement.client_name}`);
-  doc.setCreator("RERCHAR Industrial Waste Management System");
+  doc.setCreator("Plataforma operativa · E y J");
   return doc.save();
 }
