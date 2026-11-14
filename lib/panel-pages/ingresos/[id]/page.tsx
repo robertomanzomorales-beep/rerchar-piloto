@@ -33,7 +33,7 @@ export default async function MaterialDetail({params,searchParams}:{params:Promi
     ["Fecha",date(r.movement_on)],["Recepción",r.receipt_mode==="directa"?"Directa de tercero":r.receipt_mode==="programada"?"Vinculada a servicio":"Anterior, sin clasificar"],
     ["Ticket de pesaje",r.weighing_ticket],["Cliente / faena",`${r.client_name} · ${r.site_name}`],
     ["Origen / destino",`${r.origin||"—"} → ${r.destination||"—"}`],["Material",r.material_name],
-    ["Conductor / RUT",`${r.driver_name||"—"} / ${r.driver_tax_id||"—"}`],["Camión / rampa",`${r.truck_plate||"—"} / ${r.trailer_plate||"—"}`],
+    ["Conductor / RUT",`${r.driver_name||"—"} / ${r.driver_tax_id||"—"}`],["Camión / rampla",`${r.truck_plate||"—"} / ${r.trailer_plate||"—"}`],
     ["Peso proveedor",`${format(r.supplier_kg==null?null:Number(r.supplier_kg))} kg`],["Peso RERCHAR",`${format(r.rerchar_kg==null?null:Number(r.rerchar_kg))} kg`],
     ["Impurezas",`${format(Number(r.impurity_kg))} kg`],["Base de cálculo",r.net_basis],["Neto calculado",`${format(calc.net_kg)} kg`],
     ["Neto registrado",`${format(r.net_reported_kg==null?null:Number(r.net_reported_kg))} kg`],["Diferencia contra registro",`${format(calc.variance_kg)} kg`],

@@ -28,7 +28,7 @@ export default async function EntrySheet({params}:{params:Promise<{id:string}>})
       <div className="order-section"><h2>Empresa y recepción</h2><div className="order-grid">
         <div><small>Empresa / cliente</small><strong>{receipt.client_name}</strong></div><div><small>Conductor</small><strong>{receipt.driver_name||"No informado"}</strong></div>
         {client.tax_id&&<div><small>RUT empresa</small><strong>{client.tax_id}</strong></div>}{receipt.driver_tax_id&&<div><small>RUT conductor</small><strong>{receipt.driver_tax_id}</strong></div>}
-        <div><small>Lugar de recepción o retiro</small><strong>{receipt.site_name}</strong></div><div><small>Patente transporte / rampa</small><strong>{receipt.truck_plate||"No informada"} / {receipt.trailer_plate||"—"}</strong></div>
+        <div><small>Lugar de recepción o retiro</small><strong>{receipt.site_name}</strong></div><div><small>Patente transporte / rampla</small><strong>{receipt.truck_plate||"No informada"} / {receipt.trailer_plate||"—"}</strong></div>
         {(client.address||client.email)&&<div><small>Dirección / correo</small><strong>{[client.address,client.email].filter(Boolean).join(" · ")}</strong></div>}<div><small>Origen / destino</small><strong>{receipt.origin||"No informado"} → {receipt.destination||"No informado"}</strong></div>
         <div><small>Fecha de entrega</small><strong>{date(receipt.movement_on)}</strong></div><div><small>N° de ticket de pesaje</small><strong>{receipt.weighing_ticket||"Sin ticket"}</strong></div>
       </div></div>
