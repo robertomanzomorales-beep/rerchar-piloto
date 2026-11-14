@@ -16,12 +16,13 @@ export default async function NewRequest({ searchParams }: { searchParams: Promi
     db.query<{id:string;name:string}>("SELECT id,name FROM material_catalog WHERE active ORDER BY name"),
   ]);
   const params = await searchParams;
-  let quote: {id:string;client_id:string;issuer:"rerchar"|"e_y_j";folio:string;title:string;notes:string;kind:"general"|"compra_material";lines:{description:string;quantity:string;unit:string;line_note:string|null;principal:string|null}[]}|undefined;
+  let quote: {id:string;client_id:string;issuer:"rerchar"|"e_y_j";folio:string;title:string;notes:string;kind:"general"|"compra_material";route:{pickup:string;destination:string}|null;lines:{description:string;quantity:string;unit:string;line_note:string|null;principal:string|null}[]}|undefined;
   if(params.cotizacion){
     try{
       const detail=await getQuote(actor,params.cotizacion);
       if(detail.quote.status==="aceptada")quote={id:detail.quote.id,client_id:detail.quote.client_id,issuer:detail.quote.issuer,
         folio:quoteFolio(detail.quote),title:detail.quote.title,notes:detail.quote.notes??"",kind:detail.quote.commercial_kind,
+        route:detail.route?{pickup:detail.route.pickup,destination:detail.route.destination}:null,
         lines:detail.lines.map(line=>({description:line.description,quantity:line.quantity,unit:line.unit,line_note:line.line_note,principal:line.principal}))};
     }catch{/* El enlace inválido no determina cliente ni empresa. */}
   }
