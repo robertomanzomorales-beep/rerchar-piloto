@@ -10,7 +10,7 @@ const csv=(value:unknown)=>{
 };
 type Consolidated={id:string;folio:string;guide_numbers:string|null;origin_tickets:string|null;destination_tickets:string|null;
   invoice_kg:string|null;truck_plate:string|null;driver_name:string|null;daily_outcome:string|null;gross_kg:string|null;
-  tare_kg:string|null;scheduled_for:Date|string|null;service_sheet:string|null;eyj_guide:string|null;
+  tare_kg:string|null;scheduled_for:Date|string|null;work_days:string|null;service_sheet:string|null;eyj_guide:string|null;
   client_guide:string|null;sidrep:string|null;order_reference:string|null;quote_reference:string|null};
 export async function GET(_request:Request,{params}:{params:Promise<{id:string}>}){
   const actor=await getActor();
@@ -25,7 +25,8 @@ export async function GET(_request:Request,{params}:{params:Promise<{id:string}>
     g.guide_numbers,g.origin_tickets,g.destination_tickets,g.invoice_kg::text,
     commercial.service_sheet,commercial.eyj_guide,commercial.client_guide,commercial.sidrep,
     commercial.order_reference,commercial.quote_reference,
-    COALESCE(a.plate,dr.plate) AS truck_plate,COALESCE(u.name,e.name,dr.driver_name) AS driver_name,dr.outcome AS daily_outcome
+    COALESCE(a.plate,dr.plate) AS truck_plate,COALESCE(u.name,e.name,dr.driver_name) AS driver_name,
+    days.work_days,dr.outcome AS daily_outcome
     FROM service_requests s
     LEFT JOIN service_commercial_details commercial ON commercial.service_id=s.id
     LEFT JOIN assets a ON a.id=s.assigned_asset_id LEFT JOIN users u ON u.id=s.driver_id
@@ -34,12 +35,14 @@ export async function GET(_request:Request,{params}:{params:Promise<{id:string}>
       string_agg(origin_ticket,', ' ORDER BY movement_date) AS origin_tickets,
       string_agg(destination_ticket,', ' ORDER BY movement_date) AS destination_tickets,
       sum(invoice_kg) AS invoice_kg FROM service_guide_controls WHERE service_id=s.id) g ON true
+    LEFT JOIN LATERAL (SELECT string_agg(to_char(d.day,'YYYY-MM-DD') || ' (' || d.outcome || ')', ' / ' ORDER BY d.day) AS work_days
+      FROM service_day_reports d WHERE d.service_id=s.id) days ON true
     LEFT JOIN LATERAL (SELECT d.driver_name,d.outcome,da.plate FROM service_day_reports d
       JOIN assets da ON da.id=d.asset_id WHERE d.service_id=s.id ORDER BY d.day DESC LIMIT 1) dr ON true
     WHERE s.id=ANY($1::uuid[]) ORDER BY s.folio`,[ids]):[];
   const byId=new Map(details.map(item=>[item.id,item]));
   const header=["Cliente","Período desde","Período hasta","Formato EDP","N° EDP vinculado","Folio servicio","Estado","Fecha cierre / arriendo",
-    "Tipo","Residuo o servicio","Fecha programada","Cotización","OC cliente","Hoja servicio","Guía E y J","Guía cliente","SIDREP",
+    "Tipo","Residuo o servicio","Fecha programada","Jornadas reportadas","Cotización","OC cliente","Hoja servicio","Guía E y J","Guía cliente","SIDREP",
     "Guía servicio","Guías control","Tickets origen","Tickets destino",
     "Bruto kg","Tara kg","Neto kg","Kg facturable de guías","Conductor","Patente","Resultado diario",
     "Cantidad valorizada","Unidad","Unitario CLP","Neto CLP referencial","Factura vinculada","Control"];
@@ -52,7 +55,7 @@ export async function GET(_request:Request,{params}:{params:Promise<{id:string}>
       result.cycle.statement_type==="residuos"&&!service.weight_kg?"Sin pesaje neto":""].filter(Boolean).join(" · ");
     lines.push([result.cycle.client_name,result.cycle.period_from,result.cycle.period_to,result.cycle.statement_type,
       result.cycle.statement_number,service.folio,service.status,service.closed_on,service.service_type,service.waste_type,
-      detail?.scheduled_for,detail?.quote_reference,detail?.order_reference,detail?.service_sheet,
+      detail?.scheduled_for,detail?.work_days,detail?.quote_reference,detail?.order_reference,detail?.service_sheet,
       detail?.eyj_guide,detail?.client_guide,detail?.sidrep,
       service.guide_number,detail?.guide_numbers,detail?.origin_tickets,detail?.destination_tickets,
       detail?.gross_kg,detail?.tare_kg,service.weight_kg,detail?.invoice_kg,detail?.driver_name,detail?.truck_plate,
