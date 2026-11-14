@@ -387,6 +387,11 @@ export async function recordManualQuoteDelivery(actor:Actor,quoteId:string,input
     const lines=await tx.query<QuoteLine>("SELECT * FROM client_quote_lines WHERE quote_id=$1 ORDER BY position",[id]);
     const issues=await quoteDeliveryIssues(quote,lines,tx);
     if(issues.length)reject(`Antes de entregar: ${issues[0]}`);
+    const [route]=await tx.query<PublicQuoteRoute>(`SELECT origin,pickup,destination,return_to,total_km FROM client_quote_routes
+      WHERE quote_id=$1 AND reviewed_for_truck=true`,[id]);
+    const pdf=Buffer.from(await renderQuotePdf(quote,lines,"",route??null));
+    await tx.query(`INSERT INTO client_quote_pdf_snapshots(quote_id,pdf,sha256,channel,recorded_by)
+      VALUES($1,$2,$3,'manual',$4)`,[id,pdf,createHash("sha256").update(pdf).digest("hex"),actor.id]);
     await tx.query("UPDATE client_quotes SET status='enviada',sent_at=now() WHERE id=$1",[id]);
     await tx.query("INSERT INTO audit_events(actor_id,action,entity_type,entity_id,next_value) VALUES ($1,'manual_delivery','client_quote',$2,$3)",
       [actor.id,id,JSON.stringify(data)]);
@@ -401,7 +406,10 @@ export async function resolveQuoteSending(actor:Actor,quoteId:string,outcome:"bo
     const [row]=await tx.query<{status:string}>("SELECT status FROM client_quotes WHERE id=$1 FOR UPDATE",[id]);
     if(row?.status!=="enviando")reject("Esta cotización no necesita resolución de envío.");
     await tx.query("UPDATE client_quotes SET status=$2,sent_at=CASE WHEN $2='enviada' THEN now() ELSE NULL END WHERE id=$1",[id,outcome]);
-    if(outcome==="borrador")await tx.query("DELETE FROM quote_response_tokens WHERE quote_id=$1",[id]);
+    if(outcome==="borrador"){
+      await tx.query("DELETE FROM quote_response_tokens WHERE quote_id=$1",[id]);
+      await tx.query("DELETE FROM client_quote_pdf_snapshots WHERE quote_id=$1",[id]);
+    }
     await tx.query("INSERT INTO audit_events(actor_id,action,entity_type,entity_id,next_value) VALUES ($1,'resolve_send','client_quote',$2,$3)",
       [actor.id,id,JSON.stringify({outcome,reason:note})]);
   });
@@ -464,27 +472,38 @@ export async function sendQuote(actor:Actor,quoteId:string,ccInput=""){
   if(!quoteMailConfigured())reject("Configure el correo remitente SMTP del sistema antes de enviar cotizaciones.");
   const baseUrl=quoteResponseBaseUrl();
   const id=uuid.parse(quoteId);
-  const {quote,lines,route}=await getQuote(actor,id);
-  if(quote.status!=="borrador")reject("Esta cotización ya no está en borrador.");
-  if(!quote.client_email||!z.email().safeParse(quote.client_email).success)reject("Complete el correo del cliente y cree una nueva cotización para guardar sus datos de emisión.");
+  const initial=await getQuote(actor,id);
+  if(initial.quote.status!=="borrador")reject("Esta cotización ya no está en borrador.");
+  if(!initial.quote.client_email||!z.email().safeParse(initial.quote.client_email).success)reject("Complete el correo del cliente y cree una nueva cotización para guardar sus datos de emisión.");
   const cc=quoteCcAddresses(ccInput);
-  const issues=await quoteDeliveryIssues(quote,lines);
-  if(issues.length)reject(`Antes de enviar: ${issues[0]}`);
-  const pdf=await renderQuotePdf(quote,lines,"",route);
-  const [claimed]=await db.query<{id:string}>("UPDATE client_quotes SET status='enviando' WHERE id=$1 AND status='borrador' RETURNING id",[id]);
-  if(!claimed)reject("La cotización cambió de estado. Recargue la pantalla.");
+  const {quote,pdf,recipient}=await transaction(async tx=>{
+    const [quote]=await tx.query<Quote>("SELECT * FROM client_quotes WHERE id=$1 FOR UPDATE",[id]);
+    if(!quote||quote.status!=="borrador")reject("La cotización cambió de estado. Recargue la pantalla.");
+    if(!quote.client_email||!z.email().safeParse(quote.client_email).success)
+      reject("El correo del cliente cambió. Cree una nueva cotización con los datos correctos.");
+    const lines=await tx.query<QuoteLine>("SELECT * FROM client_quote_lines WHERE quote_id=$1 ORDER BY position",[id]);
+    const issues=await quoteDeliveryIssues(quote,lines,tx);
+    if(issues.length)reject(`Antes de enviar: ${issues[0]}`);
+    const [route]=await tx.query<PublicQuoteRoute>(`SELECT origin,pickup,destination,return_to,total_km FROM client_quote_routes
+      WHERE quote_id=$1 AND reviewed_for_truck=true`,[id]);
+    const pdf=Buffer.from(await renderQuotePdf(quote,lines,"",route??null));
+    await tx.query(`INSERT INTO client_quote_pdf_snapshots(quote_id,pdf,sha256,channel,recorded_by)
+      VALUES($1,$2,$3,'smtp',$4)`,[id,pdf,createHash("sha256").update(pdf).digest("hex"),actor.id]);
+    await tx.query("UPDATE client_quotes SET status='enviando' WHERE id=$1",[id]);
+    return {quote,pdf,recipient:quote.client_email};
+  });
   const token=randomBytes(32).toString("hex");
   try{
     await db.query(`INSERT INTO quote_response_tokens(quote_id,token_hash,recipient,issued_by,expires_at)
       VALUES($1,$2,$3,$4,LEAST(($5::date+1)::timestamptz,now()+interval '14 days'))
       ON CONFLICT(quote_id) DO UPDATE SET token_hash=EXCLUDED.token_hash,recipient=EXCLUDED.recipient,
         issued_by=EXCLUDED.issued_by,expires_at=EXCLUDED.expires_at,used_at=NULL,created_at=now()`,
-      [id,responseTokenHash(token),quote.client_email,actor.id,quote.valid_until]);
+      [id,responseTokenHash(token),recipient,actor.id,quote.valid_until]);
     const port=Number(process.env.SMTP_PORT);
     if(!Number.isInteger(port)||port<1||port>65535)throw new Error("Puerto SMTP inválido.");
     const transport=nodemailer.createTransport({host:process.env.SMTP_HOST,port,secure:port===465,
       auth:{user:process.env.SMTP_USER,pass:process.env.SMTP_PASSWORD}});
-    await transport.sendMail({from:process.env.SMTP_FROM,to:quote.client_email,cc:cc.length?cc:undefined,
+    await transport.sendMail({from:process.env.SMTP_FROM,to:recipient,cc:cc.length?cc:undefined,
       subject:`Cotización ${quoteFolio(quote)} · ${issuers[quote.issuer].name}`,
       text:`Estimada empresa ${quote.client_name}:\n\nAdjuntamos la cotización ${quoteFolio(quote)} por ${quote.title}.\n\nPara aceptarla o rechazarla, responda desde este enlace antes de su vencimiento:\n${baseUrl}/cotizaciones/responder/${token}\n\nEl enlace es personal: cualquier persona que lo posea puede registrar una sola respuesta.\n\nSaludos cordiales,\n${issuers[quote.issuer].name}`,
       attachments:[{filename:`cotizacion-${quoteFolio(quote).toLowerCase()}.pdf`,content:Buffer.from(pdf),contentType:"application/pdf"}]});
@@ -496,6 +515,6 @@ export async function sendQuote(actor:Actor,quoteId:string,ccInput=""){
   await transaction(async tx=>{
     await tx.query("UPDATE client_quotes SET status='enviada',sent_at=now() WHERE id=$1 AND status='enviando'",[id]);
     await tx.query("INSERT INTO audit_events(actor_id,action,entity_type,entity_id,next_value) VALUES ($1,'send','client_quote',$2,$3)",
-      [actor.id,id,JSON.stringify({recipient:quote.client_email,cc,folio:quote.folio})]);
+      [actor.id,id,JSON.stringify({recipient,cc,folio:quote.folio})]);
   });
 }

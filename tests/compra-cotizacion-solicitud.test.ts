@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import {randomUUID} from "node:crypto";
+import {createHash,randomUUID} from "node:crypto";
 import {readdir,readFile} from "node:fs/promises";
 import {resolve} from "node:path";
 import test from "node:test";
@@ -101,6 +101,11 @@ test("compra de Carol conserva materiales, observaciones e IVA confirmado hasta 
   assert.equal((await quotes.quoteDeliveryIssues(detail.quote,detail.lines)).length,0);
   assert.ok((await renderQuotePdf(detail.quote,detail.lines)).length>7000);
   await quotes.recordManualQuoteDelivery(actor,quoteId,{channel:"correo",recipient:"cliente@example.cl",reference:"Entregado según correo 14/10"});
+  const [issued]=await db.query<{pdf:Uint8Array;sha256:string;channel:string}>(
+    "SELECT pdf,sha256,channel FROM client_quote_pdf_snapshots WHERE quote_id=$1",[quoteId]);
+  assert.equal(issued.channel,"manual");
+  assert.ok(issued.pdf.length>7000);
+  assert.equal(issued.sha256,createHash("sha256").update(issued.pdf).digest("hex"));
   await assert.rejects(()=>quotes.updateQuotePresentation(actor,quoteId,{company_intro:"Presentación corregida",
     proposal_objective:"Nuevo objetivo de la cotización"}),/sólo puede corregirse mientras/);
   await quotes.recordQuoteDecision(actor,quoteId,"aceptada");
