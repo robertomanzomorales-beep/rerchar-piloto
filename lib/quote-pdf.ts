@@ -1,7 +1,7 @@
 import {readFile} from "node:fs/promises";
 import {resolve} from "node:path";
 import fontkit from "@pdf-lib/fontkit";
-import {PDFDocument,rgb,type PDFFont,type PDFPage} from "pdf-lib";
+import {PDFDocument,PDFString,rgb,type PDFFont,type PDFPage} from "pdf-lib";
 import {issuers,quoteFolio,type Quote,type QuoteLine,type PublicQuoteRoute,quoteTotals} from "./quotes";
 import {quotePrincipalLabel,quoteSegmentLabel} from "./quote-catalog";
 import {categoryName} from "./destination-catalog";
@@ -138,12 +138,19 @@ export async function renderQuotePdf(quote:Quote,lines:QuoteLine[],warning="",ro
       `Destino a planta: ${km(route.return_km)} · Circuito total: ${km(route.total_km)}`]
       .flatMap(value=>wrap(value,regular,8,490));
     const routeLink=route.route_url.startsWith("https://www.google.com/maps/dir/")?route.route_url:null;
-    const linkLines=routeLink?wrap(`Mapa de referencia: ${routeLink}`,regular,7,490):[];
-    const space=details.length*12+34+linkLines.length*11;
+    const space=details.length*12+34+(routeLink?18:0);
     if(footerY-space<60){page=doc.addPage([595.28,841.89]);pages.push(page);header(true);footerY=680;}
     write("RECORRIDO DEL SERVICIO",45,footerY,8,bold,green);
     details.forEach((line,i)=>write(line,45,footerY-16-i*12,8));
-    linkLines.forEach((line,i)=>write(line,45,footerY-16-details.length*12-i*11,7,regular,green));
+    if(routeLink){
+      const label="Ver recorrido de referencia en Google Maps";
+      const linkY=footerY-16-details.length*12;
+      write(label,45,linkY,8,bold,green);
+      const action=doc.context.obj({S:"URI",URI:PDFString.of(routeLink)});
+      const annotation=doc.context.obj({Type:"Annot",Subtype:"Link",
+        Rect:[45,linkY-3,45+bold.widthOfTextAtSize(label,8),linkY+10],Border:[0,0,0],A:action});
+      page.node.addAnnot(doc.context.register(annotation));
+    }
     footerY-=space;
   }
   if(quote.notes?.trim()){
