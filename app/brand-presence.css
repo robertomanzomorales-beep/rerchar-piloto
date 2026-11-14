@@ -60,6 +60,7 @@
   .app-shell .company-choice--eyj .company-choice-action { background: #1c344b; color: #fff; }
   .app-shell .company-choice-action::after { content: "→"; font-size: 18px; font-weight: 400; line-height: 1; }
   .app-shell .company-choice:hover .company-choice-action { text-decoration: none; }
+  .app-shell .company-choice:focus-visible { outline: 2px solid var(--choice-accent); outline-offset: 3px; }
 
   /* The active company stays unmistakable throughout the menu. */
   .app-shell .sidebar, .app-shell[data-company="rerchar"] .sidebar, .app-shell[data-company="e_y_j"] .sidebar {
@@ -161,4 +162,7 @@
 @media screen and (max-width: 600px) {
   .app-shell .company-dashboard-heading { align-items: flex-start; min-height: 0; padding: 21px 20px; }
   .app-shell .company-dashboard-heading .button { width: 100%; }
+}
+@media screen and (prefers-reduced-motion: reduce) {
+  .app-shell .company-choice { transition: none; }
 }
