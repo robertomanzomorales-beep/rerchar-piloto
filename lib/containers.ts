@@ -18,6 +18,21 @@ export type ContainerMovement={id:string;container_id:string;code:string;kind:st
   previous_waste_type:string|null;next_status:string;next_location:string;next_waste_type:string|null;service_id:string|null;service_folio:string|null;service_company:Company|null;
   note:string;actor_name:string;created_at:Date;photo_id:string|null;photo_filename:string|null};
 export type ContainerServiceRecord={id:string;container_id:string;code:string;kind:string;record_date:Date|string;kilometers:string|null;description:string;cost_clp:string|null;service_id:string|null;service_folio:string|null;actor_name:string};
+export type ServiceContainerPhoto={container_id:string;code:string;kind:string;movement_id:string;photo_filename:string|null};
+
+export async function listServiceContainerPhotos(actor:Actor,serviceId:string){
+  if(!uuid.safeParse(serviceId).success)reject("Servicio inválido.");
+  const [service]=await db.query<{id:string;site_id:string;driver_id:string|null;status:string}>(
+    "SELECT id,site_id,driver_id,status FROM service_requests WHERE id=$1 AND deleted_at IS NULL",[serviceId]);
+  if(!service||(!canManage(actor)&&(actor.role!=="conductor"||service.driver_id!==actor.id)))reject("Sin acceso a las tolvas de este servicio.");
+  if(!canManage(actor)&&!["programada","en_ruta","pendiente_revision"].includes(service.status))return [];
+  return db.query<ServiceContainerPhoto>(`SELECT c.id AS container_id,c.code,c.kind,m.id AS movement_id,p.filename AS photo_filename
+    FROM containers c JOIN LATERAL (SELECT id,service_id FROM container_movements
+      WHERE container_id=c.id AND kind IN ('instalacion','reubicacion') ORDER BY created_at DESC,id DESC LIMIT 1) m ON true
+    LEFT JOIN container_movement_photos p ON p.movement_id=m.id
+    WHERE c.status='instalada' AND c.site_id=$1 AND ($2::boolean OR m.service_id IS NULL OR m.service_id=$3::uuid)
+    ORDER BY c.code LIMIT 60`,[service.site_id,canManage(actor),serviceId]);
+}
 
 export async function listContainers(actor:Actor) {
   guard(actor);
@@ -102,6 +117,33 @@ function imageMime(bytes:Buffer){
   if(bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])))return "image/png";
   if(bytes.subarray(0,4).toString()==="RIFF"&&bytes.subarray(8,12).toString()==="WEBP")return "image/webp";
   reject("La foto debe ser JPG, PNG o WebP válido.");
+}
+
+export async function uploadServiceContainerPhoto(actor:Actor,serviceId:string,containerId:string,file:File){
+  if(!uuid.safeParse(serviceId).success||!uuid.safeParse(containerId).success)reject("Servicio o tolva inválidos.");
+  if(!file||file.size<1||file.size>4*1024*1024)reject("Adjunte una foto JPG, PNG o WebP de hasta 4 MB.");
+  const content=Buffer.from(await file.arrayBuffer()),mime=imageMime(content);
+  const filename=(file.name||"instalacion.jpg").replace(/[\x00-\x1f\\/]/g,"_").slice(0,160);
+  await transaction(async tx=>{
+    const [service]=await tx.query<{site_id:string;client_id:string;driver_id:string|null;status:string}>(
+      "SELECT site_id,client_id,driver_id,status FROM service_requests WHERE id=$1 AND deleted_at IS NULL FOR UPDATE",[serviceId]);
+    if(!service||(!canManage(actor)&&(actor.role!=="conductor"||service.driver_id!==actor.id||
+      !["programada","en_ruta","pendiente_revision"].includes(service.status))))reject("Sin acceso a este servicio.");
+    const [container]=await tx.query<{site_id:string|null;client_id:string|null;status:string}>(
+      "SELECT site_id,client_id,status FROM containers WHERE id=$1 FOR UPDATE",[containerId]);
+    if(!container||container.status!=="instalada"||container.site_id!==service.site_id||container.client_id!==service.client_id)
+      reject("La tolva ya no está instalada en la faena de este servicio.");
+    const [movement]=await tx.query<{id:string;service_id:string|null}>(`SELECT id,service_id FROM container_movements
+      WHERE container_id=$1 AND kind IN ('instalacion','reubicacion') ORDER BY created_at DESC,id DESC LIMIT 1`,[containerId]);
+    if(!movement||!canManage(actor)&&movement.service_id&&movement.service_id!==serviceId)
+      reject("La instalación pertenece a otro servicio.");
+    const [existing]=await tx.query("SELECT movement_id FROM container_movement_photos WHERE movement_id=$1",[movement.id]);
+    if(existing)reject("La instalación ya tiene una foto. Pida a operaciones revisar el respaldo.");
+    await tx.query(`INSERT INTO container_movement_photos(movement_id,filename,mime,file_content,uploaded_by)
+      VALUES($1,$2,$3,$4,$5)`,[movement.id,filename,mime,content,actor.id]);
+    await tx.query(`INSERT INTO audit_events(actor_id,action,entity_type,entity_id,next_value)
+      VALUES($1,'photo','container_movement',$2,$3)`,[actor.id,movement.id,JSON.stringify({service_id:serviceId,container_id:containerId,filename})]);
+  });
 }
 
 export async function moveContainer(actor:Actor,containerId:string,input:unknown,file?:File|null) {

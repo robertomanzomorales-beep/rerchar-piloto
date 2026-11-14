@@ -16,6 +16,8 @@ import {listServiceDays,resultLabel} from "@/lib/service-day";
 import {reportServiceDayAction} from "@/app/actions";
 import {serviceExtraCharges,extraChargeLabels} from "@/lib/extra-charges";
 import {proposeExtraChargeAction} from "@/app/extra-charge-actions";
+import {listServiceContainerPhotos} from "@/lib/containers";
+import {uploadServiceContainerPhotoAction} from "@/app/container-actions";
 
 function localInput(value: Date | string | null) {
   if (!value) return "";
@@ -51,8 +53,8 @@ export default async function ServiceDetail({ params, searchParams }: { params: 
       FROM container_movements m JOIN containers c ON c.id=m.container_id WHERE m.service_id=$1 ORDER BY m.created_at DESC`,[id]),
     canPlan(actor) ? db.query<{id:string;status:string}>("SELECT id,status FROM waste_records WHERE service_id=$1",[id]) : Promise.resolve([]),
     actor.role!=="conductor"?db.query<{id:string}>("SELECT id FROM service_certificates WHERE service_id=$1 AND status='vigente'",[id]):Promise.resolve([]),
-    service.quote_id?db.query<{id:string;folio:string;display_folio:string|null;issuer:Company;title:string;notes:string|null;client_order_reference:string|null;has_order_document:boolean}>(
-      "SELECT id,folio,display_folio,issuer,title,notes,client_order_reference,EXISTS(SELECT 1 FROM client_quote_documents WHERE quote_id=client_quotes.id AND kind='orden_compra') AS has_order_document FROM client_quotes WHERE id=$1 AND status='aceptada'",[service.quote_id]):Promise.resolve([]),
+    service.quote_id?db.query<{id:string;folio:string;display_folio:string|null;issuer:Company;title:string;notes:string|null;client_order_reference:string|null;client_order_exception:string|null;has_order_document:boolean}>(
+      "SELECT id,folio,display_folio,issuer,title,notes,client_order_reference,client_order_exception,EXISTS(SELECT 1 FROM client_quote_documents WHERE quote_id=client_quotes.id AND kind='orden_compra') AS has_order_document FROM client_quotes WHERE id=$1 AND status='aceptada'",[service.quote_id]):Promise.resolve([]),
     service.quote_id?db.query<{description:string;quantity:string;unit:string}>(
       "SELECT description,quantity,unit FROM client_quote_lines WHERE quote_id=$1 ORDER BY position",[service.quote_id]):Promise.resolve([]),
     service.request_category==="compra"?db.query<{position:number;material_id:string;material_name:string;quantity_kg:string|null;unit_price_clp:string|null;line_note:string|null}>(
@@ -66,6 +68,7 @@ export default async function ServiceDetail({ params, searchParams }: { params: 
   const paramsQuery = await searchParams;
   const canWork = canWorkService(actor, service);
   const rental=service.service_type==="arriendo";
+  const serviceContainers=canWork&&!rental?await listServiceContainerPhotos(actor,id):[];
   const canAssign = canPlan(actor) && !rental && ["solicitada", "programada"].includes(service.status);
   const canScheduleRental=canPlan(actor)&&rental&&["solicitada","programada"].includes(service.status);
   const equipment=canScheduleRental?await db.query<{id:string;code:string;label:string}>(
@@ -92,7 +95,8 @@ export default async function ServiceDetail({ params, searchParams }: { params: 
         {purchase&&requestMaterials.length>0&&<section className="section-card"><div className="eyebrow">COMPRA DE MATERIAL</div><h2>Materiales solicitados</h2><p className="helper-text">Identificador del catálogo compartido con la entrada de material. El peso final se registra en Ingresos.</p><div className="table-wrap"><table className="data-table"><thead><tr><th>Material</th><th>Kg propuestos</th>{actor.role!=="conductor"&&<th>Precio acordado</th>}</tr></thead><tbody>{requestMaterials.map(item=><tr key={item.position}><td><strong>{item.material_name}</strong>{item.line_note&&<small className="table-sub">Obs.: {item.line_note}</small>}</td><td>{item.quantity_kg===null?"Por pesar":`${Number(item.quantity_kg).toLocaleString("es-CL",{maximumFractionDigits:3})} kg`}</td>{actor.role!=="conductor"&&<td>{item.unit_price_clp==null?"Sin precio en solicitud":`$${Number(item.unit_price_clp).toLocaleString("es-CL")} / kg`}</td>}</tr>)}</tbody></table></div></section>}
         {sourceQuotes[0]&&<section className="section-card"><div className="section-heading"><div><div className="eyebrow">ORIGEN COMERCIAL</div><h2>Cotización aceptada</h2></div>{actor.role!=="conductor"&&<Link href={`/cotizaciones/${sourceQuotes[0].id}`} className="text-link">Ver propuesta →</Link>}</div>
           <p className="helper-text"><strong>{quoteFolio(sourceQuotes[0])}</strong> · {sourceQuotes[0].title}</p>
-          {!purchase&&(!sourceQuotes[0].client_order_reference||!sourceQuotes[0].has_order_document)&&<p className="notice notice-error">Para programar este servicio puntual, registre número y fecha de la OC y adjunte el documento en <Link href={`/cotizaciones/${sourceQuotes[0].id}`}>la cotización</Link>.</p>}
+          {!purchase&&!sourceQuotes[0].client_order_exception&&(!sourceQuotes[0].client_order_reference||!sourceQuotes[0].has_order_document)&&<p className="notice notice-error">Para programar este servicio puntual, registre la OC con su respaldo o una excepción autorizada en <Link href={`/cotizaciones/${sourceQuotes[0].id}`}>la cotización</Link>.</p>}
+          {sourceQuotes[0].client_order_exception&&<p className="helper-text">Sin OC según excepción documentada: {sourceQuotes[0].client_order_exception}</p>}
           <ul className="quote-source-list">{sourceLines.map((line,i)=><li key={i}>{line.description}<span>{Number(line.quantity).toLocaleString("es-CL",{maximumFractionDigits:3})} {line.unit}</span></li>)}</ul>
           {sourceQuotes[0].notes&&<div className="note-block"><span>Condiciones de la propuesta</span><p>{sourceQuotes[0].notes}</p></div>}
         </section>}
@@ -118,6 +122,11 @@ export default async function ServiceDetail({ params, searchParams }: { params: 
           {canAssign && <details className="cancel-control"><summary>Cancelar este servicio</summary><form action={cancelServiceAction} className="form-stack compact"><input type="hidden" name="id" value={service.id}/><label>Motivo de la cancelación<textarea name="reason" rows={2} minLength={5} maxLength={500} required placeholder="Explique por qué no continuará el servicio"/></label><SubmitButton className="button button-outline">Confirmar cancelación</SubmitButton></form></details>}
           {service.status === "cancelada" && <p className="cancelled-note">Este servicio fue cancelado. El motivo y responsable quedaron registrados en el historial.</p>}
           {!service.scheduled_for && !canAssign && <p className="muted">Pendiente de planificación por el equipo de operaciones.</p>}
+        </section>}
+        {serviceContainers.length>0&&<section className="section-card"><div className="section-heading"><div><div className="eyebrow">TOLVAS EN ESTA FAENA</div><h2>Foto de instalación</h2></div></div>
+          <p className="helper-text">El conductor asignado puede adjuntar la foto al movimiento de instalación. Esto no cambia la ubicación ni el estado de la unidad.</p>
+          <ul className="record-list">{serviceContainers.map(c=><li key={c.container_id}><strong>{c.code} · {c.kind}</strong>{c.photo_filename?<small>Foto registrada: {canManage(actor)?<Link href={`/api/contenedores/movimientos/${c.movement_id}/foto`}>{c.photo_filename}</Link>:c.photo_filename}</small>:
+            <form action={uploadServiceContainerPhotoAction} className="form-stack compact"><input type="hidden" name="service_id" value={id}/><input type="hidden" name="container_id" value={c.container_id}/><label>Foto JPG, PNG o WebP (máximo 4 MB)<input type="file" name="installation_photo" accept="image/jpeg,image/png,image/webp" required/></label><SubmitButton className="button button-outline">Adjuntar foto</SubmitButton></form>}</li>)}</ul>
         </section>}
         {!rental&&(dayReports.length>0||canReport)&&<section className="section-card"><div className="section-heading"><div><div className="eyebrow">PARTE DIARIO DE CAMIONES</div><h2>Resultado en terreno</h2></div></div>
           <p className="helper-text">Registre cada jornada como realizada, incompleta o suspendida, con la causa observada. Este parte no cierra el servicio ni reemplaza las guías y el pesaje.</p>

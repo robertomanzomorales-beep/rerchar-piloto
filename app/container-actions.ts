@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { ZodError } from "zod";
 import { requireActor } from "@/lib/auth";
-import { ContainerError, createContainer, moveContainer,recordContainerService } from "@/lib/containers";
+import { ContainerError, createContainer, moveContainer,recordContainerService,uploadServiceContainerPhoto } from "@/lib/containers";
 
 const value=(form:FormData,key:string)=>String(form.get(key)??"");
 function message(error:unknown) {
@@ -36,4 +36,16 @@ export async function recordContainerServiceAction(form:FormData){
   await run(()=>recordContainerService(actor,{container_id:value(form,"container_id"),service_id:value(form,"service_id"),kind:value(form,"kind"),
     record_date:value(form,"record_date"),kilometers:value(form,"kilometers"),description:value(form,"description"),cost_clp:value(form,"cost_clp"),
     mark_out_of_service:value(form,"mark_out_of_service")==="on",workshop_location:value(form,"workshop_location")}));
+}
+export async function uploadServiceContainerPhotoAction(form:FormData){
+  const actor=await requireActor(),serviceId=value(form,"service_id");
+  const path=/^[0-9a-f-]{36}$/i.test(serviceId)?`/solicitudes/${serviceId}`:"/solicitudes";
+  try{
+    const file=form.get("installation_photo");
+    if(!(file instanceof File))throw new ContainerError("Seleccione una foto de instalación.");
+    await uploadServiceContainerPhoto(actor,serviceId,value(form,"container_id"),file);
+  }catch(error){redirect(`${path}?error=${encodeURIComponent(message(error))}`);}
+  revalidatePath(path);
+  revalidatePath("/contenedores");
+  redirect(`${path}?ok=1`);
 }

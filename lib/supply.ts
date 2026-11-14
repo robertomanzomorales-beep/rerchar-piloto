@@ -56,15 +56,50 @@ export async function createWarehouse(actor: Actor, input: unknown) {
 
 export async function createStockItem(actor: Actor, input: unknown) {
   requireOperations(actor);
-  const data = z.object({ code: label(40), name: label(160), unit: z.enum(["un","kg","lt","m","m3","caja_10","caja_50","pallet","bolsa_10","centena"]),
+  const data = z.object({ code: optional(40), name: label(160), unit: z.enum(["un","kg","lt","m","m3","caja_10","caja_50","pallet","bolsa_10","centena"]),
     category:optional(100),minimum_qty: minimum.default("0"),maximum_qty:z.union([z.literal(""),minimum]).default(""),
     unit_cost_clp:z.union([z.literal(""),z.coerce.number().finite().min(0).max(1_000_000_000)]).default("") }).parse(input);
   if(data.maximum_qty!==""&&Number(data.maximum_qty)<Number(data.minimum_qty))reject("El máximo debe ser igual o mayor que el mínimo.");
   return transaction(async (tx) => {
+    let code=data.code.toUpperCase();
+    let rule:{id:string;prefix:string;next_number:number}|undefined;
+    let nextNumber=0;
+    if(!code){
+      if(!data.category)reject("Para generar el código, seleccione una categoría con regla SKU configurada.");
+      [rule]=await tx.query<{id:string;prefix:string;next_number:number}>(
+        "SELECT id,prefix,next_number FROM stock_sku_rules WHERE lower(trim(category))=lower(trim($1)) FOR UPDATE",[data.category]);
+      if(!rule)reject("La categoría no tiene regla SKU. Configure su prefijo o ingrese un código manual.");
+      nextNumber=rule.next_number;
+      for(;;){
+        if(nextNumber>999999)reject("Se agotó la numeración SKU para esta categoría.");
+        code=`${rule.prefix}-${String(nextNumber).padStart(4,"0")}`;
+        const [used]=await tx.query("SELECT 1 FROM stock_items WHERE code=$1",[code]);
+        if(!used)break;
+        nextNumber++;
+      }
+    }else if(code.length<2)reject("El código debe tener al menos dos caracteres.");
     const [row] = await tx.query<{ id: string }>(`INSERT INTO stock_items (code,name,unit,minimum_qty,maximum_qty,category,unit_cost_clp)
       VALUES ($1,$2,$3,$4,NULLIF($5,'')::numeric,NULLIF($6,''),NULLIF($7::text,'')::numeric) RETURNING id`,
-      [data.code.toUpperCase(), data.name, data.unit, data.minimum_qty,data.maximum_qty,data.category,data.unit_cost_clp]);
-    await audit(tx, actor, "create", "stock_item", row.id, data);
+      [code, data.name, data.unit, data.minimum_qty,data.maximum_qty,data.category,data.unit_cost_clp]);
+    if(rule)await tx.query("UPDATE stock_sku_rules SET next_number=$2 WHERE id=$1",[rule.id,nextNumber+1]);
+    await audit(tx, actor, "create", "stock_item", row.id, {...data,code,generated:Boolean(rule)});
+    return row.id;
+  });
+}
+
+export type StockSkuRule={id:string;category:string;prefix:string;next_number:number;created_at:Date|string};
+export async function listStockSkuRules(actor:Actor){
+  requireOperations(actor);
+  return db.query<StockSkuRule>("SELECT id,category,prefix,next_number,created_at FROM stock_sku_rules ORDER BY category");
+}
+export async function createStockSkuRule(actor:Actor,input:unknown){
+  requireAdmin(actor);
+  const data=z.object({category:label(100),prefix:z.string().trim().toUpperCase().regex(/^[A-Z0-9]{2,10}$/,"Use 2 a 10 letras o números en el prefijo.")}).parse(input);
+  return transaction(async tx=>{
+    const [existing]=await tx.query("SELECT id FROM stock_sku_rules WHERE lower(trim(category))=lower(trim($1)) OR prefix=$2",[data.category,data.prefix]);
+    if(existing)reject("La categoría o el prefijo ya tiene una regla SKU.");
+    const [row]=await tx.query<{id:string}>("INSERT INTO stock_sku_rules(category,prefix,created_by) VALUES($1,$2,$3) RETURNING id",[data.category,data.prefix,actor.id]);
+    await audit(tx,actor,"create","stock_sku_rule",row.id,data);
     return row.id;
   });
 }

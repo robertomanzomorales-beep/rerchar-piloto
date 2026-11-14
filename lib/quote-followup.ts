@@ -11,13 +11,28 @@ export async function recordQuoteClientOrder(actor:Actor,quoteId:string,input:un
   staff(actor);const id=uuid.parse(quoteId);
   const data=z.object({reference:z.string().trim().min(2).max(80),received_on:z.iso.date()}).parse(input);
   await transaction(async tx=>{
-    const [quote]=await tx.query<{status:string;client_order_reference:string|null;client_order_on:Date|string|null}>(
-      "SELECT status,client_order_reference,client_order_on FROM client_quotes WHERE id=$1 FOR UPDATE",[id]);
+    const [quote]=await tx.query<{status:string;client_order_reference:string|null;client_order_on:Date|string|null;client_order_exception:string|null}>(
+      "SELECT status,client_order_reference,client_order_on,client_order_exception FROM client_quotes WHERE id=$1 FOR UPDATE",[id]);
     if(!quote||quote.status!=="aceptada")reject("Registre la OC después de la aceptación de la cotización.");
-    await tx.query("UPDATE client_quotes SET client_order_reference=$2,client_order_on=$3 WHERE id=$1",[id,data.reference,data.received_on]);
+    await tx.query("UPDATE client_quotes SET client_order_reference=$2,client_order_on=$3,client_order_exception=NULL WHERE id=$1",[id,data.reference,data.received_on]);
     await tx.query(`INSERT INTO audit_events(actor_id,action,entity_type,entity_id,previous_value,next_value)
       VALUES($1,'client_order','client_quote',$2,$3,$4)`,[actor.id,id,
-      JSON.stringify({reference:quote.client_order_reference,on:quote.client_order_on}),JSON.stringify(data)]);
+      JSON.stringify({reference:quote.client_order_reference,on:quote.client_order_on,exception:quote.client_order_exception}),JSON.stringify(data)]);
+  });
+}
+export async function recordQuoteOrderException(actor:Actor,quoteId:string,reason:unknown){
+  if(actor.role!=="admin")reject("Sólo administración puede autorizar una excepción de OC.");
+  const id=uuid.parse(quoteId),note=z.string().trim().min(10).max(500).parse(reason);
+  await transaction(async tx=>{
+    const [quote]=await tx.query<{status:string;client_order_reference:string|null;client_order_exception:string|null}>(
+      "SELECT status,client_order_reference,client_order_exception FROM client_quotes WHERE id=$1 FOR UPDATE",[id]);
+    if(!quote||quote.status!=="aceptada")reject("La cotización debe estar aceptada para justificar la ausencia de OC.");
+    const [document]=await tx.query("SELECT id FROM client_quote_documents WHERE quote_id=$1 AND kind='orden_compra' LIMIT 1",[id]);
+    if(document)reject("Existe una OC adjunta. Revise el documento antes de registrar una excepción.");
+    await tx.query("UPDATE client_quotes SET client_order_reference=NULL,client_order_on=NULL,client_order_exception=$2 WHERE id=$1",[id,note]);
+    await tx.query(`INSERT INTO audit_events(actor_id,action,entity_type,entity_id,previous_value,next_value)
+      VALUES($1,'order_exception','client_quote',$2,$3,$4)`,[actor.id,id,
+        JSON.stringify({reference:quote.client_order_reference,exception:quote.client_order_exception}),JSON.stringify({exception:note})]);
   });
 }
 export async function uploadQuoteDocument(actor:Actor,quoteId:string,kind:unknown,file:File){
@@ -50,8 +65,8 @@ export async function getQuoteDocument(actor:Actor,id:string){
 }
 export async function getQuoteFollowup(actor:Actor,quoteId:string){
   if(actor.role==="conductor")reject("Sin acceso a cotizaciones.");
-  const [quote]=await db.query<{client_id:string;status:string;client_order_reference:string|null;client_order_on:Date|string|null}>(
-    "SELECT client_id,status,client_order_reference,client_order_on FROM client_quotes WHERE id=$1",[quoteId]);
+  const [quote]=await db.query<{client_id:string;status:string;client_order_reference:string|null;client_order_on:Date|string|null;client_order_exception:string|null}>(
+    "SELECT client_id,status,client_order_reference,client_order_on,client_order_exception FROM client_quotes WHERE id=$1",[quoteId]);
   if(!quote||actor.role==="cliente"&&actor.client_id!==quote.client_id)reject("Cotización no disponible.");
   const [documents,services]=await Promise.all([
     db.query<{id:string;kind:string;filename:string;uploaded_at:Date|string}>(

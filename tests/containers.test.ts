@@ -9,7 +9,8 @@ test("tolva conserva una sola ubicación, historial, servicio y alerta de perman
   process.env.PGLITE_DATA_DIR="memory://";
   const {db,transaction}=await import("../lib/db");
   const {createService}=await import("../lib/pilot");
-  const {createContainer,moveContainer,listContainers,recordContainerService,getContainerMovementPhoto,ContainerError}=await import("../lib/containers");
+  const {createContainer,moveContainer,listContainers,recordContainerService,getContainerMovementPhoto,
+    listServiceContainerPhotos,uploadServiceContainerPhoto,ContainerError}=await import("../lib/containers");
   for (const name of ["001_piloto.sql","002_flota_y_despacho.sql","003_abastecimiento.sql","004_mantenimiento_combustible.sql","005_contenedores.sql","006_acreditacion.sql","007_finanzas.sql","008_trazabilidad_ambiental.sql","009_certificados.sql","010_evidencia_persistente.sql","011_operacion_real_2026.sql","018_empresa_operadora.sql","023_conductores_terceros.sql","027_solicitudes_arriendo.sql","059_foto_instalacion_tolva.sql"]) {
     const sql=await readFile(resolve(process.cwd(),`db/${name}`),"utf8");
     await transaction(async tx=>{for(const part of sql.split(/;\s*(?:\n|$)/).map(s=>s.trim()).filter(Boolean)) await tx.query(part);});
@@ -69,4 +70,26 @@ test("tolva conserva una sola ubicación, historial, servicio y alerta de perman
   assert.equal(stopped.containers[0].status,"fuera_servicio","la mantención que envía al taller actualiza el estado visible");
   assert.equal(stopped.movements[0].kind,"fuera_servicio");
   await assert.rejects(()=>recordContainerService(outsider,{container_id:id,service_id:"",kind:"kilometraje",record_date:"2026-09-25",kilometers:"500",description:"No autorizado",cost_clp:""}),ContainerError);
+
+  const [driver,otherDriver]=await db.query<{id:string}>(`INSERT INTO users(email,name,password_hash,role)
+    VALUES('conductor@demo.cl','Conductor','hash','conductor'),('ajeno@demo.cl','Otro conductor','hash','conductor') RETURNING id`);
+  const assigned:Actor={id:driver.id,name:"Conductor",email:"conductor@demo.cl",role:"conductor",client_id:null};
+  const unrelated:Actor={id:otherDriver.id,name:"Otro conductor",email:"ajeno@demo.cl",role:"conductor",client_id:null};
+  await db.query("UPDATE service_requests SET driver_id=$2,status='programada' WHERE id=$1",[serviceA,driver.id]);
+  const secondContainer=await createContainer(owner,{code:"TOL-02",kind:"tolva",capacity_m3:15,location_name:"Patio principal",max_stay_days:14});
+  await moveContainer(owner,secondContainer,{action:"instalar",site_id:siteA.id,service_id:serviceA,
+    location_name:"",waste_type:"Chatarra",note:"Instalación sin foto inicial"});
+  assert.equal((await listServiceContainerPhotos(assigned,serviceA))[0].code,"TOL-02");
+  await assert.rejects(()=>listServiceContainerPhotos(unrelated,serviceA),ContainerError);
+  await assert.rejects(()=>uploadServiceContainerPhoto(unrelated,serviceA,secondContainer,photo),ContainerError);
+  await assert.rejects(()=>uploadServiceContainerPhoto(assigned,serviceB,secondContainer,photo),ContainerError);
+  await assert.rejects(()=>uploadServiceContainerPhoto(outsider,serviceA,secondContainer,photo),ContainerError);
+  await uploadServiceContainerPhoto(assigned,serviceA,secondContainer,photo);
+  const added=(await listServiceContainerPhotos(assigned,serviceA))[0];
+  assert.equal(added.photo_filename,"tolva-instalada.png");
+  assert.deepEqual(Buffer.from((await getContainerMovementPhoto(owner,added.movement_id))?.content??[]),photoBytes);
+  await assert.rejects(()=>uploadServiceContainerPhoto(assigned,serviceA,secondContainer,photo),/ya tiene una foto/);
+  await moveContainer(owner,secondContainer,{action:"retirar",site_id:"",service_id:serviceA,
+    location_name:"Patio principal",waste_type:"",note:"Retiro después de instalación"});
+  assert.equal((await listServiceContainerPhotos(assigned,serviceA)).length,0);
 });

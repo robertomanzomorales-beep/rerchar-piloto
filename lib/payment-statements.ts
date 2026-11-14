@@ -194,12 +194,15 @@ const serviceSelect=`SELECT s.id,s.folio::text,s.service_type,s.waste_type,
     (s.closed_at AT TIME ZONE 'America/Santiago')::date)::text AS operation_on,
   CASE WHEN s.gross_kg IS NOT NULL AND s.tare_kg IS NOT NULL THEN (s.gross_kg-s.tare_kg)::text END AS weight_kg,
   s.rental_from::text,s.rental_to::text,
-  COALESCE(NULLIF(c.eyj_guide,''),NULLIF(s.guide_number,''),g.guide_number) AS guide_number,
+  COALESCE(NULLIF(c.eyj_guide,''),NULLIF(s.guide_number,''),g.guide_numbers) AS guide_number,
   c.service_sheet,c.sidrep,
-  COALESCE(NULLIF(g.departure_ticket,''),NULLIF(g.destination_ticket,''),NULLIF(g.origin_ticket,'')) AS weighing_ticket
+  g.weighing_tickets AS weighing_ticket
   FROM service_requests s LEFT JOIN service_commercial_details c ON c.service_id=s.id
-  LEFT JOIN LATERAL (SELECT guide_number,departure_ticket,destination_ticket,origin_ticket
-    FROM service_guide_controls WHERE service_id=s.id ORDER BY movement_date DESC,line_number DESC LIMIT 1) g ON true`;
+  LEFT JOIN LATERAL (SELECT
+    string_agg(DISTINCT NULLIF(trim(guide_number),''),', ' ORDER BY NULLIF(trim(guide_number),'')) AS guide_numbers,
+    string_agg(DISTINCT COALESCE(NULLIF(trim(departure_ticket),''),NULLIF(trim(destination_ticket),''),NULLIF(trim(origin_ticket),'')),
+      ', ' ORDER BY COALESCE(NULLIF(trim(departure_ticket),''),NULLIF(trim(destination_ticket),''),NULLIF(trim(origin_ticket),''))) AS weighing_tickets
+    FROM service_guide_controls WHERE service_id=s.id) g ON true`;
 
 export async function listStatementServices(actor:Actor,statementId:string){
   read(actor);if(!uuid.safeParse(statementId).success)reject("Estado de pago no encontrado.");

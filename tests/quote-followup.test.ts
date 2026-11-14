@@ -57,6 +57,22 @@ test("E y J cotiza disposición, cliente responde y OC/respaldo siguen el mismo 
   assert.equal(record.documents.length,1);
   assert.equal(record.services.length,1);
   await pilot.scheduleRental(staff,service,{asset_id:""});
+  await assert.rejects(()=>followup.recordQuoteOrderException(staff,quoteId,"Acuerdo con cliente sin OC"),/Existe una OC adjunta/);
+  const exceptionQuoteId=await quotes.createQuote(staff,{submission_key:randomUUID(),client_id:client.id,issuer:"e_y_j",title:"Arriendo puntual sin OC",
+    issued_on:"2026-10-18",valid_until:"2026-10-28",line:{description:"Arriendo de equipo",principal:"arriendo",segment:"arriendo_equipo",
+      quantity:"1",unit:"día",unit_price_clp:"100000"}});
+  await db.query("UPDATE client_quotes SET status='aceptada' WHERE id=$1",[exceptionQuoteId]);
+  const exceptionService=await pilot.createService(staff,{submission_key:randomUUID(),client_id:client.id,site_id:site.id,
+    quote_id:exceptionQuoteId,operating_company:"e_y_j",request_category:"servicios",service_type:"arriendo",waste_type:"Equipo industrial",
+    estimated_kg:"",origin:"Bodega Calama",destination:"Faena piloto",rental_from:"2026-10-20",rental_to:"2026-10-21",
+    priority:"normal",notes:"Sin OC por acuerdo comercial"});
+  await assert.rejects(()=>pilot.scheduleRental(staff,exceptionService,{asset_id:""}),/registre la OC o una excepción/);
+  await assert.rejects(()=>followup.recordQuoteOrderException(viewer,exceptionQuoteId,"Acuerdo con cliente sin OC"),followup.QuoteFollowupError);
+  await followup.recordQuoteOrderException(staff,exceptionQuoteId,"Acuerdo comercial confirmado: cliente no emite OC para este arriendo.");
+  assert.match((await followup.getQuoteFollowup(staff,exceptionQuoteId)).quote.client_order_exception??"",/cliente no emite OC/);
+  await pilot.scheduleRental(staff,exceptionService,{asset_id:""});
+  await followup.recordQuoteClientOrder(staff,exceptionQuoteId,{reference:"OC-TARDIA-1",received_on:"2026-10-20"});
+  assert.equal((await followup.getQuoteFollowup(staff,exceptionQuoteId)).quote.client_order_exception,null);
   const [anotherQuote]=await db.query<{id:string}>("UPDATE client_quotes SET status='enviada' WHERE id=$1 RETURNING id",[quoteId]);
   const token="a".repeat(64);
   await db.query(`INSERT INTO quote_response_tokens(quote_id,token_hash,recipient,issued_by,expires_at)

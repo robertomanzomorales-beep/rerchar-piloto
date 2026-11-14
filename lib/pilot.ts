@@ -365,14 +365,15 @@ function parseChileDate(value: string) {
   return new Date(instant);
 }
 
-// Servicios puntuales vinculados a una cotización aceptada requieren OC previa.
-// Los contratos mensuales ingresan como solicitudes sin cotización puntual y siguen el EDP → OC.
+// Servicios puntuales requieren OC previa o una excepción documentada por administración.
+// Los contratos mensuales ingresan sin cotización puntual y siguen el EDP → OC.
 async function requireQuoteOrderForScheduling(tx:Db,service:{quote_id:string|null;request_category:string}){
   if(!service.quote_id||service.request_category==="compra")return;
-  const [quote]=await tx.query<{status:string;client_order_reference:string|null;client_order_on:Date|string|null}>(
-    "SELECT status,client_order_reference,client_order_on FROM client_quotes WHERE id=$1",[service.quote_id]);
+  const [quote]=await tx.query<{status:string;client_order_reference:string|null;client_order_on:Date|string|null;client_order_exception:string|null}>(
+    "SELECT status,client_order_reference,client_order_on,client_order_exception FROM client_quotes WHERE id=$1",[service.quote_id]);
+  if(quote?.status==="aceptada"&&quote.client_order_exception)return;
   if(quote?.status!=="aceptada"||!quote.client_order_reference||!quote.client_order_on)
-    reject("Antes de programar el servicio puntual, registre número y fecha de la OC en la cotización aceptada.");
+    reject("Antes de programar el servicio puntual, registre la OC o una excepción justificada en la cotización aceptada.");
   const [document]=await tx.query("SELECT id FROM client_quote_documents WHERE quote_id=$1 AND kind='orden_compra' LIMIT 1",[service.quote_id]);
   if(!document)reject("Adjunte el respaldo de la OC en la cotización antes de programar este servicio.");
 }

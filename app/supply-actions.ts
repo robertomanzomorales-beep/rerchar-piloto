@@ -6,7 +6,7 @@ import { ZodError } from "zod";
 import { requireActor } from "@/lib/auth";
 import {
   SupplyError, addPurchaseLine, adjustStock, approvePurchase, cancelPurchase, closeReservation,
-  createPurchase, createStockItem, createWarehouse, issuePurchaseDraft, receivePurchase, reserveStock, savePurchaseDraft, transferStock,
+  createPurchase, createStockItem, createStockSkuRule, createWarehouse, issuePurchaseDraft, receivePurchase, reserveStock, savePurchaseDraft, transferStock,
   updateStockItemValuation,
 } from "@/lib/supply";
 
@@ -34,6 +34,10 @@ export async function createItemAction(form: FormData) {
   const actor = await requireActor();
   await run("/inventario", () => createStockItem(actor,{ code: value(form,"code"), name: value(form,"name"), unit: value(form,"unit"),
     category:value(form,"category"),minimum_qty: value(form,"minimum_qty"),maximum_qty:value(form,"maximum_qty"),unit_cost_clp:value(form,"unit_cost_clp") }));
+}
+export async function createStockSkuRuleAction(form:FormData){
+  const actor=await requireActor();
+  await run("/inventario",()=>createStockSkuRule(actor,{category:value(form,"category"),prefix:value(form,"prefix")}));
 }
 export async function updateItemValuationAction(form: FormData) {
   const actor = await requireActor();

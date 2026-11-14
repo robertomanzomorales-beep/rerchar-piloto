@@ -29,6 +29,16 @@ test("compra, recepción parcial, Kardex, bodegas y reservas mantienen los saldo
   const second = await supply.createStockItem(ops,{code:"EPP-01",name:"Guantes",unit:"un",minimum_qty:"5"});
   const zeroMinimum = await supply.createStockItem(ops,{code:"EPP-02",name:"Gafas",unit:"un",minimum_qty:"0"});
   assert.ok(zeroMinimum);
+  await assert.rejects(()=>supply.createStockSkuRule(ops,{category:"Filtros",prefix:"FIL"}),supply.SupplyError);
+  await assert.rejects(()=>supply.createStockItem(ops,{code:"",name:"Filtro sin regla",unit:"un",category:"Filtros"}),supply.SupplyError);
+  await supply.createStockSkuRule(owner,{category:"Filtros",prefix:"FIL"});
+  await assert.rejects(()=>supply.createStockSkuRule(owner,{category:"filtros",prefix:"FXX"}),supply.SupplyError);
+  await supply.createStockItem(ops,{code:"FIL-0001",name:"Filtro histórico",unit:"un",category:"Filtros"});
+  const generatedA=await supply.createStockItem(ops,{code:"",name:"Filtro aceite",unit:"un",category:"filtros"});
+  const generatedB=await supply.createStockItem(ops,{code:"",name:"Filtro aire",unit:"un",category:"Filtros"});
+  const generated=(await supply.listInventory(ops)).items.filter(row=>[generatedA,generatedB].includes(row.id));
+  assert.deepEqual(generated.map(row=>row.code).sort(),["FIL-0002","FIL-0003"]);
+  assert.equal((await supply.listStockSkuRules(ops))[0].next_number,4);
   await assert.rejects(() => supply.updateStockItemValuation(outsider,item,{category:"Repuestos",unit_cost_clp:"125.50"}),supply.SupplyError);
   await assert.rejects(() => supply.updateStockItemValuation(ops,item,{category:"Repuestos",unit_cost_clp:"125.555"}));
   await supply.updateStockItemValuation(ops,item,{category:"Repuestos",unit_cost_clp:"125.50"});

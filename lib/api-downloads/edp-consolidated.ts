@@ -31,9 +31,9 @@ export async function GET(_request:Request,{params}:{params:Promise<{id:string}>
     LEFT JOIN service_commercial_details commercial ON commercial.service_id=s.id
     LEFT JOIN assets a ON a.id=s.assigned_asset_id LEFT JOIN users u ON u.id=s.driver_id
     LEFT JOIN external_drivers e ON e.id=s.external_driver_id
-    LEFT JOIN LATERAL (SELECT string_agg(guide_number,', ' ORDER BY movement_date) AS guide_numbers,
-      string_agg(origin_ticket,', ' ORDER BY movement_date) AS origin_tickets,
-      string_agg(destination_ticket,', ' ORDER BY movement_date) AS destination_tickets,
+    LEFT JOIN LATERAL (SELECT string_agg(DISTINCT NULLIF(trim(guide_number),''),', ' ORDER BY NULLIF(trim(guide_number),'')) AS guide_numbers,
+      string_agg(DISTINCT NULLIF(trim(origin_ticket),''),', ' ORDER BY NULLIF(trim(origin_ticket),'')) AS origin_tickets,
+      string_agg(DISTINCT NULLIF(trim(destination_ticket),''),', ' ORDER BY NULLIF(trim(destination_ticket),'')) AS destination_tickets,
       sum(invoice_kg) AS invoice_kg FROM service_guide_controls WHERE service_id=s.id) g ON true
     LEFT JOIN LATERAL (SELECT string_agg(to_char(d.day,'YYYY-MM-DD') || ' (' || d.outcome || ')', ' / ' ORDER BY d.day) AS work_days
       FROM service_day_reports d WHERE d.service_id=s.id) days ON true

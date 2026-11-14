@@ -66,6 +66,19 @@ test("EDP copia respaldos de servicios E y J sin duplicar cliente, categoría ni
   assert.equal((await edp.listStatementServices(actor,statement))[0].transport_used,false);
   await edp.addStatementService(actor,statement,{service_id:source,line_number:1,is_disposal:"0"});
 
+  const multiple=await service("e_y_j");
+  await db.query("UPDATE service_requests SET guide_number=NULL WHERE id=$1",[multiple]);
+  await db.query(`INSERT INTO service_guide_controls(service_id,guide_number,line_number,movement_date,movement_type,
+    departure_ticket,recorded_by) VALUES
+    ($1,'G-11',1,'2026-06-22','servicio','T-11',$2),
+    ($1,'G-11',2,'2026-06-22','servicio','T-11',$2),
+    ($1,'G-12',1,'2026-06-23','servicio','T-12',$2)`,[multiple,user.id]);
+  assert.deepEqual((await edp.listStatementServices(actor,second)).map(s=>s.id),[multiple]);
+  await edp.addStatementService(actor,second,{service_id:multiple,line_number:1,is_disposal:"0"});
+  const multipleLine=(await edp.getPaymentStatement(actor,second)).operations[0];
+  assert.equal(multipleLine.guide_number,"G-11, G-12","conserva todas las guías distintas sin repetir las líneas de materiales");
+  assert.equal(multipleLine.weighing_ticket,"T-11, T-12","conserva ambos tickets de pesaje");
+
   const rental=await service("e_y_j",client.id,site.id,"completada","arriendo");
   const rentalEdp=await edp.createPaymentStatement(actor,{...base,number:"03",statement_type:"arriendo",
     period_on:"2026-08-01",submission_key:randomUUID()});

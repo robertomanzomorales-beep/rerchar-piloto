@@ -6,7 +6,7 @@ import {revalidatePath} from "next/cache";
 import {ZodError} from "zod";
 import {requireActor} from "@/lib/auth";
 import {QuoteError,createQuote,updateQuotePresentation,addQuoteLine,updateQuoteLine,removeQuoteLine,recordManualQuoteDelivery,recordQuoteDecision,resolveQuoteSending,sendQuote,confirmPurchaseTax,setQuoteUfRate} from "@/lib/quotes";
-import {QuoteFollowupError,recordQuoteClientOrder,uploadQuoteDocument} from "@/lib/quote-followup";
+import {QuoteFollowupError,recordQuoteClientOrder,recordQuoteOrderException,uploadQuoteDocument} from "@/lib/quote-followup";
 
 const v=(form:FormData,key:string)=>String(form.get(key)??"");
 function message(error:unknown){if(error instanceof QuoteError||error instanceof QuoteFollowupError)return error.message;if(error instanceof ZodError)return "Revise cliente, fechas, clasificación, destino, cantidad y precio.";console.error("Error en cotizaciones",error);return "No se pudo guardar esta cotización.";}
@@ -73,6 +73,12 @@ export async function quoteDecisionAction(form:FormData){
 export async function quoteClientOrderAction(form:FormData){
   const actor=await requireActor(),id=v(form,"quote_id"),path=`/cotizaciones/${encodeURIComponent(id)}`;
   try{await recordQuoteClientOrder(actor,id,{reference:v(form,"reference"),received_on:v(form,"received_on")});}
+  catch(error){redirect(`${path}?error=${encodeURIComponent(message(error))}`);}
+  revalidatePath("/","layout");redirect(`${path}?ok=1`);
+}
+export async function quoteOrderExceptionAction(form:FormData){
+  const actor=await requireActor(),id=v(form,"quote_id"),path=`/cotizaciones/${encodeURIComponent(id)}`;
+  try{await recordQuoteOrderException(actor,id,v(form,"reason"));}
   catch(error){redirect(`${path}?error=${encodeURIComponent(message(error))}`);}
   revalidatePath("/","layout");redirect(`${path}?ok=1`);
 }

@@ -37,7 +37,7 @@ export type ServiceCost={id:string;category:string;amount_clp:string;description
 
 const serviceSelect=`SELECT s.id,s.folio,s.client_id,s.site_id,s.operating_company,c.name AS client_name,cs.name AS site_name,s.service_type,s.waste_type,s.gross_kg,s.tare_kg,s.status,s.closed_at,
  v.id AS valuation_id,v.quantity,v.unit_price_clp,v.total_clp,v.tariff_id,t.unit AS tariff_unit,v.client_order_reference,
- COALESCE(cp.requires_oc,false) AS requires_client_oc,
+ (COALESCE(cp.requires_oc,false) AND q.client_order_exception IS NULL) AS requires_client_oc,
  COALESCE(NULLIF(btrim(v.client_order_reference),''),NULLIF(btrim(cd.order_reference),''),NULLIF(btrim(q.client_order_reference),'')) AS client_oc_reference,
  EXISTS (SELECT 1 FROM payment_statement_operations po WHERE po.service_id=s.id) AS in_payment_statement,
  f.id AS invoice_id,f.invoice_number,f.status AS invoice_status,f.total_clp AS invoice_total,f.total_verified AS invoice_total_verified,

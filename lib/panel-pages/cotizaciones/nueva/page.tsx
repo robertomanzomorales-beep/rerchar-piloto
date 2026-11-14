@@ -9,6 +9,7 @@ import {SubmitButton} from "@/components/Transition";
 import {QuoteDates} from "@/components/QuoteDates";
 import {moduleReady} from "@/lib/schema-readiness";
 import ModuleUnavailable from "@/components/ModuleUnavailable";
+import QuoteIssuerPresentation from "@/components/QuoteIssuerPresentation";
 
 function today(){return new Intl.DateTimeFormat("sv-SE",{timeZone:"America/Santiago",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());}
 export default async function NewQuote({searchParams}:{searchParams:Promise<{cliente?:string;error?:string;empresa?:string;tipo?:string}>}){
@@ -21,10 +22,8 @@ export default async function NewQuote({searchParams}:{searchParams:Promise<{cli
   return <><Link href="/cotizaciones" className="back-link">← Cotizaciones</Link><div className="page-title-row"><div><div className="eyebrow">PROPUESTA COMERCIAL</div><h1>Nueva cotización</h1><p className="page-intro">Inicie el borrador con el cliente y alcance. Al guardarlo se asigna el número definitivo y podrá añadir servicios en la misma cotización, revisar ruta y costos, y fijar los precios antes de entregarla.</p></div></div>
     <Notice error={query.error}/><section className="section-card"><form action={createQuoteAction} className="form-grid"><input type="hidden" name="submission_key" value={randomUUID()}/>
       <label>Cliente<select name="client_id" defaultValue={selected} required><option value="">Seleccione un cliente</option>{clients.map(c=><option key={c.id} value={c.id}>{c.name}{c.email?` · ${c.email}`:""}</option>)}</select></label>
-      {company?<><input type="hidden" name="issuer" value={company}/><p className="helper-text">Empresa emisora: <strong>{company==="e_y_j"?"E y J Limitada":"RERCHAR Chile SpA"}</strong></p></>:<label>Empresa emisora<select name="issuer" defaultValue="rerchar"><option value="rerchar">RERCHAR Chile SpA</option><option value="e_y_j">E y J Limitada</option></select></label>}
-      {company==="e_y_j"?<input type="hidden" name="commercial_kind" value="general"/>:<label>Tipo de cotización<select name="commercial_kind" defaultValue={query.tipo==="compra"?"compra_material":"general"}><option value="general">Servicios</option><option value="compra_material">Compra de material (sólo RERCHAR)</option></select></label>}
+      <QuoteIssuerPresentation company={company} initialPurchase={query.tipo==="compra"}/>
       <label className="field-full">Título / alcance<input name="title" required minLength={3} maxLength={180} placeholder="Retiro y valorización de residuos"/></label>
-      <label className="field-full">Presentación breve de la empresa<textarea name="company_intro" required minLength={10} maxLength={700} rows={3} placeholder="Describa la experiencia y el servicio de la empresa emisora, sin agregar acreditaciones no verificadas."/></label>
       <label className="field-full">Objetivo de esta propuesta<textarea name="proposal_objective" required minLength={10} maxLength={700} rows={3} placeholder="Explique qué necesita el cliente y qué resultado contempla esta cotización."/></label>
       <QuoteDates start={start}/>
       <label>IVA general<select name="vat_rate" defaultValue="0.19"><option value="0.19">19%</option><option value="0">0%</option></select></label>

@@ -80,7 +80,7 @@ export default function Shell({ actor, children }: { actor: Actor; children: Rea
       </div>
     </aside>
     <div className="main-area">
-      <header className="topbar"><div className="mobile-brand"><Image src="/rerchar-logo-transparente.png" alt="RERCHAR" width={2124} height={740} className="mobile-brand-art"/></div><span className="topbar-label">{selectedName??"RERCHAR / E y J"} <span>Plataforma operativa</span><span className="topbar-dot"/> Piloto</span><button type="button" className="topbar-search-trigger" onClick={()=>setSearchOpen(true)} aria-label="Buscar"><Search size={19}/><span>Buscar módulos</span></button><span className="topbar-user">{actor.name}</span>
+      <header className="topbar"><div className="mobile-brand"><Image src="/rerchar-logo-transparente.png" alt="RERCHAR" width={2124} height={740} className="mobile-brand-art"/></div><span className="topbar-label">{selectedName??"RERCHAR / E y J"} <span>Plataforma operativa</span><span className="topbar-dot"/> Beta</span><button type="button" className="topbar-search-trigger" onClick={()=>setSearchOpen(true)} aria-label="Buscar"><Search size={19}/><span>Buscar módulos</span></button><span className="topbar-user">{actor.name}</span>
         <details className="mobile-nav"><summary aria-label="Abrir navegación"><Menu size={22}/></summary><div className="mobile-nav-menu">{nav}<form action={logoutAction}><SubmitButton className="logout"><LogOut size={17}/> Cerrar sesión</SubmitButton></form></div></details>
       </header>
       <div className="page-content">{children}</div>
