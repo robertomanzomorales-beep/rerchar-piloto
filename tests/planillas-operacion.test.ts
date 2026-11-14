@@ -32,6 +32,13 @@ test("ingresos, facturas y seguimiento conservan cálculos, permisos y respaldos
     movement_on:"2026-09-25",site_name:"Faena A",weighing_ticket:"TK-1",material_name:"Cobre",
     supplier_kg:"1200",rerchar_kg:"1180",impurity_kg:"80",net_basis:"rerchar",net_reported_kg:"1100",
     unit_price_clp:"150",payment_status:"pendiente"});
+  const inheritedReceipt=await materials.createMaterialReceipt(owner,{client_id:ca.id,service_id:service.id,kind:"ingreso",
+    movement_on:"2026-09-26",site_name:"",weighing_ticket:"TK-3",material_name:"Cobre",
+    supplier_kg:"100",rerchar_kg:"100",impurity_kg:"0",net_basis:"rerchar",net_reported_kg:"100"});
+  const inherited=await materials.getMaterialReceipt(owner,inheritedReceipt);
+  assert.equal(inherited.site_name,"Faena A");
+  assert.equal(inherited.origin,"Faena");
+  assert.equal(inherited.destination,"Destino");
   assert.equal(materials.materialAmounts(await materials.getMaterialReceipt(viewer,receipt)).total_clp,165000);
   assert.equal((await materials.listMaterialReceipts(stranger)).length,0);
   await assert.rejects(()=>materials.getMaterialReceipt(stranger,receipt),materials.MaterialError);

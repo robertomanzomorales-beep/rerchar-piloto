@@ -20,8 +20,15 @@ export default async function MaterialReceipts({searchParams}:{searchParams:Prom
   if(!await moduleReady("ingresos"))return <ModuleUnavailable title="Ingresos de material" company="rerchar"/>;
   const [query,rows,clients,services,catalog,linked]=await Promise.all([searchParams,listMaterialReceipts(actor),
     canManage(actor)?db.query<{id:string;name:string}>("SELECT id,name FROM clients WHERE deleted_at IS NULL ORDER BY name"):Promise.resolve([]),
-    canManage(actor)?db.query<{id:string;folio:string;operating_company:"rerchar";client_name:string}>(`SELECT s.id,s.folio,s.operating_company,c.name AS client_name FROM service_requests s
-      JOIN clients c ON c.id=s.client_id WHERE s.operating_company='rerchar' AND s.deleted_at IS NULL ORDER BY s.created_at DESC LIMIT 300`):Promise.resolve([]),
+    canManage(actor)?db.query<{id:string;folio:string;operating_company:"rerchar";client_id:string;client_name:string;
+      site_name:string;origin:string;destination:string;driver_name:string|null;driver_tax_id:string|null;
+      truck_plate:string|null;trailer_plate:string|null}>(`SELECT s.id,s.folio,s.operating_company,s.client_id,c.name AS client_name,
+      cs.name AS site_name,s.origin,s.destination,COALESCE(u.name,ed.name) AS driver_name,ed.tax_id AS driver_tax_id,
+      a.plate AS truck_plate,r.plate AS trailer_plate FROM service_requests s JOIN clients c ON c.id=s.client_id
+      JOIN client_sites cs ON cs.id=s.site_id LEFT JOIN users u ON u.id=s.driver_id
+      LEFT JOIN external_drivers ed ON ed.id=s.external_driver_id LEFT JOIN assets a ON a.id=s.assigned_asset_id
+      LEFT JOIN assets r ON r.id=s.ramp_asset_id
+      WHERE s.operating_company='rerchar' AND s.deleted_at IS NULL ORDER BY s.created_at DESC LIMIT 300`):Promise.resolve([]),
     canManage(actor)?listMaterialCatalog(actor):Promise.resolve([]),
     canManage(actor)?db.query<{service_id:string;material_id:string}>(`SELECT sm.service_id,sm.material_id FROM service_request_materials sm
       JOIN service_requests s ON s.id=sm.service_id WHERE s.operating_company='rerchar' AND s.deleted_at IS NULL
@@ -37,10 +44,8 @@ export default async function MaterialReceipts({searchParams}:{searchParams:Prom
       <form action={createMaterialAction} className="form-grid">
         <label>Tipo<select name="kind" defaultValue="ingreso"><option value="ingreso">Entrada de material</option><option value="excedente">Excedente RESITER / SPENCE</option></select></label>
         <label>Fecha de movimiento<input name="movement_on" type="date" required/></label>
-        <label>Cliente registrado<select name="client_id" required defaultValue=""><option value="">Seleccione</option>{clients.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
-        <ReceiptMaterialSelection services={services.map(s=>({...s,folio:serviceFolio(s)}))} materials={catalog} linked={linked}/>
-        <label>Faena / lugar<input name="site_name" required maxLength={180}/></label><label>Origen<input name="origin" maxLength={180}/></label><label>Destino<input name="destination" maxLength={180}/></label>
-        <div className="form-section-title field-full">Transporte y carga</div><label>Conductor<input name="driver_name" maxLength={120}/></label><label>RUT conductor<input name="driver_tax_id" maxLength={25}/></label><label>Camión<input name="truck_plate" maxLength={20}/></label><label>Rampla<input name="trailer_plate" maxLength={30}/></label><label>Ticket de pesaje (opcional con guía u hoja)<input name="weighing_ticket" maxLength={80}/></label><label>Nombre si no figura en catálogo<input name="material_name" maxLength={180}/></label>
+        <ReceiptMaterialSelection clients={clients} services={services.map(s=>({...s,folio:serviceFolio(s)}))} materials={catalog} linked={linked}/>
+        <label>Ticket de pesaje (opcional con guía u hoja)<input name="weighing_ticket" maxLength={80}/></label><label>Nombre si no figura en catálogo<input name="material_name" maxLength={180}/></label>
         <div className="form-section-title field-full">Pesos de la planilla (kg)</div>
         <label>Peso proveedor<input name="supplier_kg" type="number" min="0" step="0.01"/></label><label>Peso RERCHAR<input name="rerchar_kg" type="number" min="0" step="0.01"/></label><label>Impurezas<input name="impurity_kg" type="number" min="0" step="0.01" defaultValue="0"/></label><label>Base del neto<select name="net_basis"><option value="rerchar">Peso RERCHAR − impurezas</option><option value="proveedor">Peso proveedor − impurezas</option></select></label><label>Neto anotado (opcional)<input name="net_reported_kg" type="number" min="0" step="0.01"/></label><label>Informe impurezas<input name="impurity_report" maxLength={80}/></label>
         <div className="form-section-title field-full">Documentos y cobro</div><p className="helper-text field-full">En una recepción directa, registre conductor externo, RUT, patente y guía de traslado, guía de origen u hoja de ingreso. El ticket puede agregarse después. Guardar el ingreso aún no suma stock: confírmelo en su ficha tras verificar el peso físico y la propiedad del material.</p>

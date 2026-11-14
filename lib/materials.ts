@@ -62,7 +62,7 @@ export async function createMaterialReceipt(actor:Actor,input:unknown){
   manage(actor);
   const data=z.object({client_id:uuid,service_id:z.union([uuid,z.literal("")]).default(""),kind:z.enum(["ingreso","excedente"]),
     material_id:z.union([uuid,z.literal("")]).default(""),receipt_mode:z.enum(["directa","programada"]).default("programada"),
-    movement_on:z.iso.date(),site_name:z.string().trim().min(2).max(180),origin:optional(180),destination:optional(180),
+    movement_on:z.iso.date(),site_name:optional(180),origin:optional(180),destination:optional(180),
     driver_name:optional(120),driver_tax_id:optional(25),truck_plate:optional(20),trailer_plate:optional(30),
     weighing_ticket:optional(80),material_name:optional(180),
     supplier_kg:weight,rerchar_kg:weight,impurity_kg:weight,net_basis:z.enum(["proveedor","rerchar"]),
@@ -90,12 +90,26 @@ export async function createMaterialReceipt(actor:Actor,input:unknown){
   return transaction(async tx=>{
     const [client]=await tx.query("SELECT id FROM clients WHERE id=$1 AND deleted_at IS NULL",[data.client_id]);
     if(!client)reject("Seleccione un cliente activo.");
-    if(data.service_id){const [service]=await tx.query("SELECT id FROM service_requests WHERE id=$1 AND client_id=$2 AND operating_company='rerchar' AND deleted_at IS NULL",[data.service_id,data.client_id]);
+    type LinkedService={site_name:string;origin:string;destination:string;driver_name:string|null;
+      driver_tax_id:string|null;truck_plate:string|null;trailer_plate:string|null};
+    let source:LinkedService|undefined;
+    if(data.service_id){const [service]=await tx.query<LinkedService & {id:string}>(`SELECT s.id,cs.name AS site_name,s.origin,s.destination,
+      COALESCE(u.name,ed.name) AS driver_name,ed.tax_id AS driver_tax_id,a.plate AS truck_plate,r.plate AS trailer_plate
+      FROM service_requests s JOIN client_sites cs ON cs.id=s.site_id LEFT JOIN users u ON u.id=s.driver_id
+      LEFT JOIN external_drivers ed ON ed.id=s.external_driver_id LEFT JOIN assets a ON a.id=s.assigned_asset_id
+      LEFT JOIN assets r ON r.id=s.ramp_asset_id
+      WHERE s.id=$1 AND s.client_id=$2 AND s.operating_company='rerchar' AND s.deleted_at IS NULL`,[data.service_id,data.client_id]);
       if(!service)reject("La hoja de ingreso de RERCHAR requiere un servicio de RERCHAR del mismo cliente.");
+      source=service;
       const expected=await tx.query<{material_id:string}>("SELECT material_id FROM service_request_materials WHERE service_id=$1",[data.service_id]);
       if(expected.length&&(!data.material_id||!expected.some(item=>item.material_id===data.material_id)))
         reject("Seleccione un material que figure en la solicitud de compra vinculada.");
     }
+    const inherited={site_name:data.site_name||source?.site_name||"",origin:data.origin||source?.origin||"",
+      destination:data.destination||source?.destination||"",driver_name:data.driver_name||source?.driver_name||"",
+      driver_tax_id:data.driver_tax_id||source?.driver_tax_id||"",truck_plate:data.truck_plate||source?.truck_plate||"",
+      trailer_plate:data.trailer_plate||source?.trailer_plate||""};
+    if(inherited.site_name.length<2)reject("Indique la faena o lugar de recepción.");
     const materialName=data.material_id?await catalogName(tx,data.material_id):data.material_name;
     const [r]=await tx.query<{id:string}>(`INSERT INTO material_receipts(client_id,service_id,kind,movement_on,site_name,origin,destination,
       driver_name,driver_tax_id,truck_plate,trailer_plate,weighing_ticket,material_name,supplier_kg,rerchar_kg,impurity_kg,
@@ -106,8 +120,8 @@ export async function createMaterialReceipt(actor:Actor,input:unknown){
         NULLIF($18::text,'')::numeric,NULLIF($19,''),NULLIF($20,''),NULLIF($21,''),NULLIF($22,''),NULLIF($23,''),
         NULLIF($24,''),NULLIF($25,''),NULLIF($26,''),NULLIF($27::text,'')::numeric,$28,NULLIF($29,'')::date,NULLIF($30,''),$31,
         NULLIF($32,'')::uuid,$33)
-      RETURNING id`,[data.client_id,data.service_id,data.kind,data.movement_on,data.site_name,data.origin,data.destination,
-        data.driver_name,data.driver_tax_id,data.truck_plate,data.trailer_plate,data.weighing_ticket,materialName,
+      RETURNING id`,[data.client_id,data.service_id,data.kind,data.movement_on,inherited.site_name,inherited.origin,inherited.destination,
+        inherited.driver_name,inherited.driver_tax_id,inherited.truck_plate,inherited.trailer_plate,data.weighing_ticket,materialName,
       data.supplier_kg,data.rerchar_kg,impurity,data.net_basis,data.net_reported_kg,data.impurity_report,
       data.origin_guide,data.transfer_guide,data.entry_sheet,data.valued_guide,data.certificate_number,
         data.act_number,data.invoice_number,data.unit_price_clp,data.payment_status,data.paid_on,data.notes,actor.id,
