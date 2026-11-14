@@ -1,0 +1,153 @@
+/* Shared controls for operational forms and records. Keep document print styles separate. */
+@media screen {
+  .app-shell {
+    --ui-line: #dce4e6;
+    --ui-muted: #718188;
+    --ui-ink: #2b3f47;
+    --ui-surface: #fff;
+  }
+  .app-shell .page-content { color: var(--ui-ink); }
+  .app-shell .section-card { background: var(--ui-surface); }
+  .app-shell .section-card > h2,
+  .app-shell .section-card > .page-title-row h2 { margin: 0 0 12px; color: #2d4149; font-size: 16px; font-weight: 625; line-height: 1.35; letter-spacing: -.016em; }
+  .app-shell .section-card > h2 svg { vertical-align: -.17em; margin-right: 5px; color: var(--company-accent); }
+  .app-shell .section-heading { align-items: flex-start; }
+  .app-shell .section-heading > div { min-width: 0; }
+  .app-shell .order-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 14px; }
+  .app-shell .order-actions .button { max-width: 100%; }
+  .app-shell .button-outline { color: var(--company-strong); border-color: #cbd7da; background: #fff; }
+  .app-shell .button-outline:hover { color: var(--company-strong); border-color: #aebfc4; background: #f7f9f9; }
+  .app-shell .button-primary:hover { background: var(--company-strong); }
+  .app-shell .button:disabled { opacity: .52; cursor: not-allowed; }
+
+  .app-shell .form-grid { gap: 15px 20px; align-items: end; }
+  .app-shell .detail-grid .form-grid { grid-template-columns: repeat(auto-fit,minmax(min(100%,220px),1fr)); }
+  .app-shell .form-stack { gap: 15px; }
+  .app-shell .form-stack.compact { gap: 12px; }
+  .app-shell .form-grid > *, .app-shell .form-stack > *, .app-shell .two-fields > * { min-width: 0; }
+  .app-shell .form-grid > label:not(.check-row),
+  .app-shell .form-stack > label:not(.check-row),
+  .app-shell .two-fields > label:not(.check-row) {
+    display: flex; flex-direction: column; justify-content: flex-end; align-items: stretch;
+    gap: 6px; color: #465a63; font-size: 12px; font-weight: 580; line-height: 1.34;
+  }
+  .app-shell .form-grid label small, .app-shell .form-stack label small { color: #829198; font-size: 11px; font-weight: 450; line-height: 1.5; }
+  .app-shell .form-grid .form-section-title {
+    grid-column: 1/-1; margin: 9px 0 0; padding: 0 0 9px; border-bottom: 1px solid var(--ui-line);
+    color: #304a54; font-size: 12px; font-weight: 665; letter-spacing: .005em;
+  }
+  .app-shell .form-grid .form-section-title:first-of-type { margin-top: 0; }
+  .app-shell .form-grid > .form-footer { grid-column: 1/-1; align-items: center; margin-top: 3px; padding-top: 14px; border-top: 1px solid #e7ecee; }
+  .app-shell .form-stack > .button { justify-self: start; }
+  .app-shell .two-fields { gap: 14px 20px; }
+  .app-shell .form-grid .check-row, .app-shell .form-stack .check-row {
+    display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 9px 11px;
+    border: 1px solid #e1e8e9; border-radius: 4px; background: #fafbfb;
+    color: #50636b; font-size: 11px; font-weight: 530; line-height: 1.4;
+  }
+  .app-shell .check-row input[type="checkbox"] { width: 16px; height: 16px; min-height: 16px; flex: none; margin: 0; }
+  .app-shell :is(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),select,textarea) {
+    width: 100%; min-width: 0; min-height: 40px; padding: 8px 11px; border: 1px solid #cfdadd;
+    border-radius: 4px; background-color: #fff; color: #273d46; box-shadow: none;
+    font-size: 12px; font-weight: 485; line-height: 1.42; transition: border-color .17s, box-shadow .17s, background-color .17s;
+  }
+  .app-shell select:not([multiple]) {
+    appearance: none; padding-right: 34px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='m1 1 5 5 5-5' fill='none' stroke='%2371838c' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 12px center; background-size: 11px 7px;
+  }
+  .app-shell :is(input,select,textarea):hover:not(:disabled):not(:focus) { border-color: #aebfc4; }
+  .app-shell :is(input,select,textarea):focus-visible { outline: 2px solid var(--company-accent); outline-offset: 1px; border-color: var(--company-accent); box-shadow: 0 0 0 3px var(--company-soft); }
+  .app-shell :is(input,select,textarea):user-invalid { border-color: #b87668; }
+  .app-shell :is(input,select,textarea):disabled, .app-shell input[readonly], .app-shell textarea[readonly] { color: #708189; background-color: #f5f7f7; opacity: 1; cursor: default; }
+  .app-shell textarea { min-height: 84px; resize: vertical; }
+  .app-shell input[type="file"] {
+    min-height: 44px; padding: 9px 11px; border: 1px dashed #bdcdd1; border-radius: 4px;
+    background: #fafcfc; color: #526771; font-size: 11px;
+  }
+  .app-shell input[type="file"]::file-selector-button {
+    margin-right: 12px; padding: 6px 9px; border: 1px solid #ccd8db; border-radius: 3px;
+    background: #fff; color: #39545f; font: inherit; font-weight: 630; cursor: pointer;
+  }
+  .app-shell .search-field { min-width: 210px; min-height: 40px; border-color: #cfdadd; border-radius: 4px; }
+  .app-shell .search-field:focus-within { border-color: var(--company-accent); box-shadow: 0 0 0 3px var(--company-soft); }
+  .app-shell .search-field input { border: 0 !important; outline: 0 !important; box-shadow: none !important; background: transparent !important; }
+  .app-shell .filters { gap: 9px; flex-wrap: wrap; align-items: end; margin-bottom: 16px; }
+  .app-shell .filters.quote-filters { display: grid; gap: 12px 16px; }
+  .app-shell .quote-filters .button { min-height: 40px; }
+
+  .app-shell .facts-grid { gap: 0 21px; }
+  .app-shell .facts-grid .fact { min-height: 62px; padding: 12px 0; border-bottom: 1px solid #e9eeef; }
+  .app-shell .facts-grid .fact span { margin-bottom: 4px; color: #809096; font-size: 10px; font-weight: 540; }
+  .app-shell .facts-grid .fact strong { color: #2c414a; font-size: 12px; font-weight: 615; line-height: 1.4; }
+  .app-shell .data-table { font-variant-numeric: tabular-nums; }
+  .app-shell .data-table th { border-bottom: 1px solid #e1e8e9; white-space: normal; line-height: 1.35; }
+  .app-shell .data-table td { vertical-align: top; line-height: 1.45; overflow-wrap: anywhere; }
+  .app-shell .data-table tbody tr:hover { background: #f8faf9; }
+  .app-shell .table-main { color: var(--company-strong); font-weight: 640; }
+  .app-shell .table-sub { color: #819096; line-height: 1.4; }
+  .app-shell .table-wrap { scrollbar-width: thin; scrollbar-color: #c4d0d3 transparent; }
+  .app-shell .badge { border: 1px solid currentColor; border-radius: 3px; padding: 4px 7px; font-size: 10px; font-weight: 615; }
+  .app-shell .badge:before { width: 5px; height: 5px; }
+  .app-shell .stat-card { padding: 14px 16px; transition: background-color .17s; }
+  .app-shell .stat-card:hover { transform: none; box-shadow: none; background: #fafbfb; }
+  .app-shell .stat-card strong { color: #2a3e46; font-size: 24px; font-weight: 625; font-variant-numeric: tabular-nums; }
+
+  .app-shell .quote-line-editor { padding: 12px 0; border-top-color: #e5ebed; }
+  .app-shell .quote-line-editor summary { min-height: 29px; gap: 15px; color: #354d56; font-size: 12px; font-weight: 590; }
+  .app-shell .quote-line-editor summary:hover { color: var(--company-accent); }
+  .app-shell .quote-line-editor summary strong { color: var(--company-accent); font-size: 10px; font-weight: 620; }
+  .app-shell .quote-line-editor[open] summary { margin-bottom: 16px; }
+  .app-shell .quote-concept-form { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px 20px; align-items: end; }
+  .app-shell .quote-concept-form > .field-full { grid-column: 1/-1; }
+  .app-shell .quote-concept-form > .button { grid-column: 1/-1; justify-self: end; margin-top: 7px; }
+  .app-shell .quote-totals { width: min(100%,290px); gap: 0; margin-top: 18px; font-variant-numeric: tabular-nums; }
+  .app-shell .quote-totals > div { padding: 7px 0; border-top: 1px solid #e7ecee; color: #596c73; }
+  .app-shell .quote-totals > div:last-child { padding: 11px 0 0; border-top: 1px solid #738d92; color: #28434b; font-size: 15px; }
+
+  .app-shell .document-card-grid { grid-template-columns: repeat(3,minmax(0,1fr)); gap: 11px; }
+  .app-shell .document-guidance { margin: 0 0 13px; padding: 10px 12px; border-left: 2px solid var(--company-accent); background: var(--company-soft); color: #445e61; font-size: 11px; line-height: 1.5; }
+  .app-shell .document-card { min-width: 0; padding: 15px; border-color: #dee7e9; border-radius: 4px; background: #fff; }
+  .app-shell .document-card-title { align-items: flex-start; }
+  .app-shell .document-card-title strong { color: #30454f; font-size: 12px; font-weight: 635; }
+  .app-shell .document-card-title span { font-size: 10px; font-weight: 570; }
+  .app-shell .document-card > small { overflow-wrap: anywhere; }
+  .app-shell .document-card form { margin-top: 14px; }
+  .app-shell .document-card form > .button { justify-self: stretch; }
+  .app-shell .document-optional { margin-top: 12px; border-top: 1px solid #e6ecee; }
+  .app-shell .document-optional summary { cursor: pointer; padding: 13px 2px; color: var(--company-strong); font-size: 11px; font-weight: 620; }
+  .app-shell .document-optional .document-card-grid { margin-top: 3px; }
+  .app-shell .document-checks span { border-radius: 3px; background: #f2f6f5; color: #3b5d58; font-size: 11px; font-weight: 590; }
+  .app-shell .service-guidance { display: flex; align-items: baseline; gap: 14px; margin: 0 0 15px; padding: 12px 15px; border: 1px solid var(--company-border); border-left: 3px solid var(--company-accent); border-radius: 4px; background: #fff; font-size: 12px; line-height: 1.5; }
+  .app-shell .service-guidance strong { color: var(--company-strong); white-space: nowrap; font-weight: 660; }
+  .app-shell .service-guidance span { color: #62747b; }
+  .app-shell .service-guidance a { flex: none; margin-left: auto; color: var(--company-strong); font-size: 11px; font-weight: 630; white-space: nowrap; }
+  .app-shell .service-guidance a:hover { text-decoration: underline; text-underline-offset: 3px; }
+  .app-shell :is(#planificacion,#documentacion,#revision,#cierre) { scroll-margin-top: 20px; }
+  .app-shell .detail-side .side-card { padding: 17px 18px; }
+  .app-shell .progress-step { font-size: 11px; font-weight: 560; }
+  .app-shell .progress-step.done { color: var(--company-strong); }
+  .app-shell .progress-step.done .progress-number { border-color: var(--company-border); background: var(--company-soft); color: var(--company-strong); }
+  .app-shell .timeline strong { color: #40565f; font-weight: 580; }
+  .app-shell .timeline small { color: #87969b; }
+}
+@media screen and (max-width: 1100px) {
+  .app-shell .document-card-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+}
+@media screen and (max-width: 720px) {
+  .app-shell .form-grid, .app-shell .detail-grid .form-grid, .app-shell .two-fields { grid-template-columns: 1fr; }
+  .app-shell .quote-concept-form { grid-template-columns: 1fr; }
+  .app-shell .form-grid > .form-footer { justify-content: stretch; }
+  .app-shell .form-grid > .form-footer .button { width: 100%; }
+  .app-shell .service-guidance { display: grid; gap: 3px; }
+  .app-shell .service-guidance a { margin: 4px 0 0; }
+}
+@media screen and (max-width: 530px) {
+  .app-shell .document-card-grid { grid-template-columns: 1fr; }
+  .app-shell .form-stack > .button { justify-self: stretch; }
+  .app-shell .order-actions .button { width: 100%; }
+  .app-shell .facts-grid { grid-template-columns: 1fr; }
+}
+@media screen and (prefers-reduced-motion: reduce) {
+  .app-shell :is(input,select,textarea), .app-shell .stat-card { transition: none; }
+}

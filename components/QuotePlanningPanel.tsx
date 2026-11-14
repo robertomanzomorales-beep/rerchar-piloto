@@ -36,10 +36,12 @@ export function QuotePlanningPanel({quote,lines,destinations,assets,route,cost,r
       </>:<p className="helper-text">Aún no se ha registrado el circuito ni sus kilómetros.</p>}
       {editable&&<><details className="quote-line-editor" open={!route}><summary><span>Registrar o corregir tramos</span><strong>Ruta manual</strong></summary>
         <form action={saveQuoteRouteAction} className="form-grid"><input name="quote_id" type="hidden" value={quote.id}/>
+          <div className="form-section-title">Puntos del recorrido</div>
           <label>Planta de origen<input name="origin" defaultValue={origin} minLength={5} maxLength={250} required placeholder="Dirección completa, Calama"/></label>
           <label>Retiro en cliente<input name="pickup" defaultValue={pickup} minLength={5} maxLength={250} required/></label>
           <label>Destino final<input name="destination" defaultValue={destination} minLength={5} maxLength={250} required placeholder={first?.name??"Dirección completa de recepción"}/></label>
           <label>Retorno a la misma planta<input name="return_to" defaultValue={back} minLength={5} maxLength={250} required/></label>
+          <div className="form-section-title">Kilómetros verificados</div>
           <Numeric name="pickup_km" label="Planta → retiro (km)" value={route?.pickup_km??"0"}/>
           <Numeric name="destination_km" label="Retiro → destino (km)" value={route?.destination_km??"0"}/>
           <Numeric name="return_km" label="Destino → planta (km)" value={route?.return_km??"0"}/>
@@ -65,19 +67,23 @@ export function QuotePlanningPanel({quote,lines,destinations,assets,route,cost,r
       </>}
       {editable&&<><details className="quote-line-editor" open={!cost}><summary><span>{cost?"Editar supuestos y costos":"Completar costos de la operación"}</span><strong>Calculadora</strong></summary>
         <form action={saveQuoteCostingAction} className="form-grid"><input name="quote_id" type="hidden" value={quote.id}/>
+          <div className="form-section-title">Viajes y capacidad</div>
           <Numeric name="trips" label="Cantidad de viajes" value={cost?.trips??"1"} step="1" min="1"/>
           <label>Vehículo / equipo<select name="asset_id" defaultValue={cost?.asset_id??""}><option value="">Sin seleccionar</option>{assets.map(a=><option key={a.id} value={a.id}>{a.code} · {a.label} ({a.kind})</option>)}</select></label>
           <label>Equipo o modalidad<input name="equipment" defaultValue={cost?.equipment??""} maxLength={120} placeholder="Camión tolva, pluma, batea..."/></label>
           <Numeric name="capacity" label="Capacidad por viaje" value={cost?.capacity??"0"}/>
           <label>Unidad de capacidad<select name="capacity_unit" defaultValue={cost?.capacity_unit??"tonelada"}><option value="tonelada">Tonelada</option><option value="m³">m³</option></select></label>
+          <div className="form-section-title">Vehículo y combustible · por viaje</div>
           <Numeric name="km_per_liter" label="Rendimiento (km/L)" value={cost?.km_per_liter??rate?.km_per_liter??"0"}/>
           <Numeric name="fuel_price_clp" label="Combustible (CLP/L)" value={cost?.fuel_price_clp??rate?.fuel_price_clp??"0"}/>
           <Numeric name="equipment_cost_clp" label="Vehículo y equipo por viaje (CLP)" value={cost?.equipment_cost_clp??rate?.equipment_cost_clp??"0"}/>
           <Numeric name="tolls_clp" label="Peajes por viaje (CLP)" value={cost?.tolls_clp??"0"}/>
+          <div className="form-section-title">Personal · por viaje</div>
           <Numeric name="driver_hours" label="Horas conductor por viaje" value={cost?.driver_hours??"0"}/>
           <Numeric name="driver_hour_clp" label="Costo hora conductor (CLP)" value={cost?.driver_hour_clp??rate?.driver_hour_clp??"0"}/>
           <Numeric name="support_hours" label="Horas apoyo por viaje" value={cost?.support_hours??"0"}/>
           <Numeric name="support_hour_clp" label="Costo hora apoyo (CLP)" value={cost?.support_hour_clp??rate?.support_hour_clp??"0"}/>
+          <div className="form-section-title">Carga, disposición y otros costos · por viaje</div>
           <Numeric name="per_diem_clp" label="Viáticos por viaje (CLP)" value={cost?.per_diem_clp??"0"}/>
           <Numeric name="loading_clp" label="Carga y descarga por viaje (CLP)" value={cost?.loading_clp??"0"}/>
           <Numeric name="disposal_quantity" label="Cantidad a disponer por viaje" value={cost?.disposal_quantity??"0"}/>
@@ -85,6 +91,7 @@ export function QuotePlanningPanel({quote,lines,destinations,assets,route,cost,r
           <Numeric name="disposal_unit_clp" label="Tarifa de disposición por unidad (CLP)" value={cost?.disposal_unit_clp??rate?.disposal_unit_clp??"0"}/>
           <Numeric name="stay_clp" label="Estadía por viaje (CLP)" value={cost?.stay_clp??"0"}/>
           <Numeric name="other_clp" label="Otros costos por viaje (CLP)" value={cost?.other_clp??"0"}/>
+          <div className="form-section-title">Reserva y precio</div>
           <Numeric name="contingency_pct" label="Contingencia (%)" value={cost?.contingency_pct??rate?.contingency_pct??"0"}/>
           <Numeric name="margin_pct" label="Margen deseado (%)" value={cost?.margin_pct??rate?.margin_pct??"0"}/>
           <div className="field-full form-footer"><SubmitButton className="button button-primary">Guardar cálculo interno</SubmitButton></div>

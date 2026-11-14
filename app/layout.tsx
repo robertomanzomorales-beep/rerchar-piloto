@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import "./operational-polish.css";
+import "./enterprise-forms.css";
 
 export const metadata: Metadata = {
-  title: { default: "RERCHAR Industrial Waste Management System", template: "%s · RERCHAR Industrial Waste Management System" },
-  description: "RERCHAR Industrial Waste Management System · Piloto operacional",
+  title: { default: "Software de operación industrial · RERCHAR y E y J", template: "%s · RERCHAR y E y J" },
+  description: "Software de operación industrial para RERCHAR y E y J.",
   robots: { index: false, follow: false },
 };
 
