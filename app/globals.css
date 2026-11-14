@@ -448,6 +448,8 @@ input::placeholder,textarea::placeholder{color:#959e9d}
   .quote-source{padding:12px 14px;border:1px solid #dfe9e2;background:#f8fbf8;border-radius:9px;display:grid;gap:5px;font-size:12px;color:#46564d}
   .quote-source>a,.quote-source a{color:#087750}.quote-source span{font-weight:650}.quote-source p{margin:3px 0;line-height:1.5}
   .quote-source ul{margin:4px 0;padding-left:20px;display:grid;gap:3px}
+.receipt-source-references{display:grid;gap:7px;padding:11px 13px;border:1px solid #dde8e1;background:#f7faf8;border-radius:8px;font-size:11px;color:#486257}
+.receipt-source-references p{margin:0;line-height:1.5}.receipt-source-references>div{display:flex;flex-wrap:wrap;align-items:center;gap:6px}.receipt-source-references .button{min-height:27px;padding:4px 8px;font-size:10px}
   .quote-source-list{list-style:none;margin:8px 0 12px;padding:0;display:grid;gap:0}
   .quote-source-list li{display:flex;justify-content:space-between;gap:16px;padding:9px 0;border-top:1px solid #e6ece7;font-size:12px}
   .quote-source-list li span{white-space:nowrap;font-weight:700;color:#386757}

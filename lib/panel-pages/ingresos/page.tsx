@@ -12,6 +12,7 @@ import {listMaterialCatalog} from "@/lib/material-stock";
 import {moduleReady} from "@/lib/schema-readiness";
 import ModuleUnavailable from "@/components/ModuleUnavailable";
 import {ReceiptMaterialSelection} from "@/components/ReceiptMaterialSelection";
+import {listReceiptSourceServices} from "@/lib/material-receipt-sources";
 
 const date=(v:Date|string)=>v instanceof Date?v.toISOString().slice(0,10):String(v).slice(0,10);
 
@@ -20,15 +21,7 @@ export default async function MaterialReceipts({searchParams}:{searchParams:Prom
   if(!await moduleReady("ingresos"))return <ModuleUnavailable title="Ingresos de material" company="rerchar"/>;
   const [query,rows,clients,services,catalog,linked]=await Promise.all([searchParams,listMaterialReceipts(actor),
     canManage(actor)?db.query<{id:string;name:string}>("SELECT id,name FROM clients WHERE deleted_at IS NULL ORDER BY name"):Promise.resolve([]),
-    canManage(actor)?db.query<{id:string;folio:string;operating_company:"rerchar";client_id:string;client_name:string;
-      site_name:string;origin:string;destination:string;driver_name:string|null;driver_tax_id:string|null;
-      truck_plate:string|null;trailer_plate:string|null}>(`SELECT s.id,s.folio,s.operating_company,s.client_id,c.name AS client_name,
-      cs.name AS site_name,s.origin,s.destination,COALESCE(u.name,ed.name) AS driver_name,ed.tax_id AS driver_tax_id,
-      a.plate AS truck_plate,r.plate AS trailer_plate FROM service_requests s JOIN clients c ON c.id=s.client_id
-      JOIN client_sites cs ON cs.id=s.site_id LEFT JOIN users u ON u.id=s.driver_id
-      LEFT JOIN external_drivers ed ON ed.id=s.external_driver_id LEFT JOIN assets a ON a.id=s.assigned_asset_id
-      LEFT JOIN assets r ON r.id=s.ramp_asset_id
-      WHERE s.operating_company='rerchar' AND s.deleted_at IS NULL ORDER BY s.created_at DESC LIMIT 300`):Promise.resolve([]),
+    canManage(actor)?listReceiptSourceServices(actor):Promise.resolve([]),
     canManage(actor)?listMaterialCatalog(actor):Promise.resolve([]),
     canManage(actor)?db.query<{service_id:string;material_id:string}>(`SELECT sm.service_id,sm.material_id FROM service_request_materials sm
       JOIN service_requests s ON s.id=sm.service_id WHERE s.operating_company='rerchar' AND s.deleted_at IS NULL
@@ -45,11 +38,11 @@ export default async function MaterialReceipts({searchParams}:{searchParams:Prom
         <label>Tipo<select name="kind" defaultValue="ingreso"><option value="ingreso">Entrada de material</option><option value="excedente">Excedente RESITER / SPENCE</option></select></label>
         <label>Fecha de movimiento<input name="movement_on" type="date" required/></label>
         <ReceiptMaterialSelection clients={clients} services={services.map(s=>({...s,folio:serviceFolio(s)}))} materials={catalog} linked={linked}/>
-        <label>Ticket de pesaje (opcional con guía u hoja)<input name="weighing_ticket" maxLength={80}/></label><label>Nombre si no figura en catálogo<input name="material_name" maxLength={180}/></label>
+        <label>Nombre si no figura en catálogo<input name="material_name" maxLength={180}/></label>
         <div className="form-section-title field-full">Pesos de la planilla (kg)</div>
         <label>Peso proveedor<input name="supplier_kg" type="number" min="0" step="0.01"/></label><label>Peso RERCHAR<input name="rerchar_kg" type="number" min="0" step="0.01"/></label><label>Impurezas<input name="impurity_kg" type="number" min="0" step="0.01" defaultValue="0"/></label><label>Base del neto<select name="net_basis"><option value="rerchar">Peso RERCHAR − impurezas</option><option value="proveedor">Peso proveedor − impurezas</option></select></label><label>Neto anotado (opcional)<input name="net_reported_kg" type="number" min="0" step="0.01"/></label><label>Informe impurezas<input name="impurity_report" maxLength={80}/></label>
         <div className="form-section-title field-full">Documentos y cobro</div><p className="helper-text field-full">En una recepción directa, registre conductor externo, RUT, patente y guía de traslado, guía de origen u hoja de ingreso. El ticket puede agregarse después. Guardar el ingreso aún no suma stock: confírmelo en su ficha tras verificar el peso físico y la propiedad del material.</p>
-        <label>Guía origen<input name="origin_guide" maxLength={80}/></label><label>Guía de traslado<input name="transfer_guide" maxLength={80}/></label><label>Hoja de entrada<input name="entry_sheet" maxLength={80}/></label><label>Certificado<input name="certificate_number" maxLength={80}/></label><label>Acta<input name="act_number" maxLength={80}/></label><label>Factura (si ya existe)<input name="invoice_number" maxLength={80}/></label><label>Precio unitario ($/kg)<input name="unit_price_clp" type="number" min="0" step="0.01"/></label><label>Estado inicial<select name="payment_status"><option value="pendiente">Pendiente</option><option value="no_aplica">No aplica</option></select></label><label className="field-full">Observaciones<textarea name="notes" rows={2} maxLength={1000}/></label>
+        <label>Certificado<input name="certificate_number" maxLength={80}/></label><label>Acta<input name="act_number" maxLength={80}/></label><label>Factura (si ya existe)<input name="invoice_number" maxLength={80}/></label><label>Precio unitario ($/kg)<input name="unit_price_clp" type="number" min="0" step="0.01"/></label><label>Estado inicial<select name="payment_status"><option value="pendiente">Pendiente</option><option value="no_aplica">No aplica</option></select></label><label className="field-full">Observaciones<textarea name="notes" rows={2} maxLength={1000}/></label>
         <div className="field-full form-footer"><SubmitButton className="button button-primary">Registrar ingreso</SubmitButton></div></form></section>}
     <section className="section-card"><div className="section-heading"><div><div className="eyebrow">CONTROL</div><h2>Movimientos registrados</h2></div><span className="count-pill">{rows.length}</span></div>
       <div className="table-wrap"><table className="data-table"><thead><tr><th>Fecha / referencia</th><th>Cliente / faena</th><th>Material</th><th>Neto calculado</th><th>Guía valorizada</th><th>Pago</th></tr></thead><tbody>{rows.map(r=>{const amount=materialAmounts(r);return <tr key={r.id}><td><Link href={`/ingresos/${r.id}`}><strong>{r.weighing_ticket||r.transfer_guide||r.origin_guide||r.entry_sheet||"Ingreso"}</strong></Link><span className="table-sub">{date(r.movement_on)} · {r.receipt_mode||r.kind}</span></td><td>{r.client_name}<span className="table-sub">{r.site_name}</span></td><td>{r.material_name}</td><td>{amount.net_kg?.toLocaleString("es-CL")??"—"} kg</td><td>{r.valued_guide?<span className="inventory-good">{r.valued_guide}</span>:r.valued_guide_requested_on?<span className="inventory-low">Pendiente desde {date(r.valued_guide_requested_on)}</span>:"Por solicitar"}</td><td>{r.payment_status}</td></tr>;})}</tbody></table>{rows.length===0&&<p className="muted">Aún no hay ingresos de material registrados.</p>}</div></section></>;

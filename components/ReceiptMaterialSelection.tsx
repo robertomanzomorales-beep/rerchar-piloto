@@ -1,21 +1,23 @@
 "use client";
 
 import {useState} from "react";
+import type {ReceiptSourceService} from "@/lib/material-receipt-sources";
 
-type Service={id:string;folio:string;client_id:string;client_name:string;operating_company:"rerchar";
-  site_name:string;origin:string;destination:string;driver_name:string|null;driver_tax_id:string|null;
-  truck_plate:string|null;trailer_plate:string|null};
 type Material={id:string;name:string};
 type Details={site_name:string;origin:string;destination:string;driver_name:string;driver_tax_id:string;truck_plate:string;trailer_plate:string};
 const blank:Details={site_name:"",origin:"",destination:"",driver_name:"",driver_tax_id:"",truck_plate:"",trailer_plate:""};
-export function ReceiptMaterialSelection({clients,services,materials,linked}:{clients:{id:string;name:string}[];services:Service[];materials:Material[];linked:{service_id:string;material_id:string}[]}){
+export function ReceiptMaterialSelection({clients,services,materials,linked}:{clients:{id:string;name:string}[];services:ReceiptSourceService[];materials:Material[];linked:{service_id:string;material_id:string}[]}){
   const [mode,setMode]=useState<"directa"|"programada">("directa");
   const [client,setClient]=useState("");
   const [service,setService]=useState("");
   const [material,setMaterial]=useState("");
   const [details,setDetails]=useState<Details>(blank);
+  const [ticket,setTicket]=useState("");
+  const [originGuide,setOriginGuide]=useState("");
+  const [transferGuide,setTransferGuide]=useState("");
+  const [entrySheet,setEntrySheet]=useState("");
   const change=(field:keyof Details,value:string)=>setDetails(previous=>({...previous,[field]:value}));
-  const reset=()=>{setService("");setMaterial("");setDetails(blank);};
+  const reset=()=>{setService("");setMaterial("");setDetails(blank);setTicket("");setOriginGuide("");setTransferGuide("");setEntrySheet("");};
   const chooseService=(id:string)=>{
     setService(id);
     const found=services.find(item=>item.id===id);
@@ -24,7 +26,11 @@ export function ReceiptMaterialSelection({clients,services,materials,linked}:{cl
     setDetails(found?{site_name:found.site_name,origin:found.origin,destination:found.destination,
       driver_name:found.driver_name??"",driver_tax_id:found.driver_tax_id??"",
       truck_plate:found.truck_plate??"",trailer_plate:found.trailer_plate??""}:blank);
+    setTicket(found?.destination_tickets.length===1?found.destination_tickets[0]:"");
+    setOriginGuide("");setTransferGuide("");setEntrySheet("");
   };
+  const selectedService=services.find(item=>item.id===service);
+  const guides=[...new Set([selectedService?.service_guide,...(selectedService?.control_guides??[])].filter((value):value is string=>Boolean(value)))];
   const ids=[...new Set(linked.filter(item=>item.service_id===service).map(item=>item.material_id))];
   const options=ids.length?materials.filter(item=>ids.includes(item.id)):materials;
   return <>
@@ -43,6 +49,18 @@ export function ReceiptMaterialSelection({clients,services,materials,linked}:{cl
     <label>RUT conductor<input name="driver_tax_id" value={details.driver_tax_id} onChange={event=>change("driver_tax_id",event.target.value)} maxLength={25}/></label>
     <label>Camión<input name="truck_plate" value={details.truck_plate} onChange={event=>change("truck_plate",event.target.value)} maxLength={20}/></label>
     <label>Rampla<input name="trailer_plate" value={details.trailer_plate} onChange={event=>change("trailer_plate",event.target.value)} maxLength={30}/></label>
-    {service&&<p className="helper-text field-full">Los datos del servicio se copiaron para revisión. Complete o corrija los campos según guía y recepción física.</p>}
+    <div className="form-section-title field-full">Documentos de recepción</div>
+    {selectedService&&<div className="field-full receipt-source-references"><strong>Referencias del servicio {selectedService.folio}</strong>
+      <p>Revise la guía física y seleccione la referencia que corresponda. Los tickets de origen y destino pueden ser distintos.</p>
+      {guides.length>0&&<div><span>Guía registrada:</span>{guides.map(value=><button type="button" className="button button-outline" key={value} onClick={()=>setTransferGuide(value)}>{value} → traslado</button>)}</div>}
+      {selectedService.origin_tickets.length>0&&<p>Ticket(s) de origen: {selectedService.origin_tickets.join(", ")}.</p>}
+      {selectedService.destination_tickets.length>0&&<p>Ticket(s) de destino: {selectedService.destination_tickets.join(", ")}. {selectedService.destination_tickets.length>1&&"Seleccione el correspondiente al material recibido."}</p>}
+    </div>}
+    <label>Ticket de pesaje (opcional con guía u hoja)<input name="weighing_ticket" value={ticket} onChange={event=>setTicket(event.target.value)} maxLength={80}/></label>
+    {selectedService&&selectedService.destination_tickets.length>1&&<label>Elegir ticket de destino<select value={selectedService.destination_tickets.includes(ticket)?ticket:""} onChange={event=>setTicket(event.target.value)}><option value="">Seleccione para copiar</option>{selectedService.destination_tickets.map(value=><option key={value} value={value}>{value}</option>)}</select></label>}
+    <label>Guía origen<input name="origin_guide" value={originGuide} onChange={event=>setOriginGuide(event.target.value)} maxLength={80}/></label>
+    <label>Guía de traslado<input name="transfer_guide" value={transferGuide} onChange={event=>setTransferGuide(event.target.value)} maxLength={80}/></label>
+    <label>Hoja de entrada<input name="entry_sheet" value={entrySheet} onChange={event=>setEntrySheet(event.target.value)} maxLength={80}/></label>
+    {selectedService&&<p className="helper-text field-full">Ruta y transporte se copiaron del servicio; el ticket de destino se propone sólo si es único. Confirme documentos y pesos con la recepción física antes de guardar.</p>}
   </>;
 }
