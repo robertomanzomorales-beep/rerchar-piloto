@@ -38,10 +38,21 @@ const requirements:Record<ModuleKey,{tables:string[];columns:[string,string][]}>
       ["client_quote_lines","principal"],["client_quote_lines","destination_id"],["client_quote_lines","material_id"],["client_quote_lines","line_note"]]},
 };
 
+// En producción el esquema sólo cambia con un despliegue. Compartir el resultado
+// entre solicitudes evita repetir consultas a information_schema en cada módulo.
+const readinessCache=new Map<ModuleKey,{until:number;result:Promise<boolean>}>();
+
 export async function moduleReady(key:ModuleKey){
+  const cacheable=process.env.NODE_ENV==="production";
+  const cached=cacheable?readinessCache.get(key):undefined;
+  if(cached&&cached.until>Date.now())return cached.result;
   const {tables,columns}=requirements[key];
   const checks=[...tables.map(table=>`to_regclass('${table}') IS NOT NULL`),
     ...columns.map(([table,column])=>`EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='${table}' AND column_name='${column}')`)];
-  const [result]=await db.query<{ready:boolean}>(`SELECT (${checks.join(" AND ")}) AS ready`);
-  return result?.ready===true;
+  const result=db.query<{ready:boolean}>(`SELECT (${checks.join(" AND ")}) AS ready`).then(rows=>rows[0]?.ready===true);
+  if(cacheable){
+    readinessCache.set(key,{until:Date.now()+30_000,result});
+    result.catch(()=>{if(readinessCache.get(key)?.result===result)readinessCache.delete(key);});
+  }
+  return result;
 }
