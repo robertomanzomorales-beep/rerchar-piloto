@@ -58,7 +58,8 @@
   .app-shell .company-choice--eyj .company-choice-details small { color: #b9d1e4; }
   .app-shell .company-choice-action { display: flex; align-items: center; justify-content: space-between; width: 100%; padding: 0 25px; border: 0; background: #123c2c; color: #fff; font-size: 11px; font-weight: 660; text-align: left; }
   .app-shell .company-choice--eyj .company-choice-action { background: #1c344b; color: #fff; }
-  .app-shell .company-choice:hover .company-choice-action { text-decoration: none; }
+  .app-shell .company-choice:hover .company-choice-action,
+  .app-shell .company-choice:focus-visible .company-choice-action { background: var(--choice-accent); text-decoration: none; }
   .app-shell .company-choice:focus-visible { outline: 2px solid var(--choice-accent); outline-offset: 3px; }
 
   /* The active company stays unmistakable throughout the menu. */
