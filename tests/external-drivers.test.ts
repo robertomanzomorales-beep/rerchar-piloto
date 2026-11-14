@@ -12,6 +12,7 @@ test("transportista tercero se acredita y opera por medio de operaciones, sin cu
   const pilot=await import("../lib/pilot");
   const personnel=await import("../lib/personnel");
   const ledger=await import("../lib/service-ledger");
+  const materials=await import("../lib/materials");
   for(const name of (await readdir(resolve(process.cwd(),"db"))).filter(name=>/^\d+.*\.sql$/.test(name)).sort()){
     const sql=await readFile(resolve(process.cwd(),`db/${name}`),"utf8");
     await transaction(async tx=>{for(const part of sql.split(/;\s*(?:\n|$)/).map(s=>s.trim()).filter(Boolean))await tx.query(part);});
@@ -67,13 +68,19 @@ test("transportista tercero se acredita y opera por medio de operaciones, sin cu
   await pilot.addEvidence(ops,service,"Ticket de pesaje",jpg(),"ticket_pesaje");
   await pilot.handoffService(ops,service);
   assert.equal((await pilot.getService(owner,service)).status,"pendiente_revision");
+  const receipt=await materials.createMaterialReceipt(owner,{client_id:client.id,service_id:service,kind:"ingreso",
+    receipt_mode:"programada",movement_on:"2026-11-25",weighing_ticket:"TK-EX",material_name:"Chatarra",
+    rerchar_kg:"80",impurity_kg:"0",net_basis:"rerchar"});
   await assert.rejects(()=>ledger.saveGuideFollowup(owner,service,{requested_on:"2026-11-25"}),/Cierre primero la revisión/);
+  await assert.rejects(()=>materials.updateMaterialGuideFollowup(owner,receipt,{requested_on:"2026-11-25",received_on:"",valued_guide:""}),/Cierre la revisión/);
   const review={gross_kg:100,tare_kg:20,guide_number:"G-EX",material_name:"Chatarra",impurity_kg:0,
     confirm_guide:true,confirm_sheet:true,confirm_material:true,confirm_weight:true,confirm_impurities:true};
   await assert.rejects(()=>pilot.finishService(owner,service,review),/Coteje el ticket/);
   await pilot.finishService(owner,service,{...review,confirm_ticket:true});
   assert.equal((await pilot.getService(owner,service)).status,"completada");
   await ledger.saveGuideFollowup(owner,service,{requested_on:"2026-11-25"});
+  await materials.updateMaterialGuideFollowup(owner,receipt,{requested_on:"2026-11-25",received_on:"",valued_guide:""});
+  assert.ok((await materials.getMaterialReceipt(owner,receipt)).valued_guide_requested_on);
   const [reviewed]=await db.query<{ticket_evidence_id:string|null;missing_ticket_reason:string|null}>(
     "SELECT ticket_evidence_id,missing_ticket_reason FROM purchase_closure_reviews WHERE service_id=$1",[service]);
   assert.ok(reviewed.ticket_evidence_id);

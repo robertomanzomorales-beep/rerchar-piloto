@@ -78,6 +78,7 @@ export async function createMaterialReceipt(actor:Actor,input:unknown){
     reject("El neto anotado difiere del cálculo. Explique la diferencia en observaciones.");
   if(data.payment_status==="pagado"||data.payment_status==="parcial"||data.paid_on)
     reject("Registre primero el ingreso. Después adjunte el comprobante y actualice el pago desde su ficha.");
+  if(data.valued_guide)reject("Primero registre el ingreso. Adjunte y reciba la guía valorizada desde su seguimiento.");
   if(!data.material_id&&data.material_name.length<2)reject("Seleccione el material del catálogo o escriba su nombre.");
   if(![data.weighing_ticket,data.origin_guide,data.transfer_guide,data.entry_sheet].some(Boolean))
     reject("Indique al menos un ticket, guía de traslado o hoja de ingreso.");
@@ -221,12 +222,20 @@ export async function updateMaterialGuideFollowup(actor:Actor,id:string,input:un
     received_on:z.union([z.iso.date(),z.literal("")]),valued_guide:z.string().trim().max(80)}).parse(input);
   if(Boolean(data.received_on)!==Boolean(data.valued_guide))
     reject("Para registrar la recepción indique fecha y número de guía valorizada juntos.");
+  if(data.received_on&&!data.requested_on)reject("Registre la fecha de solicitud antes de la recepción.");
   if(data.requested_on&&data.received_on&&data.received_on<data.requested_on)
     reject("La recepción no puede preceder a la solicitud.");
   await transaction(async tx=>{
-    const [row]=await tx.query<{valued_guide:string|null;valued_guide_requested_on:Date|string|null;valued_guide_received_on:Date|string|null}>(
-      "SELECT valued_guide,valued_guide_requested_on,valued_guide_received_on FROM material_receipts WHERE id=$1 FOR UPDATE",[id]);
+    const [row]=await tx.query<{service_id:string|null;valued_guide:string|null;valued_guide_requested_on:Date|string|null;valued_guide_received_on:Date|string|null}>(
+      "SELECT service_id,valued_guide,valued_guide_requested_on,valued_guide_received_on FROM material_receipts WHERE id=$1 FOR UPDATE",[id]);
     if(!row)reject("Ingreso no encontrado.");
+    if(row.service_id&&data.requested_on){
+      const [service]=await tx.query<{request_category:string;status:string;reviewed:boolean}>(
+        `SELECT s.request_category,s.status,EXISTS(SELECT 1 FROM purchase_closure_reviews r WHERE r.service_id=s.id) AS reviewed
+         FROM service_requests s WHERE s.id=$1`,[row.service_id]);
+      if(service?.request_category==="compra"&&(service.status!=="completada"||!service.reviewed))
+        reject("Cierre la revisión administrativa de la compra antes de solicitar la guía valorizada del ingreso.");
+    }
     if(data.valued_guide){
       const [file]=await tx.query("SELECT id FROM operation_files WHERE receipt_id=$1 AND kind='guia_valorizada' LIMIT 1",[id]);
       if(!file)reject("Adjunte la guía valorizada recibida antes de registrar su número y fecha.");
