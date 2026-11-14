@@ -58,7 +58,6 @@
   .app-shell .company-choice--eyj .company-choice-details small { color: #b9d1e4; }
   .app-shell .company-choice-action { display: flex; align-items: center; justify-content: space-between; width: 100%; padding: 0 25px; border: 0; background: #123c2c; color: #fff; font-size: 11px; font-weight: 660; text-align: left; }
   .app-shell .company-choice--eyj .company-choice-action { background: #1c344b; color: #fff; }
-  .app-shell .company-choice-action::after { content: "→"; font-size: 18px; font-weight: 400; line-height: 1; }
   .app-shell .company-choice:hover .company-choice-action { text-decoration: none; }
   .app-shell .company-choice:focus-visible { outline: 2px solid var(--choice-accent); outline-offset: 3px; }
 
@@ -119,13 +118,37 @@
   .app-shell[data-company="e_y_j"] .company-dashboard-heading .page-intro { color: #cad9e6; }
   .app-shell .company-dashboard-heading .button-primary { background: #fff; color: var(--brand-deep); border: 1px solid #fff; }
   .app-shell .company-dashboard-heading .button-primary:hover { background: var(--company-soft); }
+  .app-shell .page-content > .page-title-row:not(.company-dashboard-heading) {
+    position: relative; padding-bottom: 17px; border-bottom: 1px solid var(--company-border);
+  }
+  .app-shell .page-content > .page-title-row:not(.company-dashboard-heading)::after {
+    content: ""; position: absolute; left: 0; bottom: -1px; width: 42px; height: 2px;
+    background: var(--company-accent);
+  }
+  .app-shell .title-icon { background: var(--company-soft); color: var(--company-accent); border-radius: 4px; }
+  .app-shell .button-primary:hover { background: var(--company-strong); }
+  .app-shell .data-table th { background: var(--company-soft); color: var(--company-strong); }
+  .app-shell .data-table tbody tr:hover { background: color-mix(in srgb, var(--company-soft) 55%, white); }
+  .app-shell .form-grid .form-section-title { color: var(--company-strong); border-bottom-color: var(--company-border); }
   .app-shell .company-workflow { padding: 15px 0 18px; }
   .app-shell .company-metric-grid { border-top: 3px solid var(--company-accent); }
   .app-shell .company-metric strong { color: var(--company-strong); font-size: 27px; }
   .app-shell .company-chart-card { border-top: 2px solid var(--company-border); }
   .app-shell .company-alerts { border-left: 3px solid var(--company-accent); }
   .app-shell .company-alert strong { color: var(--company-strong); }
+  .app-shell .company-alert--urgent strong { color: #a15a2f; }
+  .app-shell .company-alert small { flex: none; color: #895531; font-size: 9px; font-weight: 660; letter-spacing: .015em; }
+  .app-shell .company-alert--urgent { background: #fdfaf7; }
+  .app-shell .company-alert--urgent:hover { background: #fbf3eb; }
   .app-shell .chart-observation-tip rect { fill: var(--brand-deep); }
+  .app-shell .company-chart-empty {
+    display: flex; flex-direction: column; justify-content: center; align-items: flex-start;
+    min-height: 222px; gap: 8px; padding: 24px; border: 1px solid var(--company-border);
+    background: var(--company-soft);
+  }
+  .app-shell .company-chart-empty strong { color: var(--company-strong); font-size: 14px; font-weight: 650; }
+  .app-shell .company-chart-empty span { max-width: 300px; color: #576c71; font-size: 11px; line-height: 1.5; }
+  .app-shell .company-chart-empty a { margin-top: 7px; color: var(--company-accent); font-size: 11px; font-weight: 680; text-decoration: underline; text-underline-offset: 3px; }
 }
 @media screen and (min-width: 861px) {
   .app-shell .brand-sidebar { min-height: 75px; }
@@ -152,6 +175,10 @@
   .app-shell .mobile-nav-drawer .nav-group-toggle:hover { color: var(--company-strong); background: var(--company-soft); }
   .app-shell .mobile-nav-drawer .nav-group-inner { border-left-color: var(--company-border); }
   .app-shell .mobile-nav-drawer .logout { color: var(--company-strong); }
+  .app-shell .company-workflow ol { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); overflow: visible; border-top: 1px solid var(--company-border); }
+  .app-shell .company-workflow li { min-width: 0; border-left: 0; border-bottom: 1px solid var(--company-border); }
+  .app-shell .company-workflow li:nth-child(2n) { border-left: 1px solid var(--company-border); }
+  .app-shell .company-workflow li a { width: 100%; min-height: 55px; padding: 8px 10px; }
 }
 @media screen and (max-width: 720px) {
   .app-shell .company-selector { grid-template-columns: 1fr; gap: 12px; }
@@ -162,6 +189,10 @@
 @media screen and (max-width: 600px) {
   .app-shell .company-dashboard-heading { align-items: flex-start; min-height: 0; padding: 21px 20px; }
   .app-shell .company-dashboard-heading .button { width: 100%; }
+  .app-shell .company-alert { flex-wrap: wrap; }
+  .app-shell .company-alert small { margin-left: 38px; }
+  .app-shell .company-workflow ol { grid-template-columns: 1fr; }
+  .app-shell .company-workflow li:nth-child(2n) { border-left: 0; }
 }
 @media screen and (prefers-reduced-motion: reduce) {
   .app-shell .company-choice { transition: none; }

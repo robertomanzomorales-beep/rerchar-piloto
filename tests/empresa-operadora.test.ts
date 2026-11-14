@@ -4,6 +4,14 @@ import {readFile,readdir} from "node:fs/promises";
 import {resolve} from "node:path";
 import test from "node:test";
 import type {Actor} from "../lib/auth";
+import {companyForPath} from "../lib/companies";
+
+test("las rutas propias no cambian de empresa por un parámetro ajeno",()=>{
+  assert.equal(companyForPath("/control-guias","e_y_j"),"rerchar");
+  assert.equal(companyForPath("/estados-pago/calendario","rerchar"),"e_y_j");
+  assert.equal(companyForPath("/cotizaciones","e_y_j"),"e_y_j");
+  assert.equal(companyForPath("/",null),null);
+});
 
 test("RERCHAR y E y J mantienen servicios, cotizaciones y facturas en su empresa",async()=>{
   process.env.PGLITE_DATA_DIR="memory://";

@@ -21,6 +21,7 @@ import {guideFollowupOverview} from "@/lib/service-ledger";
 type ServiceMetrics = { total:string; requested:string; scheduled:string; in_route:string; pending_review:string; completed:string; critical:string };
 type QuoteMetrics = { total:string; draft:string; sent:string; accepted:string; expired:string; awaiting_order:string; awaiting_service:string };
 type Month = { period:string; total:string };
+type DashboardAlert = {label:string;count:number;href:string;urgent?:boolean};
 const value = (v:string|undefined) => Number(v ?? 0);
 
 export default async function CompanyHome({params}:{params:Promise<{empresa:string}>}) {
@@ -106,28 +107,29 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
   ];
   const chartTotal=serviceBars.reduce((sum,item)=>sum+item.count,0);
   const maxStatus=Math.max(1,...serviceBars.map(item=>item.count));
-  const alerts=[
+  const activityTotal=months.reduce((sum,m)=>sum+value(m.total),0);
+  const alerts:DashboardAlert[]=[
     ...(canManage(actor)?[
-      {label:"Acreditaciones vencidas de conductores",count:credentialAlerts.filter(c=>c.days_left<0).length,href:"/personal#vencimientos"},
+      {label:"Acreditaciones vencidas de conductores",count:credentialAlerts.filter(c=>c.days_left<0).length,href:"/personal#vencimientos",urgent:true},
       {label:"Acreditaciones próximas a vencer",count:credentialAlerts.filter(c=>c.days_left>=0).length,href:"/personal#vencimientos"},
     ]:[]),
-    ...(showQuotes?[{label:"Cotizaciones enviadas con vigencia vencida",count:value(q?.expired),href:`/cotizaciones?empresa=${selected}`}]:[]),
+    ...(showQuotes?[{label:"Cotizaciones enviadas con vigencia vencida",count:value(q?.expired),href:`/cotizaciones?empresa=${selected}`,urgent:true}]:[]),
     ...(canManage(actor)?[{label:"Cotizaciones aceptadas esperando OC o excepción",count:value(q?.awaiting_order),href:`/cotizaciones?empresa=${selected}`},
       {label:"Cotizaciones con OC o excepción esperando solicitud",count:value(q?.awaiting_service),href:`/cotizaciones?empresa=${selected}`}]:[]),
-    {label:"Servicios críticos aún abiertos",count:value(s?.critical),href:`/solicitudes?empresa=${selected}`},
+    {label:"Servicios críticos aún abiertos",count:value(s?.critical),href:`/solicitudes?empresa=${selected}`,urgent:true},
     ...(canManage(actor)?[{label:"Servicios con documentos por validar",count:value(s?.pending_review),href:`/solicitudes?empresa=${selected}&estado=pendiente_revision`}]:[]),
     ...(canManage(actor)?[{label:"Averías del checklist abiertas",count:value(checklistFaults[0]?.total),href:"/mantenimiento"}]:[]),
     ...(canManage(actor)?[{label:"Viajes incompletos o suspendidos pendientes",count:value(dayIssues[0]?.total),href:`/agenda?empresa=${selected}`}]:[]),
     ...(canManage(actor)?[{label:"Fletes falsos y sobreestadías por decidir",count:extraChargePending,href:`/cobros-extraordinarios?empresa=${selected}`}]:[]),
-    ...(receivables?[{label:"Facturas de clientes vencidas con saldo",count:Number(receivables.overdue),href:`/cobranzas?empresa=${selected}&estado=vencidas`},
+    ...(receivables?[{label:"Facturas de clientes vencidas con saldo",count:Number(receivables.overdue),href:`/cobranzas?empresa=${selected}&estado=vencidas`,urgent:true},
       {label:"Facturas de clientes que vencen en 7 días",count:Number(receivables.upcoming),href:`/cobranzas?empresa=${selected}&estado=proximas`},
       {label:"Facturas anteriores por conciliar",count:Number(receivables.legacy),href:`/cobranzas?empresa=${selected}`}]:[]),
     ...(actor.role==="admin"?[{label:"Servicios valorizados sin factura individual · revisar EDP si corresponde",count:value(unbilledServices[0]?.total),href:`/finanzas?empresa=${selected}&facturacion=pendiente`}]:[]),
     ...(actor.role==="admin"?[{label:"Servicios cerrados con OC del cliente requerida y pendiente",count:clientOrdersPending,href:`/finanzas?empresa=${selected}&oc=pendiente`}]:[]),
     ...(actor.role==="admin"?[{label:"Cambios de tarifa por comunicar al cliente",count:value(tariffNotices[0]?.total),href:`/finanzas?empresa=${selected}`}]:[]),
     ...(selected==="rerchar"&&canManage(actor)?[
-      {label:"Guías valorizadas atrasadas a mi cargo",count:value(guideAlerts?.my_overdue),href:"/seguimiento-guias?estado=mias"},
-      {label:"Guías valorizadas atrasadas",count:value(guideAlerts?.overdue),href:"/seguimiento-guias?estado=atrasadas"},
+      {label:"Guías valorizadas atrasadas a mi cargo",count:value(guideAlerts?.my_overdue),href:"/seguimiento-guias?estado=mias",urgent:true},
+      {label:"Guías valorizadas atrasadas",count:value(guideAlerts?.overdue),href:"/seguimiento-guias?estado=atrasadas",urgent:true},
       {label:"Guías valorizadas que vencen en 7 días",count:value(guideAlerts?.upcoming),href:"/seguimiento-guias?estado=proximas"},
       {label:"Guías valorizadas pendientes sin plazo",count:value(guideAlerts?.undated),href:"/seguimiento-guias?estado=sin_plazo"},
     ]:[]),
@@ -147,10 +149,10 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
     ...(selected==="e_y_j"&&canManage(actor)&&billingCalendar?.ready?[
       {label:"Cortes de EDP en los próximos 7 días",count:value(billingCalendar.cutoffs),href:"/estados-pago/calendario"},
       {label:"Envíos de EDP en los próximos 7 días",count:value(billingCalendar.sends),href:"/estados-pago/calendario"},
-      {label:"Envíos de EDP atrasados",count:value(billingCalendar.overdue),href:"/estados-pago/calendario"},
+      {label:"Envíos de EDP atrasados",count:value(billingCalendar.overdue),href:"/estados-pago/calendario",urgent:true},
     ]:[]),
     ...(invoiceAlerts?[
-      {label:"Facturas de proveedores vencidas con saldo",count:value(invoiceAlerts.overdue),href:`/facturas-recibidas?empresa=${selected}&estado=vencidas`},
+      {label:"Facturas de proveedores vencidas con saldo",count:value(invoiceAlerts.overdue),href:`/facturas-recibidas?empresa=${selected}&estado=vencidas`,urgent:true},
       {label:"Facturas de proveedores que vencen en 7 días",count:value(invoiceAlerts.upcoming),href:`/facturas-recibidas?empresa=${selected}&estado=proximas`},
       {label:"Facturas de proveedores sin vencimiento",count:value(invoiceAlerts.undated),href:`/facturas-recibidas?empresa=${selected}&estado=sin_fecha`},
     ]:[]),
@@ -160,7 +162,9 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
       {label:"Transferencias ejecutadas por verificar",count:value(transferStats.ejecutadas),href:`/transferencias?empresa=${selected}`},
     ]:[]),
   ];
-  const activeAlerts=alerts.filter(a=>a.count>0);
+  const activeAlerts=alerts.filter(a=>a.count>0).sort((a,b)=>Number(Boolean(b.urgent))-Number(Boolean(a.urgent)));
+  const urgentAlerts=activeAlerts.filter(a=>a.urgent).length;
+  const alertItem=(alert:DashboardAlert)=><Link href={alert.href} key={alert.label} className={`company-alert ${alert.urgent?"company-alert--urgent":""}`}><strong>{alert.count}</strong><span>{alert.label}</span>{alert.urgent&&<small>Prioritaria</small>}</Link>;
   const processLinks=[
     ...(showQuotes?[{label:"Cotizaciones",href:`/cotizaciones?empresa=${selected}`}]:[]),
     {label:selected==="rerchar"?"Solicitudes y planificación":"Solicitudes y despacho",href:`/solicitudes?empresa=${selected}`},
@@ -184,14 +188,14 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
       <Link href={`/solicitudes?empresa=${selected}&estado=completada`} className="company-metric"><span>Completados</span><strong>{value(s?.completed)}</strong><small>Con cierre registrado</small></Link>
     </div>
     <div className="company-analytics">
-      <section className="section-card company-chart-card"><div className="eyebrow">ACTIVIDAD · SEIS MESES</div><div className="chart-heading"><h2>Servicios ingresados</h2><strong>{months.reduce((sum,m)=>sum+value(m.total),0)} <span>en el período</span></strong></div><figure className="company-trend"><svg viewBox="0 0 660 235" role="img" aria-label={`Servicios ingresados por mes: ${months.map(m=>`${monthLabel.format(new Date(`${m.period}-01T00:00:00Z`))} ${value(m.total)}`).join(", ")}`} preserveAspectRatio="xMidYMid meet"><defs><linearGradient id={`trend-area-${selected}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--company-accent)" stopOpacity=".13"/><stop offset="100%" stopColor="var(--company-accent)" stopOpacity="0"/></linearGradient></defs>
+      <section className="section-card company-chart-card"><div className="eyebrow">ACTIVIDAD · SEIS MESES</div><div className="chart-heading"><h2>Servicios ingresados</h2><strong>{activityTotal} <span>en el período</span></strong></div>{activityTotal>0?<figure className="company-trend"><svg viewBox="0 0 660 235" role="img" aria-label={`Servicios ingresados por mes: ${months.map(m=>`${monthLabel.format(new Date(`${m.period}-01T00:00:00Z`))} ${value(m.total)}`).join(", ")}`} preserveAspectRatio="xMidYMid meet"><defs><linearGradient id={`trend-area-${selected}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--company-accent)" stopOpacity=".13"/><stop offset="100%" stopColor="var(--company-accent)" stopOpacity="0"/></linearGradient></defs>
         {[0,1,2,3,4].map(i=><g key={i}><line className="chart-gridline" x1="48" x2="638" y1={30+i*40} y2={30+i*40}/><text className="chart-axis-label" x="37" y={34+i*40} textAnchor="end">{chartMaximum-i*chartMaximum/4}</text></g>)}
         <path className="chart-trend-area" d={chartArea} fill={`url(#trend-area-${selected})`}/><path className="chart-trend-line" d={chartPath}/>
         {months.map((m,index)=><g className="chart-observation" key={m.period} tabIndex={0} aria-label={`${monthLabel.format(new Date(`${m.period}-01T00:00:00Z`))}: ${value(m.total)} servicios`}><line className="chart-observation-guide" x1={chartX(index)} x2={chartX(index)} y1={chartY(value(m.total))} y2="190"/><circle className="chart-observation-hit" cx={chartX(index)} cy={chartY(value(m.total))} r="18"/><circle className="chart-trend-point" cx={chartX(index)} cy={chartY(value(m.total))} r="3"/><g className="chart-observation-tip" transform={`translate(${chartX(index)-37} ${Math.max(7,chartY(value(m.total))-42)})`}><rect width="74" height="27" rx="3"/><text x="37" y="18" textAnchor="middle">{value(m.total)} servicios</text></g><text className="chart-month-label" x={chartX(index)} y="218" textAnchor="middle">{monthLabel.format(new Date(`${m.period}-01T00:00:00Z`))}</text></g>)}
-      </svg><figcaption>Registros creados por mes · escala de servicios</figcaption></figure></section>
-      <section className="section-card company-chart-card"><div className="eyebrow">ESTADO ACTUAL</div><div className="chart-heading"><h2>Distribución de servicios</h2><strong>{chartTotal} <span>registrados</span></strong></div><div className="company-status-chart">{serviceBars.map(item=><Link href={`/solicitudes?empresa=${selected}&estado=${item.status}`} className="company-status-row" key={item.status}><span className="status-label">{item.label}</span><span className="status-track" aria-hidden="true"><span style={{width:`${100*item.count/maxStatus}%`,backgroundColor:item.color}}/></span><strong>{item.count}</strong><small>{chartTotal?Math.round(100*item.count/chartTotal):0}%</small></Link>)}</div><p className="helper-text">Distribución de servicios activos y completados. Excluye cancelados.</p></section>
+      </svg><figcaption>Registros creados por mes · escala de servicios</figcaption></figure>:<div className="company-chart-empty"><strong>Sin movimientos en este período</strong><span>La actividad se dibuja a partir de los servicios registrados en esta empresa.</span><Link href={`/solicitudes?empresa=${selected}`}>Ver solicitudes <ArrowRight size={14}/></Link></div>}</section>
+      <section className="section-card company-chart-card"><div className="eyebrow">ESTADO ACTUAL</div><div className="chart-heading"><h2>Distribución de servicios</h2><strong>{chartTotal} <span>registrados</span></strong></div>{chartTotal>0?<><div className="company-status-chart">{serviceBars.map(item=><Link href={`/solicitudes?empresa=${selected}&estado=${item.status}`} className="company-status-row" key={item.status}><span className="status-label">{item.label}</span><span className="status-track" aria-hidden="true"><span style={{width:`${100*item.count/maxStatus}%`,backgroundColor:item.color}}/></span><strong>{item.count}</strong><small>{Math.round(100*item.count/chartTotal)}%</small></Link>)}</div><p className="helper-text">Distribución de servicios activos y completados. Excluye cancelados.</p></>:<div className="company-chart-empty"><strong>Aún no hay servicios</strong><span>Cuando comience la operación, aquí verá su distribución por estado.</span><Link href={`/solicitudes?empresa=${selected}`}>Ver solicitudes <ArrowRight size={14}/></Link></div>}</section>
     </div>
-    <section className="section-card company-alerts"><div className="section-heading"><div><div className="eyebrow">ATENCIÓN DEL EQUIPO</div><h2>Alertas y pendientes</h2></div><span className="count-pill">{activeAlerts.length} categorías activas</span></div><div className="company-alert-list">{activeAlerts.slice(0,8).map(a=><Link href={a.href} key={a.label} className="company-alert"><strong>{a.count}</strong><span>{a.label}</span></Link>)}</div>{activeAlerts.length>8&&<details className="company-alert-more"><summary>Ver {activeAlerts.length-8} alertas adicionales</summary><div className="company-alert-list">{activeAlerts.slice(8).map(a=><Link href={a.href} key={a.label} className="company-alert"><strong>{a.count}</strong><span>{a.label}</span></Link>)}</div></details>}{!activeAlerts.length&&<p className="helper-text"><CheckCircle2 size={15}/> Sin pendientes registrados en estas categorías.</p>}</section>
+    <section className="section-card company-alerts"><div className="section-heading"><div><div className="eyebrow">ATENCIÓN DEL EQUIPO</div><h2>Alertas y pendientes</h2></div><span className="count-pill">{urgentAlerts>0?`${urgentAlerts} prioritarias · `:""}{activeAlerts.length} categorías activas</span></div><div className="company-alert-list">{activeAlerts.slice(0,8).map(alertItem)}</div>{activeAlerts.length>8&&<details className="company-alert-more"><summary>Ver {activeAlerts.length-8} alertas adicionales</summary><div className="company-alert-list">{activeAlerts.slice(8).map(alertItem)}</div></details>}{!activeAlerts.length&&<p className="helper-text"><CheckCircle2 size={15}/> Sin pendientes registrados en estas categorías.</p>}</section>
     {showQuotes && <section className="section-card"><div className="section-heading"><div><div className="eyebrow">COMERCIAL · {company.short}</div><h2>Cotizaciones recientes</h2></div><Link href={`/cotizaciones?empresa=${selected}`} className="text-link">Ver todas <ArrowRight size={16}/></Link></div>{quotes.length ? <div className="table-wrap"><table className="data-table"><thead><tr><th>Folio</th><th>Cliente</th><th>Asunto</th><th>Estado</th><th>Fecha</th></tr></thead><tbody>{quotes.slice(0,5).map(item=><tr key={item.id}><td><Link href={`/cotizaciones/${item.id}`}><strong>{quoteFolio(item)}</strong></Link></td><td>{item.client_name}</td><td>{item.title}</td><td>{item.status}</td><td>{chileDate(item.created_at)}</td></tr>)}</tbody></table></div> : <p className="muted">Aún no hay cotizaciones registradas para {company.short}.</p>}</section>}
     <section className="section-card"><div className="section-heading"><div><div className="eyebrow">OPERACIÓN · {company.short}</div><h2>Solicitudes recientes</h2></div><Link href={`/solicitudes?empresa=${selected}`} className="text-link">Ver todas <ArrowRight size={16}/></Link></div><ServiceTable services={services.slice(0,8)}/></section>
   </>;

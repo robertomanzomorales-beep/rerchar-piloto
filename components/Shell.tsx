@@ -9,14 +9,13 @@ import type { Actor } from "@/lib/auth";
 import { logoutAction } from "@/app/actions";
 import { NavPendingHint, SubmitButton } from "@/components/Transition";
 import GlobalSearch from "@/components/GlobalSearch";
+import {companyForPath} from "@/lib/companies";
 
 export default function Shell({ actor, children }: { actor: Actor; children: React.ReactNode }) {
   const pathname = usePathname();
   const searchParams=useSearchParams();
   const companyQuery=searchParams.get("empresa")??searchParams.get("company");
-  const routeCompany=companyQuery==="rerchar"||companyQuery==="e_y_j"?companyQuery:
-    pathname.startsWith("/empresa/rerchar")||["/ingresos","/control-guias","/materiales-stock","/seguimiento-guias"].some(prefix=>pathname===prefix||pathname.startsWith(`${prefix}/`))?"rerchar":
-    pathname.startsWith("/empresa/e_y_j")||pathname.startsWith("/estados-pago")?"e_y_j":null;
+  const routeCompany=companyForPath(pathname,companyQuery);
   const [selectedCompany,setSelectedCompany]=useState<"rerchar"|"e_y_j"|null>(null);
   const [searchOpen,setSearchOpen]=useState(false);
   const [mobileOpen,setMobileOpen]=useState(false);
@@ -79,7 +78,7 @@ export default function Shell({ actor, children }: { actor: Actor; children: Rea
     { group:"Cierre y control", href: "/cobranzas", text: "Cobranza clientes", icon: Banknote, visible: actor.role === "admin" },
     { group:"Cierre y control", href: "/estados-pago", text: "Estados de pago · E y J", icon: ReceiptText, visible: activeCompany === "e_y_j" && (actor.role === "admin" || actor.role === "operaciones") },
     { group:"Cierre y control", href: "/estados-pago/calendario", text: "Calendario de EDP · E y J", icon: CalendarDays, visible: activeCompany === "e_y_j" && (actor.role === "admin" || actor.role === "operaciones") },
-    { group:"Cierre y control", href: "/certificados", text: "Certificados", icon: FileBadge2, visible: actor.role !== "conductor" },
+    { group:"Cierre y control", href: "/certificados", text: "Certificados RERCHAR", icon: FileBadge2, visible: activeCompany==="rerchar" && actor.role !== "conductor" },
     { group:"Cierre y control", href: "/cumplimiento", text: "Registro ambiental", icon: FileCheck2, visible: actor.role === "admin" || actor.role === "operaciones" },
     { group:"Cierre y control", href: "/reportes", text: "Reportes", icon: FileBarChart2, visible: true },
     { group:"Abastecimiento", href: "/facturas-recibidas", text: "Facturas recibidas", icon: FileText, visible: actor.role === "admin" },
@@ -99,11 +98,11 @@ export default function Shell({ actor, children }: { actor: Actor; children: Rea
     { group:"Configuración", href: "/auditoria", text: "Auditoría", icon: ScrollText, visible: actor.role === "admin" },
   ];
   const searchItems=[{href:activeCompany?`/empresa/${activeCompany}`:"/",text:"Panel de empresa",group:"Inicio"},
-    ...links.filter(link=>link.visible).map(link=>({href:companyHref(link.href),text:link.text,group:link.group}))];
+    ...(activeCompany?links.filter(link=>link.visible).map(link=>({href:companyHref(link.href),text:link.text,group:link.group})):[])];
   const activeHref=links.filter(link=>link.visible&&(pathname===link.href||pathname.startsWith(`${link.href}/`)))
     .sort((a,b)=>b.href.length-a.href.length)[0]?.href;
   const nav = (mobile=false) => <nav className="nav-items" aria-label={mobile?"Navegación móvil":"Navegación principal"}><Link href={activeCompany?`/empresa/${activeCompany}`:"/"} onClick={()=>mobile&&setMobileOpen(false)} className={`nav-link ${pathname==="/"||pathname.startsWith("/empresa/")?"active":""}`}><LayoutDashboard size={18}/> Panel de {selectedName??"empresas"} <NavPendingHint/></Link>{["Comercial","Operación","Cierre y control","Abastecimiento","Recursos compartidos","Configuración"].map(group=>{
-    const groupLinks=links.filter(link=>link.group===group&&link.visible);
+    const groupLinks=activeCompany?links.filter(link=>link.group===group&&link.visible):[];
     const isOpen=expanded[group]??groupLinks.some(link=>pathname===link.href||pathname.startsWith(`${link.href}/`));
     return groupLinks.length?<div className={`nav-group ${isOpen?"expanded":""}`} key={group}><button type="button" className="nav-group-toggle" aria-expanded={isOpen} onClick={()=>setExpanded(old=>({...old,[group]:!isOpen}))}><span>{group}</span><ChevronDown size={16}/></button><div className="nav-group-panel" inert={!isOpen}><div className="nav-group-inner">{groupLinks.map(link=><Link key={link.href} href={companyHref(link.href)} onClick={()=>mobile&&setMobileOpen(false)} className={`nav-link ${activeHref===link.href?"active":""}`}><link.icon size={18} strokeWidth={1.9}/>{link.text}<NavPendingHint/></Link>)}</div></div></div>:null;
   })}</nav>;
