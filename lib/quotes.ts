@@ -169,7 +169,7 @@ function validateQuoteFilters(filters:QuoteFilters){
   if(filters.from&&filters.to&&filters.to<filters.from)reject("La fecha final no puede ser anterior a la inicial.");
   if(filters.creatorId&&!uuid.safeParse(filters.creatorId).success)reject("Usuario inválido.");
 }
-export async function listQuotes(actor:Actor,clientId="",company="",principal="",segment="",filters:QuoteFilters={}){
+export async function listQuotes(actor:Actor,clientId="",company="",principal="",segment="",filters:QuoteFilters={},limit=250){
   if(actor.role==="conductor")reject("Sin acceso a cotizaciones.");
   if(clientId && !uuid.safeParse(clientId).success)reject("Cliente inválido.");
   if(company && !["rerchar","e_y_j"].includes(company))reject("Empresa inválida.");
@@ -184,7 +184,7 @@ export async function listQuotes(actor:Actor,clientId="",company="",principal=""
     AND ($5::text='' OR EXISTS (SELECT 1 FROM client_quote_lines l WHERE l.quote_id=q.id AND l.principal=$5 AND ($6::text='' OR l.segment=$6)))
     AND ($7::text='' OR q.issued_on>=NULLIF($7,'')::date) AND ($8::text='' OR q.issued_on<=NULLIF($8,'')::date)
     AND ($9::text='' OR q.created_by=NULLIF($9,'')::uuid)
-    ORDER BY q.created_at DESC LIMIT 250`,[clientId,actor.role,actor.client_id,company,principal,segment,filters.from??"",filters.to??"",filters.creatorId??""]);
+    ORDER BY q.created_at DESC LIMIT $10`,[clientId,actor.role,actor.client_id,company,principal,segment,filters.from??"",filters.to??"",filters.creatorId??"",Math.max(1,Math.min(250,Math.trunc(limit)||250))]);
 }
 export type QuoteReportLine={folio:string;display_folio:string|null;issuer:keyof typeof issuers;client_name:string;title:string;
   status:string;issued_on:Date|string;principal:string|null;segment:string|null;description:string;quantity:string;

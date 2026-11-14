@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { LockKeyhole, ArrowRight } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { getActor } from "@/lib/auth";
 import { loginAction } from "@/app/actions";
 import { SubmitButton } from "@/components/Transition";
@@ -9,11 +9,9 @@ export default async function Login({ searchParams }: { searchParams: Promise<{ 
   if (await getActor()) redirect("/");
   const { error } = await searchParams;
   return <main className="login-page">
+    <section className="login-intro" aria-label="Plataforma operativa"><div className="login-intro-label">PLATAFORMA OPERATIVA</div><h2>Control de la operación industrial.</h2><p>Procesos, documentos y seguimiento en un solo lugar para cada empresa.</p><div className="login-company-list"><span className="login-company-rerchar"><strong>RERCHAR</strong><small>Gestión de materiales</small></span><span className="login-company-eyj"><strong>E y J</strong><small>Servicios industriales</small></span></div></section>
     <div className="login-card">
-      <div className="brand-login"><div className="login-brand-pair"><span>R</span><span>EJ</span></div><div className="system-name"><strong>PLATAFORMA OPERATIVA</strong><span>RERCHAR · E y J</span></div></div>
-      <div className="login-icon"><LockKeyhole size={22} /></div>
-      <h1>Ingresar a la operación</h1>
-      <p>Acceso exclusivo para el equipo y los usuarios autorizados.</p>
+      <div className="login-form-heading"><div className="login-form-mark"><span>RERCHAR</span><i/> <span>E y J</span></div><h1>Iniciar sesión</h1><p>Ingrese con su cuenta de la plataforma operativa.</p></div>
       {error && <div className="notice notice-error" role="alert">Correo o contraseña incorrectos. Revise sus datos e intente nuevamente.</div>}
       <form action={loginAction} className="form-stack">
         <label>Correo electrónico<input name="email" type="email" autoComplete="username" required placeholder="nombre@empresa.cl" /></label>

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import "@fontsource-variable/montserrat/index.css";
 import "./globals.css";
+import "./operational-polish.css";
 
 export const metadata: Metadata = {
   title: { default: "RERCHAR Industrial Waste Management System", template: "%s · RERCHAR Industrial Waste Management System" },

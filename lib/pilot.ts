@@ -48,7 +48,7 @@ const serviceSelect = `SELECT s.*, c.name AS client_name, cs.name AS site_name,
   LEFT JOIN users u ON u.id = s.driver_id
   LEFT JOIN external_drivers ed ON ed.id = s.external_driver_id`;
 
-export async function listServices(actor: Actor, term = "", state = "", company = "", type = "") {
+export async function listServices(actor: Actor, term = "", state = "", company = "", type = "", limit = 100) {
   const q = term.trim().slice(0, 100);
   const kind=["retiro","traslado","arriendo","compra","venta","otro"].includes(type)?type:"";
   return db.query<ServiceRow>(
@@ -59,8 +59,8 @@ export async function listServices(actor: Actor, term = "", state = "", company 
      AND ($3::text <> 'conductor' OR s.driver_id = $5::uuid)
      AND ($6::text = '' OR ($6 = 'pendiente' AND s.operating_company IS NULL) OR s.operating_company = $6)
      AND ($7::text = '' OR s.service_type = $7)
-     ORDER BY s.created_at DESC, s.folio DESC LIMIT 100`,
-    [q, state, actor.role, actor.client_id, actor.id, company,kind],
+     ORDER BY s.created_at DESC, s.folio DESC LIMIT $8`,
+    [q, state, actor.role, actor.client_id, actor.id, company,kind,Math.max(1,Math.min(100,Math.trunc(limit)||100))],
   );
 }
 
