@@ -105,7 +105,7 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
     ...(canManage(actor)?[{label:"Cotizaciones aceptadas esperando OC del cliente",count:value(q?.awaiting_order),href:`/cotizaciones?empresa=${selected}`},
       {label:"Cotizaciones con OC esperando solicitud de servicio",count:value(q?.awaiting_service),href:`/cotizaciones?empresa=${selected}`}]:[]),
     {label:"Servicios críticos aún abiertos",count:value(s?.critical),href:`/solicitudes?empresa=${selected}`},
-    ...(canManage(actor)?[{label:"Compras con documentos por validar",count:value(s?.pending_review),href:`/solicitudes?empresa=${selected}&estado=pendiente_revision`}]:[]),
+    ...(canManage(actor)?[{label:"Servicios con documentos por validar",count:value(s?.pending_review),href:`/solicitudes?empresa=${selected}&estado=pendiente_revision`}]:[]),
     ...(canManage(actor)?[{label:"Averías del checklist abiertas",count:value(checklistFaults[0]?.total),href:"/mantenimiento"}]:[]),
     ...(canManage(actor)?[{label:"Viajes incompletos o suspendidos pendientes",count:value(dayIssues[0]?.total),href:`/agenda?empresa=${selected}`}]:[]),
     ...(canManage(actor)?[{label:"Fletes falsos y sobreestadías por decidir",count:extraChargePending,href:`/cobros-extraordinarios?empresa=${selected}`}]:[]),

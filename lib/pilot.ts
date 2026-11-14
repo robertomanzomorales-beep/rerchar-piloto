@@ -220,7 +220,8 @@ export async function createUser(actor: Actor, input: unknown) {
 }
 
 const createSchema = z.object({
-  submission_key: uuid, client_id: uuid, site_id: uuid,
+  submission_key: uuid, client_id: uuid, site_id: z.union([uuid,z.literal("")]),
+  new_site_name:optional(180),new_site_address:optional(250),
   operating_company: z.enum(["rerchar", "e_y_j"]), quote_id: z.union([uuid,z.literal("")]).default(""),
   material_id:z.union([uuid,z.literal("")]).default(""),
   request_category: z.enum(["servicios", "compra", "venta", "otro"]).optional(),
@@ -244,8 +245,30 @@ export async function createService(actor: Actor, input: unknown) {
   }else if(data.rental_from||data.rental_to)reject("Las fechas de arriendo corresponden sólo a ese servicio.");
   if (actor.role === "cliente" && actor.client_id !== data.client_id) reject("No puede crear solicitudes para otro cliente.");
   return transaction(async (tx) => {
-    const [site] = await tx.query("SELECT id FROM client_sites WHERE id = $1 AND client_id = $2 AND deleted_at IS NULL", [data.site_id, data.client_id]);
-    if (!site) reject("El centro no pertenece al cliente seleccionado.");
+    const [prior]=await tx.query<{id:string;created_by:string;client_id:string;operating_company:Company|null;quote_id:string|null;service_type:string;request_category:string}>(
+      "SELECT id,created_by,client_id,operating_company,quote_id,service_type,request_category FROM service_requests WHERE submission_key=$1",[data.submission_key]);
+    if(prior){
+      if(prior.created_by!==actor.id||prior.client_id!==data.client_id||prior.operating_company!==data.operating_company||prior.quote_id!==(data.quote_id||null)||prior.service_type!==data.service_type||prior.request_category!==category)
+        reject("Esta clave ya corresponde a otra solicitud.");
+      return prior.id;
+    }
+    if(Boolean(data.site_id)===Boolean(data.new_site_name))
+      reject("Seleccione un centro existente o indique el nuevo lugar de entrega.");
+    let siteId=data.site_id;
+    if(data.new_site_name){
+      if(!canManage(actor))reject("Solicite a operaciones que registre el centro del cliente.");
+      if(data.new_site_name.length<2)reject("Indique un nombre de centro de al menos dos caracteres.");
+      const [client]=await tx.query("SELECT id FROM clients WHERE id=$1 AND deleted_at IS NULL",[data.client_id]);
+      if(!client)reject("Seleccione un cliente activo.");
+      const [site]=await tx.query<{id:string}>("INSERT INTO client_sites(client_id,name,address) VALUES($1,$2,NULLIF($3,'')) RETURNING id",
+        [data.client_id,data.new_site_name,data.new_site_address]);
+      siteId=site.id;
+      await tx.query("INSERT INTO audit_events(actor_id,action,entity_type,entity_id,next_value) VALUES($1,'create','client_site',$2,$3)",
+        [actor.id,site.id,JSON.stringify({name:data.new_site_name,client_id:data.client_id,source:"solicitud"})]);
+    }else{
+      const [site] = await tx.query("SELECT id FROM client_sites WHERE id = $1 AND client_id = $2 AND deleted_at IS NULL", [siteId, data.client_id]);
+      if (!site) reject("El centro no pertenece al cliente seleccionado.");
+    }
     let materialRows:{id:string;position:number;material_id:string|null;description:string;quantity:string|null;unit:string;unit_price_clp:string;line_note:string|null}[]=[];
     if (data.quote_id) {
       const [quote] = await tx.query<{issuer:Company;client_id:string;status:string;commercial_kind:string;notes:string|null}>(
@@ -271,12 +294,16 @@ export async function createService(actor: Actor, input: unknown) {
        (submission_key, client_id, site_id, operating_company, quote_id, request_category, service_type, waste_type, estimated_kg, origin, destination, priority, notes, created_by, rental_from, rental_to)
        VALUES ($1,$2,$3,$4,NULLIF($5,'')::uuid,$6,$7,$8,$9,$10,$11,$12,NULLIF($13,''),$14,NULLIF($15,'')::date,NULLIF($16,'')::date)
        ON CONFLICT (submission_key) DO NOTHING RETURNING id`,
-      [data.submission_key, data.client_id, data.site_id, data.operating_company, data.quote_id, category, data.service_type,
+      [data.submission_key, data.client_id, siteId, data.operating_company, data.quote_id, category, data.service_type,
         category==="compra"&&materialRows.length?materialRows.map(row=>row.description).join(", ").slice(0,120):data.waste_type,
         data.estimated_kg === "" || data.estimated_kg === undefined ? null : data.estimated_kg,
         data.origin, data.destination, data.priority, data.notes, actor.id,data.rental_from,data.rental_to],
     );
     if (!created) {
+      if(data.new_site_name){
+        await tx.query("DELETE FROM audit_events WHERE entity_type='client_site' AND entity_id=$1",[siteId]);
+        await tx.query("DELETE FROM client_sites WHERE id=$1",[siteId]);
+      }
       const [original] = await tx.query<{ id: string; created_by: string; operating_company:Company|null; quote_id:string|null;service_type:string;request_category:string;rental_from:Date|string|null;rental_to:Date|string|null }>(
         "SELECT id,created_by,operating_company,quote_id,service_type,request_category,rental_from,rental_to FROM service_requests WHERE submission_key=$1",[data.submission_key]);
       const asDay=(value:Date|string|null)=>value instanceof Date?value.toISOString().slice(0,10):value?String(value).slice(0,10):"";
@@ -578,19 +605,21 @@ export async function startService(actor: Actor, id: string) {
 
 export async function handoffService(actor: Actor, id: string) {
   return transaction(async (tx) => {
-    const [service] = await tx.query<{ status: string; driver_id: string | null; request_category:string }>(
-      "SELECT status,driver_id,request_category FROM service_requests WHERE id=$1 AND deleted_at IS NULL FOR UPDATE", [id]);
+    const [service] = await tx.query<{ status: string; driver_id: string | null; request_category:string;service_type:string }>(
+      "SELECT status,driver_id,request_category,service_type FROM service_requests WHERE id=$1 AND deleted_at IS NULL FOR UPDATE", [id]);
     if (!service || !canWorkService(actor, service)) reject("No tiene acceso a este servicio.");
     if (service.status !== "en_ruta") reject("La operación debe estar en ruta para entregar sus documentos.");
-    if (service.request_category!=="compra") reject("Esta entrega documental corresponde a solicitudes de compra.");
+    if (service.service_type==="arriendo") reject("El arriendo se cierra con su respaldo, sin pesaje.");
     const documents = await tx.query<{document_kind:string}>(
-      "SELECT DISTINCT document_kind FROM service_evidence WHERE service_id=$1 AND storage_key IS NOT NULL AND document_kind IN ('guia_traslado','hoja_servicio')",[id]);
+      "SELECT DISTINCT document_kind FROM service_evidence WHERE service_id=$1 AND storage_key IS NOT NULL",[id]);
     const kinds = new Set(documents.map(document => document.document_kind));
-    if (!kinds.has("guia_traslado") || !kinds.has("hoja_servicio"))
+    if (service.request_category==="compra" && (!kinds.has("guia_traslado") || !kinds.has("hoja_servicio")))
       reject("Adjunte Guía de Traslado y Hoja de Servicio antes de finalizar. El ticket es opcional.");
+    if (service.request_category!=="compra" && !kinds.size)
+      reject("Adjunte al menos un documento o fotografía de la operación antes de entregarla a administración.");
     await tx.query("UPDATE service_requests SET status='pendiente_revision',updated_at=now() WHERE id=$1",[id]);
     await event(tx,id,actor,"documentacion_entregada","Operación entregada a revisión administrativa",
-      {status:"en_ruta"},{status:"pendiente_revision",ticket_optional:true});
+      {status:"en_ruta"},{status:"pendiente_revision",ticket_optional:true,request_category:service.request_category});
   });
 }
 
@@ -604,14 +633,14 @@ export async function finishService(actor: Actor, id: string, input: unknown) {
     if (!service || !canWorkService(actor,service)) reject("No tiene acceso a este servicio.");
     if(service.service_type==="arriendo")reject("El arriendo se cierra sin pesaje desde su propio control.");
     const purchase=service.request_category==="compra";
+    if(!canManage(actor)||service.status!=="pendiente_revision")
+      reject("La operación debe ser entregada por terreno y validada por administración antes del pesaje y cierre.");
     if(purchase){
-      if(!canManage(actor)||service.status!=="pendiente_revision") reject("La compra debe ser entregada por el conductor y validada por administración.");
       const documents=await tx.query<{document_kind:string}>(
         "SELECT DISTINCT document_kind FROM service_evidence WHERE service_id=$1 AND storage_key IS NOT NULL AND document_kind IN ('guia_traslado','hoja_servicio')",[id]);
       if(new Set(documents.map(document=>document.document_kind)).size!==2)
         reject("Faltan la Guía de Traslado o la Hoja de Servicio.");
     } else {
-      if(service.status!=="en_ruta") reject("Sólo se puede cerrar un servicio en ruta.");
       const [evidence]=await tx.query("SELECT id FROM service_evidence WHERE service_id=$1 AND storage_key IS NOT NULL LIMIT 1",[id]);
       if(!evidence)reject("Adjunte al menos una fotografía o documento antes de cerrar.");
     }

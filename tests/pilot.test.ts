@@ -47,8 +47,18 @@ test("solicitud, permisos, planificación, checklist, evidencia y cierre", async
     await assert.rejects(() => createService(owner, { ...input, site_id: siteB.id }), PilotError);
     const id = await createService(owner, input);
     assert.equal(await createService(owner, input), id, "la repetición con la misma clave no duplica la solicitud");
-    assert.equal((await listServices(owner)).length, 1);
-    assert.equal((await listServices(planner,"","","rerchar")).length,1);
+    const saleKey=randomUUID();
+    const sale=await createService(planner,{...input,submission_key:saleKey,site_id:"",new_site_name:"Bodega de entrega",
+      new_site_address:"Camino industrial 12",request_category:"venta",service_type:"venta",estimated_kg:""});
+    assert.equal((await getService(planner,sale)).site_name,"Bodega de entrega");
+    assert.equal(await createService(planner,{...input,submission_key:saleKey,site_id:"",new_site_name:"Bodega de entrega",
+      new_site_address:"Camino industrial 12",request_category:"venta",service_type:"venta",estimated_kg:""}),sale,
+      "repetir la venta no duplica el centro de entrega");
+    const [{total:siteCount}]=await db.query<{total:string}>("SELECT count(*)::text AS total FROM client_sites WHERE name='Bodega de entrega'");
+    assert.equal(Number(siteCount),1);
+    await assert.rejects(()=>createService(owner,{...input,submission_key:randomUUID(),site_id:"",new_site_name:"Centro ajeno"}),PilotError);
+    assert.equal((await listServices(owner)).length, 2);
+    assert.equal((await listServices(planner,"","","rerchar")).length,2);
     assert.equal((await listServices(planner,"","","e_y_j")).length,0);
     assert.equal((await listServices(outsider)).length, 0);
     await assert.rejects(() => getService(outsider, id), PilotError);
@@ -94,8 +104,12 @@ test("solicitud, permisos, planificación, checklist, evidencia y cierre", async
     assert.ok(tagged.every(row=>row.created_by===operator.id&&row.created_at));
     await assert.rejects(() => addEvidence(outsider, id, "Imagen del pesaje", new File([new Uint8Array([0xff, 0xd8, 0xff, 0xd9])], "prueba.jpg", { type: "image/jpeg" })), PilotError);
     await addEvidence(operator, id, "Imagen del pesaje", new File([new Uint8Array([0xff, 0xd8, 0xff, 0xd9])], "prueba.jpg", { type: "image/jpeg" }));
-    await assert.rejects(() => finishService(operator, id, { gross_kg: 700, tare_kg: 800 }), PilotError);
-    await finishService(operator, id, { gross_kg: 1400, tare_kg: 800, guide_number: "G-001" });
+    await assert.rejects(() => finishService(operator, id, { gross_kg: 1400, tare_kg: 800 }), PilotError,"el conductor no registra pesajes");
+    await handoffService(operator,id);
+    assert.equal((await getService(planner,id)).status,"pendiente_revision");
+    await assert.rejects(() => handoffService(operator,id),PilotError,"la entrega no se duplica");
+    await assert.rejects(() => finishService(planner, id, { gross_kg: 700, tare_kg: 800 }), PilotError);
+    await finishService(planner, id, { gross_kg: 1400, tare_kg: 800, guide_number: "G-001" });
     const closed = await getService(owner, id);
     assert.equal(closed.status, "completada");
     await assert.rejects(() => cancelService(planner, id, "Cancelación tardía"), PilotError);
@@ -109,7 +123,7 @@ test("solicitud, permisos, planificación, checklist, evidencia y cierre", async
     assert.equal((await reportServices(planner, normalizeReportFilters({ client_id: b.id }))).length, 0);
     assert.equal(normalizeReportFilters({ from: "2026-02-31" }).from, "");
     const [count] = await db.query<{ total: string }>("SELECT count(*)::text AS total FROM service_events WHERE service_id=$1", [id]);
-    assert.equal(Number(count.total), 9);
+    assert.equal(Number(count.total), 10);
     assert.equal((await db.query("SELECT id FROM service_requests WHERE submission_key=$1", [submissionKey])).length, 1);
 
     const purchase = await createService(planner,{...input,submission_key:randomUUID(),request_category:"compra",service_type:"compra",estimated_kg:""});

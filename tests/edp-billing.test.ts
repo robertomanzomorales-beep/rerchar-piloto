@@ -64,7 +64,9 @@ test("EDP aprobado comparte folio de factura externa y cobranza sin duplicar sal
   await edp.saveStatementClientOrder(admin,first,{client_order_reference:"OC-01",client_order_on:"2026-10-12"});
   assert.equal((await eyjEdpInvoiceDashboard()).ready_to_invoice,"3");
   await assert.rejects(()=>edp.linkStatementInvoice(admin,first,{...invoice,total_clp:"120000"}),/Explique la diferencia/);
-  await assert.rejects(()=>edp.linkStatementInvoice(admin,first,{...invoice,issued_on:"2026-11-01",due_on:"2026-11-15"}),/futura/);
+  const futureIssued=new Date(Date.now()+30*24*60*60*1000).toISOString().slice(0,10);
+  const futureDue=new Date(Date.now()+45*24*60*60*1000).toISOString().slice(0,10);
+  await assert.rejects(()=>edp.linkStatementInvoice(admin,first,{...invoice,issued_on:futureIssued,due_on:futureDue}),/futura/);
   await edp.linkStatementInvoice(admin,first,invoice);
   await assert.rejects(()=>edp.saveStatementClientOrder(admin,first,{client_order_reference:"OC-cambiada",client_order_on:"2026-10-12"}),/ya facturado/);
   assert.equal((await receivables.listReceivables(admin,"e_y_j")).length,1);
