@@ -48,10 +48,11 @@ const serviceSelect = `SELECT s.*, c.name AS client_name, cs.name AS site_name,
   LEFT JOIN users u ON u.id = s.driver_id
   LEFT JOIN external_drivers ed ON ed.id = s.external_driver_id`;
 
-export async function listServices(actor: Actor, term = "", state = "", company = "", type = "", limit = 100, closedMonth = "") {
+export async function listServices(actor: Actor, term = "", state = "", company = "", type = "", limit = 100, closedMonth = "", priority = "", offset = 0) {
   const q = term.trim().slice(0, 100);
   const kind=["retiro","traslado","arriendo","compra","venta","otro"].includes(type)?type:"";
   const month=state==="completada"&&/^\d{4}-(0[1-9]|1[0-2])$/.test(closedMonth)?`${closedMonth}-01`:null;
+  const urgency=["normal","alta","critica"].includes(priority)?priority:"";
   return db.query<ServiceRow>(
     `${serviceSelect} WHERE s.deleted_at IS NULL
      AND ($1::text = '' OR c.name ILIKE '%' || $1 || '%' OR s.waste_type ILIKE '%' || $1 || '%' OR s.folio::text = $1)
@@ -62,8 +63,10 @@ export async function listServices(actor: Actor, term = "", state = "", company 
      AND ($7::text = '' OR s.service_type = $7)
      AND ($9::date IS NULL OR (s.closed_at >= ($9::date::timestamp AT TIME ZONE 'America/Santiago')
        AND s.closed_at < (($9::date + interval '1 month') AT TIME ZONE 'America/Santiago')))
-     ORDER BY s.created_at DESC, s.folio DESC LIMIT $8`,
-    [q, state, actor.role, actor.client_id, actor.id, company,kind,Math.max(1,Math.min(100,Math.trunc(limit)||100)),month],
+     AND ($10::text = '' OR s.priority = $10)
+     ORDER BY s.created_at DESC, s.folio DESC LIMIT $8 OFFSET $11`,
+    [q, state, actor.role, actor.client_id, actor.id, company,kind,Math.max(1,Math.min(100,Math.trunc(limit)||100)),month,urgency,
+      Number.isSafeInteger(offset)?Math.max(0,Math.min(500_000,offset)):0],
   );
 }
 

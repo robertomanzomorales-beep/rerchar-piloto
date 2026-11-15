@@ -125,7 +125,7 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
     ...(showQuotes?[{label:"Cotizaciones enviadas con vigencia vencida",count:value(q?.expired),href:`/cotizaciones?empresa=${selected}&vista=vencidas`,urgent:true}]:[]),
     ...(canManage(actor)?[{label:"Cotizaciones aceptadas esperando OC o excepción",count:value(q?.awaiting_order),href:`/cotizaciones?empresa=${selected}&vista=sin_oc`},
       {label:"Cotizaciones con OC o excepción esperando solicitud",count:value(q?.awaiting_service),href:`/cotizaciones?empresa=${selected}&vista=sin_servicio`}]:[]),
-    {label:"Servicios críticos aún abiertos",count:value(s?.critical),href:`/solicitudes?empresa=${selected}`,urgent:true},
+    {label:"Servicios críticos aún abiertos",count:value(s?.critical),href:`/solicitudes?empresa=${selected}&estado=abiertas&prioridad=critica`,urgent:true},
     ...(canManage(actor)?[{label:"Servicios con documentos por validar",count:value(s?.pending_review),href:`/solicitudes?empresa=${selected}&estado=pendiente_revision`}]:[]),
     ...(canManage(actor)?[{label:"Averías del checklist abiertas",count:value(checklistFaults[0]?.total),href:"/mantenimiento"}]:[]),
     ...(canManage(actor)?[{label:"Viajes incompletos o suspendidos pendientes",count:value(dayIssues[0]?.total),href:`/agenda?empresa=${selected}`}]:[]),

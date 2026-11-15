@@ -126,4 +126,23 @@ test("RERCHAR y E y J mantienen servicios, cotizaciones y facturas en su empresa
   const partial=(await calendar.getBillingCycle(actor,partialCycle)).services[0];
   assert.equal(partial.partial_period,true);
   assert.equal(partial.total_clp,null,"el calendario no suma el arriendo entero en un período parcial");
+
+  const criticalRercharId=await pilot.createService(actor,{...input,submission_key:randomUUID(),quote_id:"",operating_company:"rerchar",priority:"critica"});
+  const criticalEyjId=await pilot.createService(actor,{...input,submission_key:randomUUID(),quote_id:"",operating_company:"e_y_j",priority:"critica"});
+  assert.deepEqual((await pilot.listServices(actor,"","abiertas","e_y_j","",100,"","critica")).map(row=>row.id),[criticalEyjId],
+    "la alerta crítica de E y J no muestra RERCHAR ni servicios normales");
+  await db.query("UPDATE service_requests SET status='completada',closed_at=now() WHERE id=$1",[criticalEyjId]);
+  assert.equal((await pilot.listServices(actor,"","abiertas","e_y_j","",100,"","critica")).length,0,
+    "la alerta crítica se despeja al cerrar el servicio");
+  await db.query(`INSERT INTO service_requests(submission_key,client_id,site_id,operating_company,service_type,waste_type,origin,destination,priority,created_by)
+    SELECT gen_random_uuid(),$1,$2,'rerchar','retiro','Material','Faena','Patio','critica',$3
+    FROM generate_series(1,100)`,[client.id,site.id,actor.id]);
+  const first=await pilot.listServices(actor,"","abiertas","rerchar","",51,"","critica",0);
+  const second=await pilot.listServices(actor,"","abiertas","rerchar","",51,"","critica",50);
+  const third=await pilot.listServices(actor,"","abiertas","rerchar","",51,"","critica",100);
+  assert.equal(first.length,51,"la primera página detecta que hay más resultados");
+  assert.equal(second.length,51,"la segunda página sigue mostrando servicios críticos");
+  assert.equal(third.length,1,"el último folio no desaparece por el límite de cien registros");
+  assert.equal(new Set([...first.slice(0,50),...second.slice(0,50),...third].map(row=>row.id)).size,101);
+  assert.ok(third.some(row=>row.id===criticalRercharId));
 });
