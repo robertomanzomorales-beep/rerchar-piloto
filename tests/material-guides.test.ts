@@ -24,7 +24,8 @@ test("Control de Guía registra una venta real con varios materiales y conserva 
   const actor:Actor={id:admin.id,name:"Operaciones",email:"guias@demo.cl",role:"admin",client_id:null};
   const customer:Actor={id:viewer.id,name:"Cliente",email:"cliente@demo.cl",role:"cliente",client_id:client.id};
   const catalog=await stock.listMaterialCatalog(actor);
-  assert.equal(catalog.length,82,"catálogo unido de las dos planillas");
+  assert.equal(catalog.length,83,"catálogo unido con el material faltante de Entrada de material 2026");
+  assert.ok(catalog.some(m=>m.name==="CABLE DE COBRE CON GOMA EN DESUSO"));
   const iron=catalog.find(m=>m.name==="CHATARRA DE FIERRO MIXTO")!;
   const aluminum=catalog.find(m=>m.name==="CHATARRA DE ALUMINIO")!;
   assert.ok(iron&&aluminum);

@@ -2,17 +2,19 @@ import {getActor} from "@/lib/auth";
 import {db} from "@/lib/db";
 import {chileCsvDay} from "@/lib/chile-csv";
 import {getBillingCycle,PaymentCalendarError} from "@/lib/payment-calendar";
+import {buildOperationalWorkbook,type Cell} from "@/lib/material-export";
 
 const csv=(value:unknown)=>{
   const raw=String(value??"");
   const safe=/^[=+\-@\t\r]/.test(raw)?`'${raw}`:raw;
   return `"${safe.replaceAll('"','""')}"`;
 };
+const day=(value:Date|string)=>value instanceof Date?value.toISOString().slice(0,10):String(value).slice(0,10);
 type Consolidated={id:string;folio:string;guide_numbers:string|null;origin_tickets:string|null;destination_tickets:string|null;
   invoice_kg:string|null;truck_plate:string|null;driver_name:string|null;daily_outcome:string|null;gross_kg:string|null;
   tare_kg:string|null;scheduled_for:Date|string|null;work_days:string|null;service_sheet:string|null;eyj_guide:string|null;
   client_guide:string|null;sidrep:string|null;order_reference:string|null;quote_reference:string|null};
-export async function GET(_request:Request,{params}:{params:Promise<{id:string}>}){
+export async function GET(request:Request,{params}:{params:Promise<{id:string}>}){
   const actor=await getActor();
   if(!actor)return new Response("Sesión requerida",{status:401});
   if(actor.role!=="admin"&&actor.role!=="operaciones")return new Response("Sin permiso",{status:403});
@@ -46,22 +48,31 @@ export async function GET(_request:Request,{params}:{params:Promise<{id:string}>
     "Guía servicio","Guías control","Tickets origen","Tickets destino",
     "Bruto kg","Tara kg","Neto kg","Kg facturable de guías","Conductor","Patente","Resultado diario",
     "Cantidad valorizada","Unidad","Unitario CLP","Neto CLP referencial","Factura vinculada","Control"];
-  const lines=[header.map(csv).join(";")];
+  const rows:Cell[][]=[];
   for(const service of services){
     const detail=byId.get(service.id);
     const flags=[result.cycle.statement_type==="residuos"&&!service.guide_number&&!detail?.guide_numbers&&!detail?.eyj_guide?"Guía pendiente":"",
       result.cycle.statement_type==="residuos"&&!detail?.service_sheet?"Hoja de servicio sin registrar":"",
       service.partial_period?"Revisar prorrateo":"",service.total_clp==null?"Sin valorización":"",
       result.cycle.statement_type==="residuos"&&!service.weight_kg?"Sin pesaje neto":""].filter(Boolean).join(" · ");
-    lines.push([result.cycle.client_name,result.cycle.period_from,result.cycle.period_to,result.cycle.statement_type,
+    rows.push([result.cycle.client_name,result.cycle.period_from,result.cycle.period_to,result.cycle.statement_type,
       result.cycle.statement_number,service.folio,service.status,service.closed_on,service.service_type,service.waste_type,
       detail?.scheduled_for,detail?.work_days,detail?.quote_reference,detail?.order_reference,detail?.service_sheet,
       detail?.eyj_guide,detail?.client_guide,detail?.sidrep,
       service.guide_number,detail?.guide_numbers,detail?.origin_tickets,detail?.destination_tickets,
       detail?.gross_kg,detail?.tare_kg,service.weight_kg,detail?.invoice_kg,detail?.driver_name,detail?.truck_plate,
       detail?.daily_outcome,service.quantity,service.tariff_unit,service.unit_price_clp,service.total_clp,
-      service.invoice_number,flags].map(value=>csv(value instanceof Date?value.toISOString().slice(0,10):value)).join(";"));
+      service.invoice_number,flags].map(value=>value instanceof Date?value.toISOString().slice(0,10):value??null));
   }
+  if(new URL(request.url).searchParams.get("formato")==="xlsx"){
+    const month=day(result.cycle.period_from).slice(0,7);
+    const title=`CONSOLIDADO EDP · E Y J · ${result.cycle.client_name} · ${day(result.cycle.period_from)} AL ${day(result.cycle.period_to)}`;
+    return new Response(new Uint8Array(buildOperationalWorkbook(header,rows,month,title)),{headers:{
+      "Content-Type":"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "Content-Disposition":`attachment; filename="consolidado-edp-${chileCsvDay()}.xlsx"`,
+      "Cache-Control":"private, no-store","X-Content-Type-Options":"nosniff"}});
+  }
+  const lines=[header.map(csv).join(";"),...rows.map(row=>row.map(csv).join(";"))];
   return new Response(`\uFEFF${lines.join("\r\n")}\r\n`,{headers:{"Content-Type":"text/csv; charset=utf-8",
     "Content-Disposition":`attachment; filename="consolidado-edp-${chileCsvDay()}.csv"`,
     "Cache-Control":"private, no-store","X-Content-Type-Options":"nosniff"}});
