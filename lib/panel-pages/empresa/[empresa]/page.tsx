@@ -169,8 +169,8 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
   const processLinks=[
     ...(showQuotes?[{label:"Cotizaciones",href:`/cotizaciones?empresa=${selected}`}]:[]),
     {label:selected==="rerchar"?"Solicitudes y planificación":"Solicitudes y despacho",href:`/solicitudes?empresa=${selected}`},
-    ...(selected==="rerchar"&&canManage(actor)?[{label:"Control de guía y salida de material",href:"/control-guias"}]:[]),
-    ...(selected==="rerchar"&&canManage(actor)?[{label:"Recepción y stock de material",href:"/ingresos"}]:[]),
+    ...(selected==="rerchar"&&canManage(actor)?[{label:"Ingreso de material",href:"/ingresos"}]:[]),
+    ...(selected==="rerchar"&&canManage(actor)?[{label:"Guías valorizadas de recepción",href:"/seguimiento-guias"},{label:"Control de Guía y salida",href:"/control-guias"}]:[]),
     ...(selected==="e_y_j"&&canManage(actor)?[{label:"Calendario de cortes y envíos",href:"/estados-pago/calendario"},{label:"Estados de pago de servicios y arriendos",href:"/estados-pago"}]:[]),
     ...(actor.role==="admin"?[{label:"Facturas emitidas y cobros",href:`/finanzas?empresa=${selected}`}]:[]),
   ];
