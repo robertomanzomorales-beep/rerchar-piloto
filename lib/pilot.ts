@@ -115,7 +115,9 @@ export function normalizeReportFilters(input: Partial<Record<keyof ReportFilters
 export async function reportServices(actor: Actor, filters: ReportFilters) {
   return db.query<ReportService>(
     `SELECT s.id,s.folio,s.operating_company,c.name AS client_name,cs.name AS site_name,s.service_type,s.waste_type,
-       s.status,s.origin,s.destination,s.scheduled_for,s.created_at,a.label AS asset_label,COALESCE(u.name,ed.name) AS driver_name,
+       s.status,s.origin,s.destination,s.scheduled_for,s.created_at,
+       CASE WHEN a.plate IS NOT NULL AND trim(a.plate)<>'' THEN a.plate || ' · ' || a.label ELSE a.label END AS asset_label,
+       COALESCE(u.name,ed.name) AS driver_name,
        s.estimated_kg,s.gross_kg,s.tare_kg
      FROM service_requests s JOIN clients c ON c.id=s.client_id JOIN client_sites cs ON cs.id=s.site_id
      LEFT JOIN assets a ON a.id=s.assigned_asset_id LEFT JOIN users u ON u.id=s.driver_id
