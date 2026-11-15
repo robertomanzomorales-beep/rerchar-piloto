@@ -1,0 +1,92 @@
+/* Process state and action hierarchy shared by the two company workspaces. */
+@media screen {
+  .app-shell .quote-steps {
+    margin: 16px 0 0; border: 1px solid var(--company-border);
+    border-radius: 5px 5px 0 0; background: #fff; overflow: hidden;
+  }
+  .app-shell .quote-steps ol {
+    display: grid; grid-template-columns: repeat(3,minmax(0,1fr));
+    margin: 0; padding: 0; list-style: none;
+  }
+  .app-shell .quote-step { min-width: 0; border-right: 1px solid #e4ebed; }
+  .app-shell .quote-step:last-child { border-right: 0; }
+  .app-shell .quote-step > :is(a,span) {
+    display: flex; align-items: center; gap: 12px; min-height: 64px;
+    padding: 12px 17px; color: #657980; font-size: 12px; line-height: 1.3;
+  }
+  .app-shell .quote-step a:hover { background: #f7faf9; color: var(--company-strong); }
+  .app-shell .quote-step a:focus-visible { outline: 2px solid var(--company-accent); outline-offset: -3px; }
+  .app-shell .quote-step--current { background: var(--company-soft); box-shadow: inset 0 3px var(--company-accent); }
+  .app-shell .quote-step--complete { background: #fafcfa; }
+  .app-shell .quote-step-number {
+    flex: none; display: grid; place-items: center; width: 30px; height: 30px;
+    border: 1px solid #d6e2e3; border-radius: 3px; color: #7f9196;
+    font-size: 10px; font-weight: 700; font-variant-numeric: tabular-nums;
+  }
+  .app-shell .quote-step--current .quote-step-number { border-color: var(--company-accent); background: var(--company-accent); color: #fff; }
+  .app-shell .quote-step--complete .quote-step-number { border-color: var(--company-border); color: var(--company-strong); }
+  .app-shell .quote-step-copy { display: grid; gap: 3px; min-width: 0; }
+  .app-shell .quote-step-copy strong { color: inherit; font-size: 12px; font-weight: 620; letter-spacing: -.01em; }
+  .app-shell .quote-step--current .quote-step-copy strong { color: var(--company-strong); font-weight: 680; }
+  .app-shell .quote-step-copy small { color: #86969a; font-size: 10px; font-weight: 520; }
+  .app-shell .quote-step--current .quote-step-copy small { color: var(--company-accent); font-weight: 650; }
+  .app-shell .quote-stage-summary {
+    display: grid; grid-template-columns: 108px minmax(0,1fr) auto; align-items: center;
+    gap: 18px; margin: 0 0 18px; padding: 13px 17px;
+    border: 1px solid var(--company-border); border-top: 0; border-radius: 0 0 5px 5px;
+    background: #f9fbfa;
+  }
+  .app-shell .quote-stage-summary > span { color: var(--company-accent); font-size: 10px; font-weight: 700; letter-spacing: .09em; font-variant-numeric: tabular-nums; }
+  .app-shell .quote-stage-summary strong { display: block; color: var(--company-strong); font-size: 12px; font-weight: 670; }
+  .app-shell .quote-stage-summary p { margin: 3px 0 0; color: #65777e; font-size: 11px; line-height: 1.45; }
+  .app-shell .quote-stage-summary a { color: var(--company-strong); font-size: 11px; font-weight: 660; white-space: nowrap; text-decoration: underline; text-underline-offset: 4px; }
+
+  .app-shell .service-guidance {
+    display: grid; grid-template-columns: 120px minmax(125px,.6fr) minmax(220px,1.8fr) auto;
+    align-items: center; gap: 15px; min-height: 70px; margin-bottom: 18px;
+    padding: 13px 17px; border: 1px solid var(--company-border);
+    border-left: 3px solid var(--company-accent); background: #fff; box-shadow: none;
+  }
+  .app-shell .service-guidance .service-guidance-label { color: var(--company-accent); font-size: 9px; font-weight: 700; letter-spacing: .09em; line-height: 1.4; }
+  .app-shell .service-guidance strong { min-width: 0; color: var(--company-strong); font-size: 13px; font-weight: 680; white-space: normal; }
+  .app-shell .service-guidance > span:not(.service-guidance-label) { color: #5d7179; font-size: 11px; line-height: 1.45; }
+  .app-shell .service-guidance a { margin: 0; border: 0; font-size: 11px; text-decoration: underline; text-underline-offset: 4px; }
+  .app-shell :is(#arriendo,#cierre-arriendo,#checklist) { scroll-margin-top: 20px; }
+  .app-shell .progress-list { margin-top: 17px; }
+  .app-shell .progress-step { min-height: 43px; padding-bottom: 16px; color: #718389; font-weight: 550; }
+  .app-shell .progress-step:not(:last-child)::before { top: 25px; height: calc(100% - 25px); background: var(--company-border); }
+  .app-shell .progress-step.done::before { background: var(--company-accent); }
+  .app-shell .progress-step.current { color: var(--company-strong); }
+  .app-shell .progress-state { margin-left: auto; color: var(--company-accent); font-size: 9px; font-weight: 690; letter-spacing: .03em; }
+  .app-shell .progress-cancelled { margin: 5px 0 0; padding: 10px 0 0; border-top: 1px solid #e5ebed; color: #8f5948; font-size: 11px; }
+
+  .login-page { background: linear-gradient(90deg,#ebf2ed 0 53%,#f6f8f9 53% 100%); }
+  .login-company-list > div { border-color: #d5e1dc; background: #fff; }
+  .login-company-list .login-company-eyj { border-color: #d1dfe8; background: #fff; }
+  .login-card { box-shadow: 0 16px 45px #213b3212; }
+}
+@media screen and (max-width: 1100px) {
+  .app-shell .service-guidance { grid-template-columns: 1fr auto; gap: 4px 12px; }
+  .app-shell .service-guidance .service-guidance-label,
+  .app-shell .service-guidance strong,
+  .app-shell .service-guidance > span:not(.service-guidance-label) { grid-column: 1; }
+  .app-shell .service-guidance a { grid-column: 2; grid-row: 1 / 4; margin-left: 10px; }
+}
+@media screen and (max-width: 720px) {
+  .app-shell .quote-stage-summary { grid-template-columns: 1fr; gap: 5px; padding: 12px 14px; }
+  .app-shell .quote-stage-summary a { margin-top: 5px; }
+  .app-shell .quote-step > :is(a,span) { gap: 7px; padding: 11px 9px; }
+  .app-shell .quote-step-copy strong { font-size: 11px; }
+  .app-shell .quote-step-copy small { font-size: 9px; }
+  .app-shell .quote-step-number { width: 25px; height: 25px; }
+  .app-shell .service-guidance { grid-template-columns: 1fr; gap: 4px; }
+  .app-shell .service-guidance a { grid-column: 1; grid-row: auto; margin: 4px 0 0; }
+  .login-page { background: #edf4ef; }
+}
+@media screen and (max-width: 520px) {
+  .app-shell .quote-steps ol { grid-template-columns: 1fr; }
+  .app-shell .quote-step { border-right: 0; border-bottom: 1px solid #e4ebed; }
+  .app-shell .quote-step:last-child { border-bottom: 0; }
+  .app-shell .quote-step > :is(a,span) { min-height: 43px; gap: 10px; padding: 8px 13px; }
+  .app-shell .quote-step-copy { display: flex; align-items: baseline; gap: 8px; }
+}

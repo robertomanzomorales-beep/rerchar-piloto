@@ -10,6 +10,7 @@ import {QuoteDates} from "@/components/QuoteDates";
 import {moduleReady} from "@/lib/schema-readiness";
 import ModuleUnavailable from "@/components/ModuleUnavailable";
 import QuoteIssuerPresentation from "@/components/QuoteIssuerPresentation";
+import {QuoteSteps} from "@/components/QuoteSteps";
 
 function today(){return new Intl.DateTimeFormat("sv-SE",{timeZone:"America/Santiago",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());}
 export default async function NewQuote({searchParams}:{searchParams:Promise<{cliente?:string;error?:string;empresa?:string;tipo?:string}>}){
@@ -20,7 +21,7 @@ export default async function NewQuote({searchParams}:{searchParams:Promise<{cli
   const selected=clients.some(client=>client.id===query.cliente)?query.cliente:"";
   const start=today();
   return <><Link href="/cotizaciones" className="back-link">← Cotizaciones</Link><div className="page-title-row"><div><div className="eyebrow">PROPUESTA COMERCIAL</div><h1>Nueva cotización</h1><p className="page-intro">Inicie el borrador con el cliente y alcance. Al guardarlo se asigna el número definitivo y podrá añadir servicios en la misma cotización, revisar ruta y costos, y fijar los precios antes de entregarla.</p></div></div>
-    <Notice error={query.error}/><div className="quote-steps" aria-label="Etapas de la cotización"><span className="current"><b>01</b><span>Cliente y alcance</span></span><span><b>02</b><span>Conceptos y costos</span></span><span><b>03</b><span>Revisión y entrega</span></span></div><section className="section-card"><form action={createQuoteAction} className="form-grid"><input type="hidden" name="submission_key" value={randomUUID()}/>
+    <Notice error={query.error}/><QuoteSteps current={1}/><div className="quote-stage-summary"><span>PASO 01 / 03</span><div><strong>Identifique al cliente y el alcance</strong><p>Guarde el borrador para asignar el folio. Luego agregará conceptos, revisará costos y preparará la entrega.</p></div></div><section className="section-card"><form action={createQuoteAction} className="form-grid"><input type="hidden" name="submission_key" value={randomUUID()}/>
       <div className="form-section-title">Identificación de la propuesta</div>
       <label>Cliente<select name="client_id" defaultValue={selected} required><option value="">Seleccione un cliente</option>{clients.map(c=><option key={c.id} value={c.id}>{c.name}{c.email?` · ${c.email}`:""}</option>)}</select></label>
       <QuoteIssuerPresentation company={company} initialPurchase={query.tipo==="compra"}/>
