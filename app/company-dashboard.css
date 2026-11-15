@@ -10,7 +10,7 @@
   }
   .app-shell .company-dashboard-page > .back-link { display: inline-flex; margin: 0 0 14px; color: var(--dashboard-muted); font-size: 11px; }
   .app-shell .company-dashboard-page .company-dashboard-heading {
-    position: relative; display: flex; align-items: center; min-height: 116px; gap: 22px;
+    position: relative; display: flex; flex-wrap: nowrap; align-items: center; min-height: 116px; gap: 22px;
     margin: 0 0 19px; padding: 19px 24px; overflow: hidden;
     border: 1px solid var(--dashboard-rule); border-radius: 4px; background: #fff; box-shadow: none;
   }
@@ -37,24 +37,26 @@
   .app-shell .company-dashboard-page .company-priority-note a { margin-left: auto; color: #855a36; font-weight: 670; white-space: nowrap; text-decoration: underline; text-underline-offset: 3px; }
   .app-shell .company-dashboard-page .company-section-caption { display: flex; align-items: baseline; gap: 13px; margin: 0 0 9px; }
   .app-shell .company-dashboard-page .company-section-caption span { color: var(--company-strong); font-size: 10px; font-weight: 730; letter-spacing: .075em; }
-  .app-shell .company-dashboard-page .company-section-caption p { margin: 0; color: var(--dashboard-muted); font-size: 11px; }
+  .app-shell .company-dashboard-page .company-section-caption p { margin: 0; color: var(--dashboard-muted); font-size: 12px; }
   .app-shell .company-dashboard-page .company-metric-grid { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 0; margin: 0 0 16px; overflow: hidden; border: 1px solid var(--dashboard-rule); border-radius: 4px; background: #fff; }
   .app-shell .company-dashboard-page .company-metric { display: grid; align-content: space-between; gap: 7px; min-width: 0; min-height: 104px; padding: 17px 20px 16px; border: 0; border-right: 1px solid var(--dashboard-rule); border-radius: 0; background: transparent; box-shadow: none; transition: background-color .18s; }
   .app-shell .company-dashboard-page .company-metric:last-child { border-right: 0; }
   .app-shell .company-dashboard-page .company-metric:hover { border: 0; border-right: 1px solid var(--dashboard-rule); background: color-mix(in srgb,var(--company-soft) 45%,white); }
-  .app-shell .company-dashboard-page .company-metric span { color: var(--dashboard-muted); font-size: 11px; font-weight: 570; }
+  .app-shell .company-dashboard-page .company-metric span { color: var(--dashboard-muted); font-size: 12px; font-weight: 570; line-height: 1.3; }
   .app-shell .company-dashboard-page .company-metric strong { color: var(--dashboard-ink); font-size: 29px; font-weight: 650; line-height: 1; letter-spacing: -.045em; font-variant-numeric: tabular-nums; }
-  .app-shell .company-dashboard-page .company-metric small { color: #75898e; font-size: 10px; line-height: 1.35; }
+  .app-shell .company-dashboard-page .company-metric small { color: #75898e; font-size: 11px; line-height: 1.35; }
+  .app-shell .company-dashboard-page .company-metric:focus-visible { position: relative; z-index: 1; outline: 2px solid var(--company-accent); outline-offset: -2px; }
   .app-shell .company-dashboard-page .company-analytics { display: grid; grid-template-columns: minmax(0,1.14fr) minmax(0,.86fr); gap: 14px; margin: 0 0 16px; }
   .app-shell .company-dashboard-page .company-chart-card { min-width: 0; min-height: 344px; margin: 0; padding: 20px 22px 16px; border: 1px solid var(--dashboard-rule); border-radius: 4px; background: #fff; box-shadow: none; }
+  .app-shell .company-dashboard-page .company-chart-card--empty { min-height: 210px; }
   .app-shell .company-dashboard-page .company-chart-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
   .app-shell .company-dashboard-page .company-chart-head .eyebrow { color: var(--company-accent); font-size: 9px; font-weight: 720; letter-spacing: .09em; }
   .app-shell .company-dashboard-page .company-chart-head h2 { margin: 5px 0 3px; color: var(--dashboard-ink); font-size: 17px; font-weight: 665; line-height: 1.2; letter-spacing: -.02em; }
-  .app-shell .company-dashboard-page .company-chart-head p { margin: 0; color: var(--dashboard-muted); font-size: 11px; line-height: 1.4; }
+  .app-shell .company-dashboard-page .company-chart-head p { margin: 0; color: var(--dashboard-muted); font-size: 12px; line-height: 1.4; }
   .app-shell .company-dashboard-page .company-chart-total { display: grid; justify-items: end; gap: 3px; flex: none; }
   .app-shell .company-dashboard-page .company-chart-total strong { color: var(--dashboard-ink); font-size: 23px; font-weight: 660; line-height: 1; letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
   .app-shell .company-dashboard-page .company-chart-total span { color: var(--dashboard-muted); font-size: 10px; }
-  .app-shell .company-dashboard-page .company-chart-legend { display: flex; flex-wrap: wrap; gap: 19px; margin: 18px 0 0; color: var(--dashboard-muted); font-size: 10px; }
+  .app-shell .company-dashboard-page .company-chart-legend { display: flex; flex-wrap: wrap; gap: 19px; margin: 18px 0 0; color: var(--dashboard-muted); font-size: 11px; }
   .app-shell .company-dashboard-page .company-chart-legend span { display: inline-flex; align-items: center; gap: 6px; }
   .app-shell .company-dashboard-page .company-chart-legend i { display: block; width: 17px; height: 0; border-top: 2px solid; }
   .app-shell .company-dashboard-page .company-chart-legend .legend-opened { border-color: var(--company-accent); }
@@ -73,7 +75,14 @@
   .app-shell .company-dashboard-page .activity-point { fill: #fff; stroke-width: 2.2; }
   .app-shell .company-dashboard-page .activity-point--opened { stroke: var(--company-accent); }
   .app-shell .company-dashboard-page .activity-point--closed { stroke: var(--dashboard-neutral); }
-  .app-shell .company-dashboard-page .activity-month:hover .activity-point { r: 5; }
+  .app-shell .company-dashboard-page .activity-observation-hit { fill: transparent; cursor: crosshair; }
+  .app-shell .company-dashboard-page .activity-observation-guide { stroke: var(--company-accent); stroke-width: 1; stroke-dasharray: 3 4; opacity: 0; }
+  .app-shell .company-dashboard-page .activity-observation-tip { opacity: 0; pointer-events: none; transition: opacity .15s ease; }
+  .app-shell .company-dashboard-page .activity-observation-tip rect { fill: #263b41; }
+  .app-shell .company-dashboard-page .activity-observation-tip text { fill: #e8f1ee; font: 10px Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif; }
+  .app-shell .company-dashboard-page .activity-observation-tip .activity-tip-month { fill: #fff; font-weight: 700; }
+  .app-shell .company-dashboard-page .activity-observation:hover :is(.activity-observation-guide,.activity-observation-tip) { opacity: 1; }
+  .app-shell .company-dashboard-page .activity-observation:hover .activity-point { stroke-width: 3; }
   .app-shell .company-dashboard-page .company-chart-figure figcaption { margin: -1px 0 0 7%; color: #829297; font-size: 10px; }
   .app-shell .company-dashboard-page .company-composition { display: flex; width: 100%; height: 9px; margin: 29px 0 9px; overflow: hidden; border-radius: 2px; background: #e9efef; }
   .app-shell .company-dashboard-page .company-composition-segment { display: block; height: 100%; border-right: 2px solid #fff; }
@@ -87,14 +96,15 @@
   .app-shell .company-dashboard-page :is(.company-composition-segment,.company-status-dot,.company-status-meter i).status-completada { background: var(--company-accent); }
   .app-shell .company-dashboard-page :is(.company-composition-segment,.company-status-dot,.company-status-meter i).status-cancelada { background: #a5b0b3; }
   .app-shell .company-dashboard-page .company-status-chart { display: grid; gap: 0; margin: 0; }
-  .app-shell .company-dashboard-page .company-status-row { display: grid; grid-template-columns: 8px minmax(0,1fr) minmax(40px,.7fr) 28px 37px; align-items: center; gap: 10px; min-height: 32px; padding: 4px 2px; border-bottom: 1px solid #ecf0f0; color: var(--dashboard-ink); font-size: 10px; text-decoration: none; }
+  .app-shell .company-dashboard-page .company-status-row { display: grid; grid-template-columns: 8px minmax(0,1fr) minmax(40px,.7fr) 28px 37px; align-items: center; gap: 10px; min-height: 34px; padding: 5px 2px; border-bottom: 1px solid #ecf0f0; color: var(--dashboard-ink); font-size: 11px; text-decoration: none; }
   .app-shell .company-dashboard-page .company-status-row:hover { background: #f7faf9; color: var(--company-strong); }
+  .app-shell .company-dashboard-page .company-status-row:focus-visible { outline: 2px solid var(--company-accent); outline-offset: -2px; }
   .app-shell .company-dashboard-page .company-status-dot { display: block; width: 8px; height: 8px; border-radius: 1px; }
   .app-shell .company-dashboard-page .company-status-meter { display: block; height: 4px; background: #edf1f1; }
   .app-shell .company-dashboard-page .company-status-meter i { display: block; height: 100%; }
   .app-shell .company-dashboard-page .company-status-row strong { color: var(--dashboard-ink); font-size: 11px; font-weight: 660; text-align: right; font-variant-numeric: tabular-nums; }
   .app-shell .company-dashboard-page .company-status-row small { color: var(--dashboard-muted); font-size: 10px; text-align: right; font-variant-numeric: tabular-nums; }
-  .app-shell .company-dashboard-page .company-chart-empty { display: grid; align-content: center; gap: 4px; min-height: 210px; border: 0; color: var(--dashboard-muted); font-size: 11px; }
+  .app-shell .company-dashboard-page .company-chart-empty { display: grid; align-content: center; gap: 4px; min-height: 108px; margin-top: 10px; border: 0; color: var(--dashboard-muted); font-size: 11px; }
   .app-shell .company-dashboard-page .company-chart-empty strong { color: var(--dashboard-ink); font-size: 13px; font-weight: 630; }
   .app-shell .company-dashboard-page .company-chart-empty a { width: max-content; margin-top: 6px; color: var(--company-accent); font-weight: 670; text-decoration: underline; text-underline-offset: 3px; }
   .app-shell .company-dashboard-page .company-alerts { margin: 0 0 20px; padding: 20px 22px 17px; border: 1px solid var(--dashboard-rule); border-radius: 4px; background: #fff; box-shadow: none; scroll-margin-top: 16px; }
@@ -107,7 +117,8 @@
   .app-shell .company-dashboard-page .company-alert:hover { background: #f8faf9; color: var(--company-strong); }
   .app-shell .company-dashboard-page .company-alert strong { min-width: 23px; color: var(--company-strong); font-size: 15px; font-weight: 680; text-align: right; font-variant-numeric: tabular-nums; }
   .app-shell .company-dashboard-page .company-alert--urgent strong { color: #a56939; }
-  .app-shell .company-dashboard-page .company-alert span { flex: 1; font-size: 11px; line-height: 1.35; }
+  .app-shell .company-dashboard-page .company-alert span { flex: 1; font-size: 12px; line-height: 1.35; }
+  .app-shell .company-dashboard-page .company-alert:focus-visible { outline: 2px solid var(--company-accent); outline-offset: -2px; }
   .app-shell .company-dashboard-page .company-alert small { flex: none; color: #936b4c; font-size: 9px; font-weight: 650; }
   .app-shell .company-dashboard-page .company-alert-more { margin-top: 8px; }
   .app-shell .company-dashboard-page .company-alert-more summary { color: var(--company-accent); font-size: 11px; font-weight: 650; cursor: pointer; }
@@ -119,15 +130,29 @@
   .app-shell .company-dashboard-page .company-process-group { min-width: 0; border: 1px solid var(--dashboard-rule); border-radius: 4px; background: #fff; }
   .app-shell .company-dashboard-page .company-process-heading { padding: 15px 17px 13px; border-bottom: 1px solid var(--dashboard-rule); background: #fff; }
   .app-shell .company-dashboard-page .company-process-heading h2 { margin: 0; color: var(--dashboard-ink); font-size: 15px; font-weight: 665; letter-spacing: -.015em; }
-  .app-shell .company-dashboard-page .company-process-heading p { margin: 4px 0 0; color: var(--dashboard-muted); font-size: 10px; line-height: 1.4; }
+  .app-shell .company-dashboard-page .company-process-heading p { margin: 4px 0 0; color: var(--dashboard-muted); font-size: 11px; line-height: 1.4; }
   .app-shell .company-dashboard-page .company-process-group ol { display: grid; grid-template-columns: 1fr; margin: 0; padding: 0; list-style: none; }
   .app-shell .company-dashboard-page .company-process-group li, .app-shell .company-dashboard-page .company-process-group li:nth-child(2n) { display: block; border: 0; border-top: 1px solid #eef1f0; }
   .app-shell .company-dashboard-page .company-process-group li:first-child { border-top: 0; }
-  .app-shell .company-dashboard-page .company-process-group li a { display: flex; align-items: center; gap: 11px; min-height: 36px; padding: 7px 17px; color: #3b5055; font-size: 11px; font-weight: 580; text-decoration: none; }
+  .app-shell .company-dashboard-page .company-process-group li a { display: flex; align-items: center; gap: 11px; min-height: 38px; padding: 8px 17px; color: #3b5055; font-size: 12px; font-weight: 580; text-decoration: none; }
   .app-shell .company-dashboard-page .company-process-group li a:hover { background: #f7faf9; color: var(--company-strong); }
+  .app-shell .company-dashboard-page .company-process-group li a:focus-visible { outline: 2px solid var(--company-accent); outline-offset: -2px; }
   .app-shell .company-dashboard-page .company-process-group .workflow-index { min-width: 21px; color: var(--company-accent); font-size: 10px; font-weight: 680; font-variant-numeric: tabular-nums; }
   .app-shell .company-dashboard-page > .section-card:not(.company-alerts) { border-radius: 4px; box-shadow: none; }
   .app-shell .company-dashboard-page > .section-card:not(.company-alerts) .section-heading h2 { color: var(--dashboard-ink); font-size: 16px; font-weight: 660; }
+  .app-shell .company-dashboard-page .company-recent-section { padding: 20px 22px; }
+  .app-shell .company-dashboard-page .company-recent-section .section-heading { margin-bottom: 13px; }
+  .app-shell .company-dashboard-page .company-recent-section .data-table th { background: #f6f8f8; }
+  .app-shell .company-dashboard-page .company-recent-section .data-table td { font-size: 12px; line-height: 1.45; }
+  .app-shell .company-dashboard-page .company-quote-title { max-width: 280px; overflow-wrap: anywhere; }
+  .app-shell .company-dashboard-page .company-quote-status { display: inline-flex; align-items: center; gap: 6px; padding: 4px 7px; border: 1px solid #dfe7e7; border-radius: 3px; color: #53686b; background: #f7f9f9; font-size: 10px; font-weight: 630; white-space: nowrap; }
+  .app-shell .company-dashboard-page .company-quote-status::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+  .app-shell .company-dashboard-page .company-quote-status--enviada { border-color: #d6e6eb; background: #f3f8fa; color: #39657a; }
+  .app-shell .company-dashboard-page .company-quote-status--aceptada { border-color: var(--company-border); background: var(--company-soft); color: var(--company-strong); }
+  .app-shell .company-dashboard-page .company-quote-status--rechazada { border-color: #eadbd7; background: #fbf5f2; color: #8b5a4e; }
+  .app-shell .company-dashboard-page .company-recent-empty { display: grid; justify-items: start; gap: 5px; padding: 20px 0 9px; border-top: 1px solid #e7edec; color: var(--dashboard-muted); font-size: 11px; }
+  .app-shell .company-dashboard-page .company-recent-empty strong { color: var(--dashboard-ink); font-size: 13px; font-weight: 650; }
+  .app-shell .company-dashboard-page .company-recent-empty a { display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; color: var(--company-strong); font-size: 11px; font-weight: 650; text-decoration: underline; text-underline-offset: 3px; }
 }
 @media screen and (max-width: 1190px) {
   .app-shell .company-dashboard-page .company-analytics { grid-template-columns: 1fr; }
@@ -155,6 +180,7 @@
   .app-shell .company-dashboard-page .company-activity-svg { min-width: 520px; }
   .app-shell .company-dashboard-page .company-alert-list { grid-template-columns: 1fr; }
   .app-shell .company-dashboard-page .company-workflow-groups { grid-template-columns: 1fr; }
+  .app-shell .company-dashboard-page .company-recent-section { padding: 17px 15px; }
 }
 @media screen and (max-width: 420px) {
   .app-shell .company-dashboard-page .company-metric { min-height: 96px; padding: 13px 12px; }
@@ -163,4 +189,7 @@
   .app-shell .company-dashboard-page .company-alerts .section-heading { flex-wrap: wrap; gap: 8px; }
   .app-shell .company-dashboard-page .company-status-row { grid-template-columns: 8px minmax(0,1fr) 27px 33px; gap: 7px; }
   .app-shell .company-dashboard-page .company-status-meter { display: none; }
+}
+@media screen and (prefers-reduced-motion: reduce) {
+  .app-shell .company-dashboard-page .activity-observation-tip { transition: none; }
 }

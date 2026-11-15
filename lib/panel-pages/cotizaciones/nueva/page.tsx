@@ -20,13 +20,14 @@ export default async function NewQuote({searchParams}:{searchParams:Promise<{cli
   const company=query.empresa==="e_y_j"||query.empresa==="rerchar"?query.empresa:null;
   const selected=clients.some(client=>client.id===query.cliente)?query.cliente:"";
   const start=today();
-  return <div className="quote-workspace"><Link href="/cotizaciones" className="back-link">← Cotizaciones</Link><div className="page-title-row"><div><div className="eyebrow">PROPUESTA COMERCIAL</div><h1>Nueva cotización</h1><p className="page-intro">Inicie el borrador con el cliente y alcance. Al guardarlo se asigna el número definitivo y podrá añadir servicios en la misma cotización, revisar ruta y costos, y fijar los precios antes de entregarla.</p></div></div>
-    <Notice error={query.error}/><QuoteSteps current={1}/><div className="quote-stage-summary"><span>PASO 01 / 03</span><div><strong>Identifique al cliente y el alcance</strong><p>Guarde el borrador para asignar el folio. Luego agregará conceptos, revisará costos y preparará la entrega.</p></div></div><section className="section-card"><form action={createQuoteAction} className="form-grid"><input type="hidden" name="submission_key" value={randomUUID()}/>
+  return <div className="quote-workspace"><Link href="/cotizaciones" className="back-link">← Cotizaciones</Link><div className="page-title-row"><div><div className="eyebrow">PROPUESTA COMERCIAL</div><h1>Nueva cotización</h1><p className="page-intro">Defina el cliente y el alcance. El folio se asignará cuando guarde el borrador.</p></div></div>
+    <Notice error={query.error}/><QuoteSteps current={1}/><div className="quote-stage-summary"><span>PASO 01 / 03</span><div><strong>Cliente y presentación</strong><p>Después agregará conceptos, revisará ruta y costos, y preparará el documento para entregarlo.</p></div></div><section className="section-card"><form action={createQuoteAction} className="form-grid"><input type="hidden" name="submission_key" value={randomUUID()}/>
       <div className="form-section-title">Identificación de la propuesta</div>
-      <label>Cliente<select name="client_id" defaultValue={selected} required><option value="">Seleccione un cliente</option>{clients.map(c=><option key={c.id} value={c.id}>{c.name}{c.email?` · ${c.email}`:""}</option>)}</select></label>
-      <QuoteIssuerPresentation company={company} initialPurchase={query.tipo==="compra"}/>
+      <div className="quote-identity-grid"><label>Cliente<select name="client_id" defaultValue={selected} required><option value="">Seleccione un cliente</option>{clients.map(c=><option key={c.id} value={c.id}>{c.name}{c.email?` · ${c.email}`:""}</option>)}</select></label>
+        <QuoteIssuerPresentation company={company} initialPurchase={query.tipo==="compra"}/>
+      </div>
       <div className="form-section-title">Alcance y condiciones</div>
-      <label className="field-full">Título / alcance<input name="title" required minLength={3} maxLength={180} placeholder="Retiro y valorización de residuos"/></label>
+      <label className="field-full">Título / alcance<input name="title" required minLength={3} maxLength={180} placeholder={company==="e_y_j"?"Arriendo de equipo para faena":"Retiro y valorización de residuos"}/></label>
       <label className="field-full">Objetivo de esta propuesta<textarea name="proposal_objective" required minLength={10} maxLength={700} rows={3} placeholder="Explique qué necesita el cliente y qué resultado contempla esta cotización."/></label>
       <QuoteDates start={start}/>
       <label>IVA general<select name="vat_rate" defaultValue="0.19"><option value="0.19">19%</option><option value="0">0%</option></select></label>

@@ -32,7 +32,7 @@ export default function Shell({ actor, children }: { actor: Actor; children: Rea
     else if(pathname==="/"){localStorage.removeItem("rerchar-selected-company");setSelectedCompany(null);}
     else {const saved=localStorage.getItem("rerchar-selected-company");setSelectedCompany(saved==="rerchar"||saved==="e_y_j"?saved:null);}
   },[pathname,routeCompany]);
-  useEffect(()=>{setMobileOpen(false);},[pathname]);
+  useEffect(()=>{setMobileOpen(false);setCompanyOpen(false);},[pathname]);
   useEffect(()=>{
     if(!mobileOpen)return;
     const previous=document.body.style.overflow;
@@ -41,8 +41,9 @@ export default function Shell({ actor, children }: { actor: Actor; children: Rea
     const onKey=(event:KeyboardEvent)=>{
       if(event.key==="Escape"){setMobileOpen(false);mobileToggle.current?.focus();}
       if(event.key==="Tab"){
-        const focusable=mobileDrawer.current?.querySelectorAll<HTMLElement>('a[href],button:not([disabled]),input:not([disabled])');
-        if(!focusable?.length)return;
+        const focusable=Array.from(mobileDrawer.current?.querySelectorAll<HTMLElement>('a[href],button:not([disabled]),input:not([disabled])')??[])
+          .filter(element=>!element.closest('[inert]')&&element.getClientRects().length>0);
+        if(!focusable.length)return;
         const first=focusable[0],last=focusable[focusable.length-1];
         if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus();}
         else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus();}
@@ -108,7 +109,7 @@ export default function Shell({ actor, children }: { actor: Actor; children: Rea
   })}</nav>;
   return <div className="app-shell" data-company={activeCompany??"selector"}>
     <aside className="sidebar">
-      <Link href="/" className="brand brand-sidebar" aria-label="Seleccionar empresa">{activeCompany==="e_y_j"?<span className="eyj-brand"><strong>E y J</strong><small>Servicios Integrales</small></span>:activeCompany==="rerchar"?<Image src="/rerchar-logo-transparente.png" alt="RERCHAR Economía Circular" width={892} height={311} priority className="brand-art"/>:<span className="platform-brand"><Image src="/rerchar-logo-transparente.png" alt="RERCHAR" width={892} height={311} priority/><i aria-hidden="true"/><strong>E y J</strong></span>}<span className="system-name"><strong>{selectedName??"OPERACIÓN INDUSTRIAL"}</strong><span>Plataforma operativa</span></span></Link>
+      <Link href="/" className="brand brand-sidebar" aria-label="Seleccionar empresa">{activeCompany==="e_y_j"?<span className="eyj-brand"><strong>E y J</strong><small>Servicios Integrales</small></span>:activeCompany==="rerchar"?<Image src="/rerchar-logo-transparente.png" alt="RERCHAR Economía Circular" width={892} height={311} loading="eager" className="brand-art"/>:<span className="platform-brand"><Image src="/rerchar-logo-transparente.png" alt="RERCHAR" width={892} height={311} loading="eager"/><i aria-hidden="true"/><strong>E y J</strong></span>}<span className="system-name"><strong>{selectedName??"OPERACIÓN INDUSTRIAL"}</strong><span>Plataforma operativa</span></span></Link>
       <button type="button" className="sidebar-search-trigger" onClick={()=>setSearchOpen(true)}><Search size={18}/><span>Buscar en el sistema...</span><kbd>⌘ K</kbd></button>
       <div className="sidebar-section-label">EMPRESA OPERADORA</div>
       {companyOptions}
@@ -120,7 +121,7 @@ export default function Shell({ actor, children }: { actor: Actor; children: Rea
       </div>
     </aside>
     <div className="main-area">
-      <header className="topbar"><Link href={activeCompany?`/empresa/${activeCompany}`:"/"} className="mobile-brand" aria-label={selectedName?`Panel de ${selectedName}`:"Seleccionar empresa"}>{activeCompany==="rerchar"?<Image src="/rerchar-logo-transparente.png" alt="" width={892} height={311} className="mobile-brand-logo"/>:activeCompany==="e_y_j"?<span className="mobile-brand-eyj" aria-hidden="true">E y J</span>:<span className="mobile-brand-combined"><Image src="/rerchar-logo-transparente.png" alt="" width={892} height={311}/><i aria-hidden="true"/><strong>E y J</strong></span>}<span className="mobile-brand-copy"><strong>{activeCompany==="rerchar"?"RERCHAR":activeCompany==="e_y_j"?"Servicios Integrales":"Plataforma operativa"}</strong><small>{activeCompany==="rerchar"?"GESTIÓN DE MATERIALES":activeCompany==="e_y_j"?"SERVICIOS INDUSTRIALES":"RERCHAR · E Y J"}</small></span></Link><span className="topbar-label">{selectedName??"RERCHAR / E y J"} <span>Plataforma operativa</span></span><div className="topbar-actions"><button type="button" className="topbar-search-trigger" onClick={()=>setSearchOpen(true)} aria-label="Buscar"><Search size={19}/><span>Buscar módulos</span></button><span className="topbar-user">{actor.name}</span></div>
+      <header className="topbar"><Link href={activeCompany?`/empresa/${activeCompany}`:"/"} className="mobile-brand" aria-label={selectedName?`Panel de ${selectedName}`:"Seleccionar empresa"}>{activeCompany==="rerchar"?<Image src="/rerchar-logo-transparente.png" alt="" width={892} height={311} loading="eager" className="mobile-brand-logo"/>:activeCompany==="e_y_j"?<span className="mobile-brand-eyj" aria-hidden="true">E y J</span>:<span className="mobile-brand-combined"><Image src="/rerchar-logo-transparente.png" alt="" width={892} height={311} loading="eager"/><i aria-hidden="true"/><strong>E y J</strong></span>}<span className="mobile-brand-copy"><strong>{activeCompany==="rerchar"?"RERCHAR":activeCompany==="e_y_j"?"Servicios Integrales":"Plataforma operativa"}</strong><small>{activeCompany==="rerchar"?"GESTIÓN DE MATERIALES":activeCompany==="e_y_j"?"SERVICIOS INDUSTRIALES":"RERCHAR · E Y J"}</small></span></Link><span className="topbar-label">{selectedName??"RERCHAR / E y J"} <span>Plataforma operativa</span></span><div className="topbar-actions"><button type="button" className="topbar-search-trigger" onClick={()=>setSearchOpen(true)} aria-label="Buscar"><Search size={19}/><span>Buscar módulos</span></button><span className="topbar-user">{actor.name}</span></div>
         <button type="button" ref={mobileToggle} className="mobile-nav-trigger" aria-label="Abrir menú" aria-expanded={mobileOpen} aria-controls="mobile-navigation" onClick={()=>{setCompanyOpen(true);setMobileOpen(true);}}><Menu size={22}/></button>
       </header>
       <div className="page-content">{children}</div>
