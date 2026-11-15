@@ -8,7 +8,8 @@
 - Las mejoras funcionales se conservan: filtro Todos/Prioritarios, saldo administrativo resumido, filtros de acreditación por empresa y vigencia, y toda la paginación/Cobranza anterior.
 - Refinamiento sobre la base: resumen único de atención (prioridades + registros sin empresa), tabla de pendientes con columnas de registros/prioridad, actualización manual del panel y hora real de consulta, mejores jerarquías de tablas y accesos operativos. Se mantienen las identidades verde/azul; no se vuelve al lenguaje de tarjetas redondeadas/iconos decorativos.
 - El acceso real ya se completó mediante intervención de Roberto. Sesión administradora abierta en el navegador; filtro de prioridades comprobado (1 aviso prioritario frente a 5 totales de RERCHAR). No se modificaron documentos ni pagos reales.
-- Verificación visual: revisar la versión corregida en la sesión abierta después del despliegue, en ambos espacios. El espaciado de los gráficos vuelve a las reglas acotadas de la base anterior; las pruebas automatizadas no sustituyen esa comprobación.
+- Refinamiento publicado en `acc08bc`, con check satisfactorio de **Vercel – rerchar-piloto**. Revisión visual completada en la aplicación publicada para RERCHAR y E y J: identidad verde/azul, jerarquía compacta, gráficos y tabla de gestión correctos. Todos/Prioritarios muestra 5/1 filas en RERCHAR y 5/2 en E y J; el botón Actualizar vuelve a quedar disponible tras consultar.
+- En ancho de 340 px, el documento mide 337 px y la tabla 269 px: sin desbordamiento horizontal de la página. Se comprobaron controles y tabla con el zoom normal de Chrome, restaurado al 100% al terminar. La navegación móvil se abre, bloquea el fondo y se cierra con Escape. No se introdujeron datos de prueba en producción.
 - El navegador sólo admite HTTP(S), no archivos locales. DevTools está bloqueado por la organización: no volver a intentar activarlo. Para revisar otras anchuras se puede usar el tamaño normal de la ventana, sin cambiar políticas.
 - Base publicada antes del refinamiento: `edad7c2` (recuperación del diseño anterior). `d11643f` es el rediseño rechazado y no debe usarse como patrón visual. Base funcional de Cobranza: `53ef494`. Verificar siempre el check **Vercel – rerchar-piloto** del nuevo commit.
 
@@ -38,7 +39,7 @@
 - `app/icon.jpg` y `app/apple-icon.jpg` coinciden byte a byte con `rerchar-ico(2).jpg`, solicitado por Roberto. Conservar ese archivo original.
 - Recorrido HTTP real, con aplicación y base aisladas: páginas de 100, 100 y 2 registros; CSV de 502 facturas con encabezado único; abono de material de $5.000 y saldo actualizado de $6.900; separación por empresa y respuestas 400/401/403 correctas.
 - Retorno HTTP de abono y anulación desde página 2: conserva filtro y página. Un sobrepago rechazado conserva ese contexto y muestra el error. Al completar el pago de la única factura pendiente en página 6, vuelve a página 5 con el aviso de éxito.
-- El navegador abrió correctamente el acceso publicado en `/ingresar`. La revisión visual interna sigue pendiente de una sesión administradora; no se introdujeron facturas ni pagos de prueba en la aplicación publicada.
+- El acceso administrativo publicado se completó con intervención de Roberto. Los dos paneles se revisaron visualmente después de publicar `acc08bc`; no se introdujeron facturas ni pagos de prueba en la aplicación publicada.
 - Para las pruebas HTTP locales, iniciar el servidor y el cliente de comprobación dentro de la misma ejecución; así se resolvió el fallo de conexión observado al separarlos.
 
 Comando de pruebas utilizado:
@@ -52,6 +53,6 @@ env -u DATABASE_URL -u NODE_ENV node --import tsx --test --test-concurrency=3 te
 - Confirmar el commit resultante en `main` y el check **Vercel – rerchar-piloto** antes de afirmar que está publicado.
 - Existe además un check de un proyecto duplicado **Vercel – rerchar-piloto-pjlu**, fallido en el commit anterior; distinguirlo del proyecto principal.
 - La conexión Vercel de esta sesión devolvió 403 para el equipo del proyecto. El estado del despliegue se puede contrastar con los checks del commit en GitHub.
-- Próxima comprobación visual: revisar Cobranza en escritorio y móvil con sesión administradora y datos de prueba. El recorrido de servidor, formularios y CSV ya fue comprobado por HTTP.
+- Los paneles publicados ya se revisaron en escritorio y ancho móvil. La revisión visual de Cobranza con datos de prueba debe hacerse en el entorno aislado; su recorrido de servidor, formularios y CSV ya fue comprobado por HTTP. No poblar producción con registros de prueba.
 - El corte anterior dejó SICEP propio de RERCHAR y SMTP real como parciales; no se resolvieron en esta entrega.
 - Al continuar, leer este registro y el estado Git actual. Mantener un registro breve y actualizado para que la continuidad no dependa de la longitud del chat.
