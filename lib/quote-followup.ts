@@ -80,16 +80,18 @@ export async function getQuoteFollowup(actor:Actor,quoteId:string){
       FROM service_requests s LEFT JOIN service_valuations v ON v.service_id=s.id
       LEFT JOIN service_invoices i ON i.valuation_id=v.id AND i.status='emitida'
       WHERE s.quote_id=$1 AND s.deleted_at IS NULL ORDER BY s.created_at DESC`,[quoteId]),
-    edpReady?db.query<{service_id:string;id:string;number:string;status:string;invoice_id:string|null;invoice_number:string|null}>(`
-      SELECT DISTINCT ON (o.service_id) o.service_id,p.id,p.number,p.status,
-        COALESCE(i.id,f.id) AS invoice_id,COALESCE(i.invoice_number,f.invoice_number) AS invoice_number
+    edpReady?db.query<{service_id:string;id:string;number:string;status:string;invoice_id:string|null;invoice_number:string|null;invoice_total_clp:string|null;paid_clp:string}>(`
+      SELECT DISTINCT o.service_id,p.id,p.number,p.status,
+        COALESCE(i.id,f.id) AS invoice_id,COALESCE(i.invoice_number,f.invoice_number) AS invoice_number,
+        i.total_clp::text AS invoice_total_clp,
+        COALESCE((SELECT sum(pay.amount_clp) FROM extra_receivable_payments pay WHERE pay.invoice_id=i.id),0)::text AS paid_clp
       FROM payment_statement_operations o JOIN payment_statements p ON p.id=o.statement_id
-      JOIN service_requests s ON s.id=o.service_id
+      JOIN service_requests s ON s.id=o.service_id AND s.client_id=p.client_id AND s.operating_company=p.issuer
       LEFT JOIN extra_receivable_invoices i ON i.id=p.receivable_invoice_id AND i.status='emitida'
       LEFT JOIN service_invoices f ON f.id=p.service_invoice_id AND f.status='emitida'
       WHERE s.quote_id=$1 AND s.deleted_at IS NULL
         AND ($2::text<>'cliente' OR p.status IN ('enviado','aprobado'))
-      ORDER BY o.service_id,p.created_at DESC,p.id DESC`,[quoteId,actor.role]):Promise.resolve([]),
+      ORDER BY o.service_id,p.id DESC`,[quoteId,actor.role]):Promise.resolve([]),
   ]);
   const evidence=await db.query<{id:string;service_id:string;description:string;document_kind:string;original_filename:string|null}>(`SELECT e.id,e.service_id,e.description,e.document_kind,e.original_filename
     FROM service_evidence e JOIN service_requests s ON s.id=e.service_id

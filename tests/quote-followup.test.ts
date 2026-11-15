@@ -105,9 +105,17 @@ test("E y J cotiza disposición, cliente responde y OC/respaldo siguen el mismo 
     (issuer,client_id,invoice_number,issued_on,due_on,total_clp,created_by)
     VALUES ('e_y_j',$1,'EYJ-EDP-11','2026-12-01','2026-12-30',200000,$2) RETURNING id`,[client.id,staff.id]);
   await db.query("UPDATE payment_statements SET receivable_invoice_id=$2 WHERE id=$1",[secondEdp.id,secondInvoice.id]);
+  await db.query(`INSERT INTO extra_receivable_payments(submission_key,invoice_id,amount_clp,paid_on,reference,created_by)
+    VALUES ($1,$2,25000,'2026-11-15','ABONO-EDP-10',$3)`,[randomUUID(),externalInvoice.id,staff.id]);
   assert.deepEqual((await edpLinks.listEdpServiceInvoices([service])).map(i=>i.invoice_number).sort(),
     ["EYJ-EDP-10","EYJ-EDP-11"],"Finanzas conserva ambos EDP sin duplicar el importe en cada servicio");
   assert.equal((await finance.getFinancialService(staff,service)).edpInvoices.length,2);
+  const fullFollowup=await followup.getQuoteFollowup(staff,quoteId);
+  assert.deepEqual(fullFollowup.statements.map(i=>i.invoice_number).sort(),["EYJ-EDP-10","EYJ-EDP-11"],
+    "la carpeta de la cotización conserva ambas facturas EDP del servicio");
+  assert.equal(Number(fullFollowup.statements.find(i=>i.invoice_id===externalInvoice.id)?.paid_clp),25000);
+  assert.equal(Number(fullFollowup.statements.find(i=>i.invoice_id===externalInvoice.id)?.invoice_total_clp),100000);
+  assert.equal((await followup.getQuoteFollowup(viewer,quoteId)).statements.length,2);
   await assert.rejects(()=>followup.recordQuoteOrderException(staff,quoteId,"Acuerdo con cliente sin OC"),/Existe una OC adjunta/);
   const exceptionQuoteId=await quotes.createQuote(staff,{submission_key:randomUUID(),client_id:client.id,issuer:"e_y_j",title:"Arriendo puntual sin OC",
     issued_on:"2026-10-18",valid_until:"2026-10-28",line:{description:"Arriendo de equipo",principal:"arriendo",segment:"arriendo_equipo",

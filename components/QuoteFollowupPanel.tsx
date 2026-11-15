@@ -8,8 +8,15 @@ const day=(value:Date|string|null)=>value?new Date(value).toLocaleDateString("es
 const money=(value:string|number)=>`$${Number(value).toLocaleString("es-CL")}`;
 export function QuoteFollowupPanel({id,data,editable,canAuthorizeException=false}:{id:string;data:Followup;editable:boolean;canAuthorizeException?:boolean}){
   const {quote,documents,services,statements,evidence}=data;
-  const statementByService=new Map(statements.map(statement=>[statement.service_id,statement]));
+  const statementByService=new Map<string,typeof statements>();
+  for(const statement of statements){
+    const group=statementByService.get(statement.service_id)??[];
+    group.push(statement);
+    statementByService.set(statement.service_id,group);
+  }
   const invoiceCount=new Set([...services.map(service=>service.invoice_id),...statements.map(statement=>statement.invoice_id)].filter(Boolean)).size;
+  const consolidatedInvoices=[...new Map(statements.filter(statement=>statement.invoice_id&&statement.invoice_total_clp!==null)
+    .map(statement=>[statement.invoice_id,statement] as const)).values()];
   if(quote.status==="borrador")return null;
   return <section className="section-card"><div className="section-heading"><div><div className="eyebrow">DEL ACUERDO AL COBRO</div><h2>Seguimiento y documentos de esta cotización</h2></div></div>
     <p className="helper-text">Cada respaldo queda asociado al folio. Los documentos de ejecución se cargan desde el servicio y se consultan aquí.</p>
@@ -25,15 +32,15 @@ export function QuoteFollowupPanel({id,data,editable,canAuthorizeException=false
     {documents.length>0&&<ul className="record-list">{documents.map(doc=><li key={doc.id}><a href={`/api/cotizaciones/documentos/${doc.id}`}><strong>{doc.kind==="orden_compra"?"Orden de compra":"Respaldo"}: {doc.filename}</strong></a><small>{day(doc.uploaded_at)}</small></li>)}</ul>}
     {services.length===0?<p className="helper-text">Después de registrar la aceptación y la OC (o la excepción justificada), cree la solicitud de servicio desde esta cotización para iniciar la programación.</p>:services.map(service=>{
       const docs=evidence.filter(item=>item.service_id===service.id);
-      const statement=statementByService.get(service.id);
-      const invoiceNumber=service.invoice_number??statement?.invoice_number;
+      const relatedStatements=statementByService.get(service.id)??[];
       const balance=Number(service.invoice_total_clp??0)-Number(service.paid_clp);
       return <div key={service.id} className="dossier-group"><h3><Link href={`/solicitudes/${service.id}`}>Servicio {service.folio}</Link> · {service.status}</h3>
         <div className="order-actions"><Link className="button button-outline" href={`/solicitudes/${service.id}`}>Programación y operación</Link>{service.service_type!=="arriendo"&&<Link className="button button-outline" href={`/solicitudes/${service.id}/guias`}>Guías y pesos</Link>}{editable&&<Link className="button button-outline" href={`/solicitudes/${service.id}`}>Adjuntar respaldo</Link>}{service.certificate_id&&<Link className="button button-outline" href={`/api/certificados/${service.certificate_id}/pdf`}>Certificado</Link>}</div>
-        <p className="helper-text">{service.service_type==="arriendo"?"Arriendo sin pesaje":`Guía: ${service.guide_number??"pendiente"}`} · Fecha programada: {day(service.scheduled_for)} · Factura: {invoiceNumber??"pendiente"}{service.invoice_number?` · Cobrado ${money(service.paid_clp)} · Saldo ${money(Math.max(0,balance))}`:statement?.invoice_number?" · Cobranza agrupada en EDP":""}</p>
-        {statement&&<p className="helper-text">Estado de pago {editable?<Link href={`/estados-pago/${statement.id}`}>N° {statement.number}</Link>:`N° ${statement.number}`} · {statement.status}</p>}
+        <p className="helper-text">{service.service_type==="arriendo"?"Arriendo sin pesaje":`Guía: ${service.guide_number??"pendiente"}`} · Fecha programada: {day(service.scheduled_for)} · Factura individual: {service.invoice_number??(relatedStatements.length?"gestionada en EDP":"pendiente")}{service.invoice_number?` · Cobrado ${money(service.paid_clp)} · Saldo ${money(Math.max(0,balance))}`:""}</p>
+        {relatedStatements.length>0&&<ul className="record-list">{relatedStatements.map(statement=><li key={statement.id}><div><strong>Estado de pago {editable?<Link href={`/estados-pago/${statement.id}`}>N° {statement.number}</Link>:`N° ${statement.number}`}</strong><small>{statement.status} · Factura {statement.invoice_number??"pendiente"}</small></div></li>)}</ul>}
         {docs.length>0&&<ul className="record-list">{docs.map(doc=><li key={doc.id}><a href={`/api/evidencia/${doc.id}`}>{doc.document_kind.replaceAll("_"," ")} · {doc.original_filename??doc.description}</a></li>)}</ul>}
       </div>;
     })}
+    {consolidatedInvoices.length>0&&<div className="dossier-group"><h3>Facturas consolidadas de E y J</h3><p className="helper-text">Cada importe corresponde a la factura completa del EDP y se muestra una sola vez, aunque cubra varios servicios o cotizaciones.</p><ul className="record-list">{consolidatedInvoices.map(invoice=><li key={invoice.invoice_id}><div><strong>Factura {invoice.invoice_number} · Total {money(invoice.invoice_total_clp??0)}</strong><small>Abonado {money(invoice.paid_clp)} · Saldo {money(Math.max(0,Number(invoice.invoice_total_clp)-Number(invoice.paid_clp)))}</small></div></li>)}</ul></div>}
   </section>;
 }
