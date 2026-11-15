@@ -55,6 +55,9 @@ test("EDP aprobado comparte folio de factura externa y cobranza sin duplicar sal
   const first=await approved("01"),second=await approved("02"),otherClient=await approved("03",other.id);
   assert.equal((await eyjEdpInvoiceDashboard()).unbilled,"3");
   assert.equal((await eyjEdpInvoiceDashboard()).awaiting_order,"1");
+  assert.deepEqual((await edp.listPaymentStatements(ops,"sin_oc")).map(s=>s.id),[first]);
+  assert.deepEqual((await edp.listPaymentStatements(ops,"lista_factura")).map(s=>s.id).sort(),[second,otherClient].sort());
+  assert.equal((await edp.listPaymentStatements(ops,"sin_factura")).length,3);
   await assert.rejects(()=>edp.linkStatementInvoice(ops,first,invoice),edp.PaymentStatementError);
   await assert.rejects(()=>edp.linkStatementInvoice(admin,first,invoice),/Registre la OC/);
   await assert.rejects(()=>edp.saveStatementClientOrder(ops,first,{client_order_reference:"OC-01",client_order_on:"2026-10-12"}),edp.PaymentStatementError);
@@ -72,6 +75,7 @@ test("EDP aprobado comparte folio de factura externa y cobranza sin duplicar sal
   assert.equal((await receivables.listReceivables(admin,"e_y_j")).length,1);
   assert.equal((await receivables.listReceivables(admin,"e_y_j"))[0].source,"edp");
   assert.equal((await eyjEdpInvoiceDashboard()).unbilled,"2");
+  assert.equal((await edp.listPaymentStatements(ops,"sin_factura")).length,2,"la vista deja de mostrar EDP facturados");
   await assert.rejects(()=>edp.linkStatementInvoice(admin,otherClient,invoice),/otro cliente/);
   await assert.rejects(()=>edp.linkStatementInvoice(admin,second,invoice),/Explique la diferencia/);
   await edp.linkStatementInvoice(admin,second,{...invoice,variance_note:"Factura compartida entre dos EDP"});

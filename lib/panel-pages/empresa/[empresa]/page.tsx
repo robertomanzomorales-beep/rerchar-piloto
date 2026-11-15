@@ -150,11 +150,11 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
       {label:"Ingresos con aviso documental pendiente",count:value(receiptClosure.notice_pending),href:"/ingresos"},
     ]:[]),
     ...(selected==="rerchar"&&canManage(actor)&&materials?.stock_ready?[{label:"Guías anteriores con salida de stock por conciliar",count:value(materials.guides.stock_pending),href:"/control-guias"}]:[]),
-    ...(selected==="e_y_j"&&canManage(actor)&&payments?.ready?[{label:"Estados de pago por completar o corregir",count:value(payments.pending),href:"/estados-pago"}]:[]),
+    ...(selected==="e_y_j"&&canManage(actor)&&payments?.ready?[{label:"Estados de pago por completar o corregir",count:value(payments.pending),href:"/estados-pago?vista=pendientes"}]:[]),
     ...(edpInvoices?.ready?[...(edpInvoices.order_ready?[
-      {label:"EDP aprobados esperando OC del cliente",count:value(edpInvoices.awaiting_order),href:"/estados-pago"},
-      {label:"EDP con OC listos para asociar factura",count:value(edpInvoices.ready_to_invoice),href:"/estados-pago"},
-    ]:[{label:"EDP aprobados sin factura asociada",count:value(edpInvoices.unbilled),href:"/estados-pago"}])]:[]),
+      {label:"EDP aprobados esperando OC del cliente",count:value(edpInvoices.awaiting_order),href:"/estados-pago?vista=sin_oc"},
+      {label:"EDP con OC listos para asociar factura",count:value(edpInvoices.ready_to_invoice),href:"/estados-pago?vista=lista_factura"},
+    ]:[{label:"EDP aprobados sin factura asociada",count:value(edpInvoices.unbilled),href:"/estados-pago?vista=sin_factura"}])]:[]),
     ...(selected==="e_y_j"&&canManage(actor)&&billingCalendar?.ready?[
       {label:"Cortes de EDP en los próximos 7 días",count:value(billingCalendar.cutoffs),href:"/estados-pago/calendario"},
       {label:"Envíos de EDP en los próximos 7 días",count:value(billingCalendar.sends),href:"/estados-pago/calendario"},
@@ -166,9 +166,9 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
       {label:"Facturas de proveedores sin vencimiento",count:value(invoiceAlerts.undated),href:`/facturas-recibidas?empresa=${selected}&estado=sin_fecha`},
     ]:[]),
     ...(transferStats?[
-      {label:"Transferencias a proveedores por aprobar",count:value(transferStats.solicitadas),href:`/transferencias?empresa=${selected}`},
-      {label:"Transferencias aprobadas por ejecutar",count:value(transferStats.aprobadas),href:`/transferencias?empresa=${selected}`},
-      {label:"Transferencias ejecutadas por verificar",count:value(transferStats.ejecutadas),href:`/transferencias?empresa=${selected}`},
+      {label:"Transferencias a proveedores por aprobar",count:value(transferStats.solicitadas),href:`/transferencias?empresa=${selected}&estado=solicitada`},
+      {label:"Transferencias aprobadas por ejecutar",count:value(transferStats.aprobadas),href:`/transferencias?empresa=${selected}&estado=aprobada`},
+      {label:"Transferencias ejecutadas por verificar",count:value(transferStats.ejecutadas),href:`/transferencias?empresa=${selected}&estado=ejecutada`},
     ]:[]),
   ];
   const activeAlerts=alerts.filter(a=>a.count>0).sort((a,b)=>Number(Boolean(b.urgent))-Number(Boolean(a.urgent)));
@@ -215,7 +215,7 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
       {showQuotes&&<Link href={`/cotizaciones?empresa=${selected}&vista=gestion`} className="company-metric"><span>Cotizaciones en gestión</span><strong>{value(q?.draft)+value(q?.sent)}</strong><small>{value(q?.draft)} en borrador · {value(q?.sent)} enviadas</small></Link>}
       <Link href={`/solicitudes?empresa=${selected}&estado=abiertas`} className="company-metric"><span>Servicios abiertos</span><strong>{openServices}</strong><small>{value(s?.requested)+value(s?.scheduled)} por iniciar · {value(s?.in_route)} en ruta · {value(s?.pending_review)} en revisión</small></Link>
       {selected==="rerchar"&&canManage(actor)?<Link href="/control-guias" className="company-metric"><span>Ventas por cerrar</span><strong>{value(materials?.guides.pending)}</strong><small>{value(materials?.guides.total)} guías registradas</small></Link>:!canManage(actor)?<Link href={`/solicitudes?empresa=${selected}&estado=en_ruta`} className="company-metric"><span>En ruta</span><strong>{value(s?.in_route)}</strong><small>En ejecución</small></Link>:null}
-      {selected==="e_y_j"&&canManage(actor)&&(payments?.ready?<Link href="/estados-pago" className="company-metric"><span>EDP por completar</span><strong>{value(payments.pending)}</strong><small>{value(payments.total)} estados registrados</small></Link>:<div className="company-metric"><span>Estados de pago</span><strong>—</strong><small>Sin datos de este módulo</small></div>)}
+      {selected==="e_y_j"&&canManage(actor)&&(payments?.ready?<Link href="/estados-pago?vista=pendientes" className="company-metric"><span>EDP por completar</span><strong>{value(payments.pending)}</strong><small>{value(payments.total)} estados registrados</small></Link>:<div className="company-metric"><span>Estados de pago</span><strong>—</strong><small>Sin datos de este módulo</small></div>)}
       <Link href={`/solicitudes?empresa=${selected}&estado=completada&cierre_mes=${today.slice(0,7)}`} className="company-metric"><span>Cierres del mes</span><strong>{closedThisMonth}</strong><small>{value(s?.completed)} completados en total</small></Link>
     </div>
     <div className="company-analytics">

@@ -31,7 +31,7 @@ function fileType(bytes:Buffer){
   if(bytes.subarray(0,4).toString()==="RIFF"&&bytes.subarray(8,12).toString()==="WEBP")return "image/webp";
   reject("El comprobante debe ser un PDF, JPG, PNG o WebP válido.");
 }
-type TransferStatus="solicitada"|"aprobada"|"rechazada"|"ejecutada"|"verificada";
+export type TransferStatus="solicitada"|"aprobada"|"rechazada"|"ejecutada"|"verificada";
 export type SupplierTransfer={id:string;invoice_id:string;amount_clp:string;bank_name:string;account_type:string;account_number:string;
   status:TransferStatus;requested_by:string;approved_by:string|null;executed_by:string|null;verified_by:string|null;
   requested_name:string;approved_name:string|null;executed_name:string|null;verified_name:string|null;
@@ -47,12 +47,15 @@ const select=`SELECT t.*,i.issuer,i.supplier_name,i.supplier_tax_id,i.invoice_nu
   LEFT JOIN users exe ON exe.id=t.executed_by LEFT JOIN users ver ON ver.id=t.verified_by
   LEFT JOIN supplier_transfer_proofs f ON f.transfer_id=t.id`;
 
-export async function listSupplierTransfers(actor:Actor,company:Company|""=""){
+export async function listSupplierTransfers(actor:Actor,company:Company|""="",status:TransferStatus|""="",limit=100,offset=0){
   admin(actor);await ready();
   if(company&&!(["rerchar","e_y_j"] as string[]).includes(company))reject("Empresa inválida.");
+  if(status&&!(["solicitada","aprobada","ejecutada","verificada","rechazada"] as string[]).includes(status))reject("Estado de transferencia inválido.");
   return db.query<SupplierTransfer>(`${select} WHERE ($1::text='' OR i.issuer=$1)
+    AND ($2::text='' OR t.status=$2)
     ORDER BY CASE t.status WHEN 'solicitada' THEN 0 WHEN 'aprobada' THEN 1 WHEN 'ejecutada' THEN 2 ELSE 3 END,
-    t.created_at DESC LIMIT 300`,[company]);
+    t.created_at DESC,t.id DESC LIMIT $3 OFFSET $4`,[company,status,
+      Math.max(1,Math.min(250,Math.trunc(limit)||100)),Number.isSafeInteger(offset)?Math.max(0,Math.min(500_000,offset)):0]);
 }
 export async function invoiceSupplierTransfers(actor:Actor,invoiceId:string){
   admin(actor);await ready();if(!uuid.safeParse(invoiceId).success)reject("Factura inválida.");

@@ -90,6 +90,11 @@ test("panel RERCHAR no cae entre migraciones y E y J calcula los dos formatos ED
   await assert.rejects(()=>edp.setPaymentStatementStatus(owner,rental,"borrador"),edp.PaymentStatementError);
   await assert.rejects(()=>edp.deletePaymentStatementLine(owner,rental,"charge",second.charges[0].id),edp.PaymentStatementError);
   assert.equal((await edp.listPaymentStatements(viewer)).length,2);
+  assert.deepEqual(await edp.paymentStatementOverview(viewer),{total:"2",pending:"1",sent:"0",approved:"1"});
+  assert.deepEqual((await edp.listPaymentStatements(viewer,"pendientes")).map(s=>s.id),[id]);
+  assert.deepEqual((await edp.listPaymentStatements(viewer,"aprobados")).map(s=>s.id),[rental]);
+  assert.equal((await edp.listPaymentStatements(viewer,"",1,1)).length,1,"el listado pagina sin alterar los totales");
+  assert.deepEqual(await edp.listPaymentStatements(viewer,"sin_factura"),[],"los filtros nuevos esperan la migración de facturas");
 
   assert.equal((await calendar.eyjBillingCalendarDashboard("2026-01-29")).ready,false,
     "el panel no cae si el código se despliega antes de la agenda");

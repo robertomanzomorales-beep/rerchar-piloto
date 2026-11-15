@@ -89,6 +89,8 @@ test("solicitud, aprobación, ejecución y verificación requieren personas y re
   await addOperationFile(requester,"invoice",invoice,"factura",pdf);
   await reviewSupplierInvoice(approver,invoice,{decision:"aceptada",note:"Folio y montos correctos"});
   const id=await transfers.requestSupplierTransfer(requester,invoice,request);
+  assert.deepEqual((await transfers.listSupplierTransfers(requester,"rerchar","solicitada")).map(item=>item.id),[id]);
+  assert.equal((await transfers.listSupplierTransfers(requester,"rerchar","aprobada")).length,0);
   assert.equal((await transfers.invoiceSupplierTransfers(requester,invoice))[0].account_number,"9988776655",
     "la cuenta de la solicitud proviene de la ficha verificada, aunque el formulario envíe otro número");
   assert.equal(await transfers.requestSupplierTransfer(requester,invoice,request),id);
@@ -97,14 +99,17 @@ test("solicitud, aprobación, ejecución y verificación requieren personas y re
   await assert.rejects(()=>transfers.decideSupplierTransfer(requester,id,"aprobada",""),/propia transferencia/);
   await assert.rejects(()=>reviewSupplierInvoice(approver,invoice,{decision:"disputada",note:"Nueva observación de importe"}),/transferencias en curso/);
   await transfers.decideSupplierTransfer(approver,id,"aprobada","Revisada");
+  assert.deepEqual((await transfers.listSupplierTransfers(requester,"rerchar","aprobada")).map(item=>item.id),[id]);
   await assert.rejects(()=>transfers.executeSupplierTransfer(approver,id,{paid_on:"2026-10-13",bank_reference:"REF-100"},pdf),/otra persona/);
   await assert.rejects(()=>transfers.executeSupplierTransfer(requester,id,{paid_on:"2026-10-13",bank_reference:"REF-100"},new File(["mal"],"mal.pdf")),/válido/);
   await transfers.executeSupplierTransfer(requester,id,{paid_on:"2026-10-13",bank_reference:"REF-100"},pdf);
+  assert.deepEqual((await transfers.listSupplierTransfers(requester,"rerchar","ejecutada")).map(item=>item.id),[id]);
   assert.equal((await getSupplierInvoice(requester,invoice)).invoice.paid_clp,"0.00","la ejecución no se cuenta como pago hasta verificar");
   await assert.rejects(()=>transfers.verifySupplierTransfer(requester,id,{checked_amount_clp:"6000",checked_reference:"REF-100",verification_note:"Comprobante revisado"}),/propio pago/);
   await assert.rejects(()=>transfers.verifySupplierTransfer(approver,id,{checked_amount_clp:"6000",checked_reference:"INCORRECTA",verification_note:"Comprobante revisado"}),/no coinciden/);
   const checked={checked_amount_clp:"6000",checked_reference:"REF-100",verification_note:"Monto, fecha y referencia comprobados"};
   const payment=await transfers.verifySupplierTransfer(approver,id,checked);
+  assert.deepEqual((await transfers.listSupplierTransfers(requester,"rerchar","verificada")).map(item=>item.id),[id]);
   assert.equal(await transfers.verifySupplierTransfer(approver,id,checked),payment,"la repetición conserva el pago único");
   assert.equal((await getSupplierInvoice(requester,invoice)).invoice.paid_clp,"6000.00");
   assert.equal((await db.query<{count:string}>("SELECT count(*)::text AS count FROM supplier_invoice_payments WHERE invoice_id=$1",[invoice]))[0].count,"1");
@@ -118,6 +123,8 @@ test("solicitud, aprobación, ejecución y verificación requieren personas y re
   const second=await transfers.requestSupplierTransfer(requester,other,{...request,submission_key:randomUUID(),amount_clp:"3000"});
   await transfers.decideSupplierTransfer(approver,second,"rechazada","Cuenta incorrecta");
   assert.equal((await transfers.listSupplierTransfers(requester,"e_y_j"))[0].status,"rechazada");
+  assert.deepEqual((await transfers.listSupplierTransfers(requester,"e_y_j","rechazada")).map(item=>item.id),[second]);
+  assert.equal((await transfers.listSupplierTransfers(requester,"rerchar","rechazada")).length,0);
   assert.equal((await getSupplierInvoice(requester,other)).invoice.paid_clp,"0.00");
   const stale=await transfers.requestSupplierTransfer(requester,other,{...request,submission_key:randomUUID(),amount_clp:"1000"});
   await counterparties.saveCounterparty(requester,{...profileInput,id:profileId,account_number:"1122334455"});

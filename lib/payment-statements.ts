@@ -5,6 +5,7 @@ import type {Actor} from "./auth";
 import {canManage} from "./auth";
 import {db,transaction,type Db} from "./db";
 import {renderPaymentStatementPdf} from "./payment-statement-pdf";
+import {moduleReady} from "./schema-readiness";
 
 const uuid=z.uuid();
 const optional=(max:number)=>z.string().trim().max(max).default("");
@@ -64,9 +65,34 @@ export function statementTotals(operations:Operation[],charges:Charge[]):Stateme
   return {lines,net_clp:net,vat_clp:vat,total_clp:net==null?null:net+vat!,disposal_tons:disposalTons};
 }
 
-export async function listPaymentStatements(actor:Actor){
+export type StatementView=""|"pendientes"|"enviados"|"aprobados"|"sin_oc"|"lista_factura"|"sin_factura";
+const statementPredicates:Record<StatementView,string>={
+  "":"TRUE",
+  pendientes:"p.status IN ('borrador','observado')",
+  enviados:"p.status='enviado'",
+  aprobados:"p.status='aprobado'",
+  sin_factura:"p.status='aprobado' AND p.receivable_invoice_id IS NULL AND p.service_invoice_id IS NULL",
+  sin_oc:"p.status='aprobado' AND p.receivable_invoice_id IS NULL AND p.service_invoice_id IS NULL AND p.client_order_reference IS NULL AND p.client_order_exception IS NULL",
+  lista_factura:"p.status='aprobado' AND p.receivable_invoice_id IS NULL AND p.service_invoice_id IS NULL AND (p.client_order_reference IS NOT NULL OR p.client_order_exception IS NOT NULL)",
+};
+export async function listPaymentStatements(actor:Actor,view:StatementView="",limit=100,offset=0){
   read(actor);
-  return db.query<Statement>("SELECT * FROM payment_statements ORDER BY period_on DESC,created_at DESC");
+  if(!Object.hasOwn(statementPredicates,view))reject("Filtro de estados de pago no válido.");
+  if((view==="sin_factura"||view==="sin_oc"||view==="lista_factura")&&!await moduleReady("edp_billing"))return [];
+  if((view==="sin_oc"||view==="lista_factura")&&!await moduleReady("edp_client_order"))return [];
+  const safeLimit=Math.max(1,Math.min(250,Math.floor(limit)||100));
+  const safeOffset=Math.max(0,Math.min(1_000_000,Math.floor(offset)||0));
+  return db.query<Statement>(`SELECT p.* FROM payment_statements p WHERE p.issuer='e_y_j' AND ${statementPredicates[view]}
+    ORDER BY p.period_on DESC,p.created_at DESC,p.id DESC LIMIT $1 OFFSET $2`,[safeLimit,safeOffset]);
+}
+export async function paymentStatementOverview(actor:Actor){
+  read(actor);
+  const [row]=await db.query<{total:string;pending:string;sent:string;approved:string}>(`SELECT count(*)::text AS total,
+    count(*) FILTER (WHERE status IN ('borrador','observado'))::text AS pending,
+    count(*) FILTER (WHERE status='enviado')::text AS sent,
+    count(*) FILTER (WHERE status='aprobado')::text AS approved
+    FROM payment_statements WHERE issuer='e_y_j'`);
+  return row??{total:"0",pending:"0",sent:"0",approved:"0"};
 }
 export async function getPaymentStatement(actor:Actor,id:string){
   read(actor);if(!uuid.safeParse(id).success)reject("Estado de pago no encontrado.");
