@@ -92,6 +92,29 @@ export async function listMaintenance(actor: Actor) {
   return { assets,plans,orders,incidents,tires,warehouses };
 }
 
+export type ChecklistFault = { id:string; asset_id:string; source_service_id:string; description:string;
+  asset_label:string; operating_company:string; folio:string; client_name:string; reported_at:Date;
+  order_id:string|null; order_folio:string|null; order_status:string|null };
+export async function listChecklistFaults(actor:Actor,company:"rerchar"|"e_y_j",page=1) {
+  guard(actor);
+  const offset=(Math.max(1,Math.min(10_000,Math.trunc(page)||1))-1)*100;
+  const where=`FROM fleet_incidents i JOIN service_requests s ON s.id=i.source_service_id
+    WHERE s.operating_company=$1 AND i.status='abierta'`;
+  const [count,items]=await Promise.all([
+    db.query<{total:string}>(`SELECT count(*)::text AS total ${where}`,[company]),
+    db.query<ChecklistFault>(`SELECT i.id,i.asset_id,i.source_service_id,i.description,i.reported_at,
+      a.label AS asset_label,s.operating_company,s.folio,c.name AS client_name,
+      w.id AS order_id,w.folio AS order_folio,w.status AS order_status
+      FROM fleet_incidents i JOIN service_requests s ON s.id=i.source_service_id
+      JOIN assets a ON a.id=i.asset_id JOIN clients c ON c.id=s.client_id
+      LEFT JOIN LATERAL (SELECT id,folio,status FROM work_orders
+        WHERE incident_id=i.id AND status IN ('abierta','en_trabajo') ORDER BY created_at DESC,id DESC LIMIT 1) w ON true
+      WHERE s.operating_company=$1 AND i.status='abierta'
+      ORDER BY i.reported_at DESC,i.id DESC LIMIT 100 OFFSET $2`,[company,offset]),
+  ]);
+  return {total:Number(count[0]?.total??0),items};
+}
+
 export async function createMaintenancePlan(actor: Actor, input: unknown) {
   guard(actor);
   const data = z.object({ asset_id: uuid, title: z.string().trim().min(3).max(160), frequency_kind: z.enum(["fecha","lectura"]),

@@ -30,12 +30,13 @@ test("parte diario conserva incompletos, resuelve alerta y sigue guía sin confu
   await assert.rejects(()=>day.reportServiceDay(actor,service,{day:"2026-10-12",outcome:"incompleto",observation:""}),/Explique/);
   await day.reportServiceDay(actor,service,{day:"2026-10-12",outcome:"incompleto",observation:"No entregaron la guía en faena"});
   assert.equal((await pilot.getService(actor,service)).status,"programada","el parte no cierra la solicitud");
-  assert.equal((await day.listOpenDayAlerts(actor,"rerchar"))[0].outcome,"incompleto");
-  assert.equal((await day.listOpenDayAlerts(actor,"e_y_j")).length,0);
+  assert.equal((await day.listOpenDayAlerts(actor,"rerchar")).items[0].outcome,"incompleto");
+  assert.equal((await day.listOpenDayAlerts(actor,"rerchar")).total,1);
+  assert.equal((await day.listOpenDayAlerts(actor,"e_y_j")).total,0);
   await day.reportServiceDay(actor,service,{day:"2026-10-12",outcome:"suspendido",observation:"Retiro suspendido en faena"});
   assert.equal((await day.listServiceDays(outsider,service))[0].outcome,"suspendido");
   await day.reportServiceDay(actor,service,{day:"2026-10-13",outcome:"completado",observation:"Carga entregada"});
-  assert.equal((await day.listOpenDayAlerts(actor)).length,0);
+  assert.equal((await day.listOpenDayAlerts(actor)).total,0);
   assert.equal((await day.listWeekResults(actor,"2026-10-12","2026-10-19")).length,2);
   assert.equal((await db.query("SELECT id FROM audit_events WHERE action='day_result' AND entity_id=$1",[service])).length,3);
   await assert.rejects(()=>ledger.saveGuideFollowup(actor,service,{requested_on:"2026-10-13",due_on:"2026-10-12",
@@ -55,4 +56,19 @@ test("parte diario conserva incompletos, resuelve alerta y sigue guía sin confu
   assert.equal(followup.dispatch_guide_status,"enviada");
   assert.equal(new Date(followup.service_day).toISOString().slice(0,10),"2026-10-13");
   assert.equal((await ledger.getServiceLedger(actor,service)).followup?.dispatch_guide_status,"enviada");
+  await db.query(`WITH added AS (
+    INSERT INTO service_requests(submission_key,client_id,site_id,service_type,waste_type,origin,destination,
+      priority,scheduled_for,status,assigned_asset_id,driver_id,created_by,operating_company)
+    SELECT gen_random_uuid(),$1::uuid,$2::uuid,'traslado','Correas','Faena','Patio',
+      'normal','2026-10-12T09:00:00Z','programada',$3::uuid,$4::uuid,$5::uuid,'rerchar'
+    FROM generate_series(1,101) RETURNING id
+  ) INSERT INTO service_day_reports(service_id,day,asset_id,outcome,observation,recorded_by)
+    SELECT id,'2026-10-12'::date,$3::uuid,'incompleto','Sin guía de despacho',$5::uuid FROM added`,
+    [client.id,site.id,truck,driver.id,actor.id]);
+  const firstPage=await day.listOpenDayAlerts(actor,"rerchar");
+  const secondPage=await day.listOpenDayAlerts(actor,"rerchar",2);
+  assert.equal(firstPage.total,101);
+  assert.equal(firstPage.items.length,100);
+  assert.equal(secondPage.items.length,1);
+  assert.notEqual(firstPage.items[0].service_id,secondPage.items[0].service_id);
 });

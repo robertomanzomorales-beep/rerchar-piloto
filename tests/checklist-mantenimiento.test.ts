@@ -39,15 +39,35 @@ test("un hallazgo del checklist abre una avería trazable y una orden correctiva
   assert.equal(incidents[0].asset_id,truck);
   assert.equal(incidents[0].status,"abierta");
   assert.equal((await maintenance.listMaintenance(owner)).incidents[0].source_service_id,service);
+  assert.equal((await maintenance.listChecklistFaults(owner,"rerchar")).total,1);
+  assert.equal((await maintenance.listChecklistFaults(owner,"e_y_j")).total,0);
   assert.equal((await maintenance.listAssets(owner)).find(asset=>asset.id===truck)?.available,false);
   await assert.rejects(()=>pilot.startService(operator,service),pilot.PilotError);
   const order=await maintenance.createWorkOrder(owner,{asset_id:truck,plan_id:"",incident_id:incidents[0].id,
     kind:"correctiva",title:"Revisar neumático delantero",description:finding.comment,scheduled_for:"",blocks_asset:true});
+  const ordered=await maintenance.listChecklistFaults(owner,"rerchar");
+  assert.equal(ordered.total,1,"la avería permanece mientras la orden está abierta");
+  assert.equal(ordered.items[0].order_id,order);
   await maintenance.startWorkOrder(owner,order);
   await maintenance.closeWorkOrder(owner,order,{resolution:"Neumático reemplazado y camión inspeccionado",supplier:"",labor_cost:0,parts_cost:0,reading:""});
+  assert.equal((await maintenance.listChecklistFaults(owner,"rerchar")).total,0);
   assert.equal((await db.query<{status:string}>("SELECT status FROM fleet_incidents WHERE id=$1",[incidents[0].id]))[0].status,"resuelta");
   assert.equal((await maintenance.listAssets(owner)).find(asset=>asset.id===truck)?.available,true);
   await pilot.saveChecklist(operator,service,good);
   await pilot.startService(operator,service);
   assert.equal((await pilot.getService(owner,service)).status,"en_ruta");
+  await db.query(`WITH added AS (
+    INSERT INTO service_requests(submission_key,client_id,site_id,service_type,waste_type,origin,destination,
+      priority,created_by,operating_company)
+    SELECT gen_random_uuid(),$1::uuid,$2::uuid,'traslado','Material','Faena','Patio','normal',$3::uuid,'rerchar'
+    FROM generate_series(1,101) RETURNING id
+  ) INSERT INTO fleet_incidents(asset_id,source_service_id,description,severity,reported_by)
+    SELECT $4::uuid,id,'Avería de prueba pendiente','media',$3::uuid FROM added`,
+    [client.id,site.id,admin.id,truck]);
+  const firstPage=await maintenance.listChecklistFaults(owner,"rerchar");
+  const secondPage=await maintenance.listChecklistFaults(owner,"rerchar",2);
+  assert.equal(firstPage.total,101);
+  assert.equal(firstPage.items.length,100);
+  assert.equal(secondPage.items.length,1);
+  assert.notEqual(firstPage.items[0].id,secondPage.items[0].id);
 });

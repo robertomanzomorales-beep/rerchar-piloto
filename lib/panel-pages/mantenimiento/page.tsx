@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Gauge, Wrench, CalendarClock, CircleAlert, Disc3, ArrowRight } from "lucide-react";
 import { canManage, requireActor } from "@/lib/auth";
-import { listMaintenance } from "@/lib/continuity";
+import { listChecklistFaults, listMaintenance } from "@/lib/continuity";
 import { hourMaintenanceTemplates } from "@/lib/maintenance-templates";
 import { createHourPlanAction, createPlanAction, createTireAction, createWorkOrderAction, moveTireAction, recordReadingAction, updateAssetAction } from "@/app/continuity-actions";
 import { Notice, chileDate } from "@/components/UI";
@@ -12,16 +12,31 @@ const amount=(value:number|string)=>Number(value).toLocaleString("es-CL",{maximu
 const orderStatus:Record<string,string>={abierta:"Abierta",en_trabajo:"En trabajo",cerrada:"Cerrada",cancelada:"Cancelada"};
 const due=(value:Date|string|null)=>value?chileDate(`${value instanceof Date?value.toISOString().slice(0,10):String(value).slice(0,10)}T12:00:00Z`,false):"";
 
-export default async function Maintenance({searchParams}:{searchParams:Promise<{error?:string;ok?:string}>}) {
+export default async function Maintenance({searchParams}:{searchParams:Promise<{error?:string;ok?:string;empresa?:string;averias?:string;pagina?:string}>}) {
   const actor=await requireActor();
   if (!canManage(actor)) redirect("/");
-  const [{assets,plans,orders,incidents,tires,warehouses},query]=await Promise.all([listMaintenance(actor),searchParams]);
+  const query=await searchParams;
+  const company=query.empresa==="rerchar"||query.empresa==="e_y_j"?query.empresa:"rerchar";
+  const faultsView=query.averias==="abiertas";
+  const requested=Number(query.pagina),page=Number.isSafeInteger(requested)&&requested>=1&&requested<=10_000?requested:1;
+  const [{assets,plans,orders,incidents,tires,warehouses},faults]=await Promise.all([
+    listMaintenance(actor),faultsView?listChecklistFaults(actor,company,page):Promise.resolve(null),
+  ]);
+  const faultsHref=(next:number)=>`/mantenimiento?${new URLSearchParams({empresa:company,averias:"abiertas",pagina:String(next)})}#averias-checklist`;
   const open=orders.filter((order)=>["abierta","en_trabajo"].includes(order.status));
   const hourAssets=assets.filter((asset)=>asset.kind==="equipo"&&asset.reading_unit==="horas");
   return <>
     <div className="page-title-row"><div><div className="eyebrow">CONTINUIDAD OPERACIONAL</div><h1>Mantenimiento y neumáticos</h1><p className="page-intro">Lecturas de activos, planes preventivos y órdenes ligadas a averías y repuestos.</p></div><span className="title-icon"><Wrench size={23}/></span></div>
     <Notice error={query.error} ok={query.ok}/>
     <div className="supply-summary"><div><strong>{open.length}</strong><span>Órdenes abiertas</span></div><div><strong>{plans.filter((plan)=>plan.warning).length}</strong><span>Planes por vencer</span></div><div><strong>{incidents.length}</strong><span>Averías sin orden</span></div><Link className="button button-outline" href="/flota">Abrir flota <ArrowRight size={16}/></Link></div>
+    {faults&&<section className="section-card" id="averias-checklist"><div className="section-heading"><div><div className="eyebrow">CHECKLIST · {company==="rerchar"?"RERCHAR":"E Y J"}</div><h2><CircleAlert size={19}/> Averías abiertas</h2></div><span className="count-pill">{faults.total}</span></div>
+      <p className="helper-text">Cada avería abierta permanece aquí hasta que se cierre la orden correctiva. Los casos con orden en trabajo se abren desde su folio.</p>
+      {faults.items.length?<div className="incident-grid">{faults.items.map(fault=><article className="incident-card" key={fault.id}><div className="incident-head"><div><strong>{fault.asset_label} · {fault.client_name}</strong><span>{fault.description}</span><Link href={`/solicitudes/${fault.source_service_id}`} className="text-link">Ver servicio, checklist y fotos →</Link></div></div>
+        {fault.order_id?<Link className="button button-outline" href={`/mantenimiento/${fault.order_id}`}>Abrir OT-{String(fault.order_folio).padStart(5,"0")} · {fault.order_status==="en_trabajo"?"En trabajo":"Abierta"} <ArrowRight size={16}/></Link>
+          :<form action={createWorkOrderAction} className="incident-resolve"><input type="hidden" name="asset_id" value={fault.asset_id}/><input type="hidden" name="plan_id" value=""/><input type="hidden" name="incident_id" value={fault.id}/><input type="hidden" name="kind" value="correctiva"/><input type="hidden" name="title" value={`Reparar ${fault.asset_label}`}/><input type="hidden" name="description" value={fault.description}/><input type="hidden" name="scheduled_for" value=""/><input type="hidden" name="blocks_asset" value="on"/><SubmitButton className="button button-primary">Crear orden correctiva</SubmitButton></form>}</article>)}</div>
+        :<p className="muted">No hay averías abiertas para esta empresa.</p>}
+      {(page>1||page*100<faults.total)&&<nav className="records-pagination" aria-label="Páginas de averías abiertas"><span>{page>1&&<Link className="button button-outline" href={faultsHref(page-1)}>Anterior</Link>}</span><span>Página {page} · {faults.total} averías abiertas</span><span>{page*100<faults.total&&<Link className="button button-outline" href={faultsHref(page+1)}>Siguiente</Link>}</span></nav>}
+    </section>}
     <section className="section-card"><div className="section-heading"><div><div className="eyebrow">PLANILLA DE CAMIONES Y RAMPLAS · GARRAS</div><h2><Gauge size={19}/> Pautas por horómetro</h2></div></div>
       <p className="helper-text">Active en un equipo las tareas documentadas para su modelo. Registre primero el horómetro actual y confirme el próximo vencimiento; las lecturas de la planilla no se importan como lecturas vigentes.</p>
       <form action={createHourPlanAction} className="form-grid"><label>Equipo con horómetro<select name="asset_id" defaultValue="" required><option value="">Seleccione equipo</option>{hourAssets.map((asset)=><option key={asset.id} value={asset.id}>{asset.code} · {asset.label} · {amount(asset.current_reading)} h</option>)}</select></label>
@@ -34,7 +49,7 @@ export default async function Maintenance({searchParams}:{searchParams:Promise<{
     <section className="section-card"><div className="section-heading"><div><div className="eyebrow">PRÓXIMAS TAREAS</div><h2><CalendarClock size={19}/> Planes preventivos</h2></div><span className="count-pill">{plans.length}</span></div>
       {plans.length?<div className="table-wrap"><table className="data-table"><thead><tr><th>Activo / pauta</th><th>Próxima ejecución</th><th>Estado</th><th>Acción</th></tr></thead><tbody>{plans.map((plan)=><tr key={plan.id}><td><strong>{plan.title}</strong><span className="table-sub">{plan.asset_code} · {plan.asset_label}</span>{plan.procedure&&<details className="maintenance-procedure"><summary>Ver tareas y repuestos</summary><p>{plan.procedure}</p></details>}</td><td>{plan.frequency_kind==="fecha"?due(plan.next_due_date):`${amount(plan.next_due_reading!)} ${plan.reading_unit} · actual ${amount(plan.current_reading)}`}</td><td>{plan.warning?<span className="inventory-low">Por revisar</span>:<span className="inventory-good">En plazo</span>}</td><td><form action={createWorkOrderAction}><input type="hidden" name="asset_id" value={plan.asset_id}/><input type="hidden" name="plan_id" value={plan.id}/><input type="hidden" name="incident_id" value=""/><input type="hidden" name="kind" value="preventiva"/><input type="hidden" name="title" value={plan.title}/><input type="hidden" name="description" value=""/><input type="hidden" name="scheduled_for" value=""/><SubmitButton className="button button-outline">Crear OT</SubmitButton></form></td></tr>)}</tbody></table></div>:<p className="muted">Agregue un plan para cada activo que requiere mantenciones periódicas.</p>}
     </section>
-    {incidents.length>0&&<section className="section-card"><div className="section-heading"><div><div className="eyebrow">CORRECTIVOS</div><h2><CircleAlert size={19}/> Averías que requieren diagnóstico</h2></div></div>
+    {!faultsView&&incidents.length>0&&<section className="section-card"><div className="section-heading"><div><div className="eyebrow">CORRECTIVOS</div><h2><CircleAlert size={19}/> Averías que requieren diagnóstico</h2></div></div>
       <div className="incident-grid">{incidents.map((incident)=><article className="incident-card" key={incident.id}><div className="incident-head"><div><strong>{incident.asset_label}</strong><span>{incident.description}</span>{incident.source_service_id&&<Link href={`/solicitudes/${incident.source_service_id}`} className="text-link">Ver servicio, checklist y fotos →</Link>}</div></div><form action={createWorkOrderAction} className="incident-resolve"><input type="hidden" name="asset_id" value={incident.asset_id}/><input type="hidden" name="plan_id" value=""/><input type="hidden" name="incident_id" value={incident.id}/><input type="hidden" name="kind" value="correctiva"/><input type="hidden" name="title" value={`Reparar ${incident.asset_label}`}/><input type="hidden" name="description" value={incident.description}/><input type="hidden" name="scheduled_for" value=""/><input type="hidden" name="blocks_asset" value="on"/><SubmitButton className="button button-primary">Crear orden correctiva</SubmitButton></form></article>)}</div>
     </section>}
     <section className="section-card"><div className="section-heading"><div><div className="eyebrow">ÓRDENES DE TRABAJO</div><h2>Seguimiento</h2></div><span className="count-pill">{orders.length}</span></div>

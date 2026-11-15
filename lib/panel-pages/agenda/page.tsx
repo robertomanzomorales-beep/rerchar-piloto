@@ -31,20 +31,23 @@ function DayList({items}:{items:AgendaService[]}){
   </Link></li>)}</ul>:<p>Sin servicios programados.</p>;
 }
 
-export default async function Agenda({searchParams}:{searchParams:Promise<{inicio?:string;empresa?:string;error?:string;ok?:string}>}){
+export default async function Agenda({searchParams}:{searchParams:Promise<{inicio?:string;empresa?:string;error?:string;ok?:string;partes?:string;pagina?:string}>}){
   const actor=await requireActor();const query=await searchParams;
   const company=query.empresa==="rerchar"||query.empresa==="e_y_j"?query.empresa:"";
+  const requested=Number(query.pagina),page=Number.isSafeInteger(requested)&&requested>=1&&requested<=10_000?requested:1;
+  const pendingView=query.partes==="pendientes";
   const monday=weekStart(query.inicio),days=Array.from({length:7},(_,offset)=>addDays(monday,offset)),next=addDays(monday,7);
   const managed=canPlan(actor);
   const [board,services,results,openResults]=await Promise.all([
     managed?weeklyFleet(actor,iso(monday),iso(next),company):Promise.resolve(null),
     managed?Promise.resolve([]):listAgenda(actor,iso(monday),iso(next),company),
     managed?listWeekResults(actor,iso(monday),iso(next)):Promise.resolve([]),
-    managed?listOpenDayAlerts(actor,company):Promise.resolve([]),
+    managed?listOpenDayAlerts(actor,company,page):Promise.resolve({total:0,items:[]}),
   ]);
   const period=new Intl.DateTimeFormat("es-CL",{timeZone:"UTC",day:"numeric",month:"long"}).format(monday)+" – "+
     new Intl.DateTimeFormat("es-CL",{timeZone:"UTC",day:"numeric",month:"long",year:"numeric"}).format(days[6]);
-  const href=(date:Date)=>`/agenda?inicio=${iso(date)}&empresa=${company}`;
+  const href=(date:Date)=>`/agenda?${new URLSearchParams({inicio:iso(date),empresa:company,...(pendingView?{partes:"pendientes"}:{})})}${pendingView?"#partes-pendientes":""}`;
+  const partsHref=(nextPage:number)=>`/agenda?${new URLSearchParams({inicio:iso(monday),empresa:company,partes:"pendientes",pagina:String(nextPage)})}#partes-pendientes`;
   const selected=(trip:ScheduledTrip)=>!company||trip.operating_company===company;
   const visible=board?.trips.filter(selected)??[];
   const open=visible.filter(t=>t.status==="programada"||t.status==="en_ruta").length;
@@ -63,7 +66,7 @@ export default async function Agenda({searchParams}:{searchParams:Promise<{inici
   return <>
     <div className="page-title-row"><div><div className="eyebrow">PLANIFICACIÓN</div><h1>Programación semanal de camiones</h1><p className="page-intro">Camiones por día, servicios y novedades de operación. Horarios de Chile.</p></div><span className="title-icon"><CalendarDays size={24}/></span></div>
     <Notice error={query.error} ok={query.ok}/>
-    <form action="/agenda" method="GET" className="filters"><input type="hidden" name="inicio" value={iso(monday)}/><label>Empresa<select name="empresa" defaultValue={company}><option value="">Ambas empresas</option><option value="rerchar">RERCHAR</option><option value="e_y_j">E y J</option></select></label><button className="button button-outline" type="submit">Filtrar</button></form>
+    <form action="/agenda" method="GET" className="filters"><input type="hidden" name="inicio" value={iso(monday)}/>{pendingView&&<input type="hidden" name="partes" value="pendientes"/>}<label>Empresa<select name="empresa" defaultValue={company}><option value="">Ambas empresas</option><option value="rerchar">RERCHAR</option><option value="e_y_j">E y J</option></select></label><button className="button button-outline" type="submit">Filtrar</button></form>
     <div className="agenda-controls"><Link href={href(addDays(monday,-7))}><ChevronLeft size={18}/> Anterior</Link><strong>{period}</strong><Link href={href(next)}>Siguiente <ChevronRight size={18}/></Link></div>
     {board?<>
       <div className="fleet-week-stats"><div><strong>{open}</strong><span>Servicios activos esta semana</span></div><div><strong>{board.pending.length}</strong><span>Solicitudes por programar{board.pending.length===60?" (primeras 60)":""}</span></div><div><strong>{alerts}</strong><span>Prioridad alta o crítica pendiente</span></div></div>
@@ -91,9 +94,10 @@ export default async function Agenda({searchParams}:{searchParams:Promise<{inici
           {!board.assets.length&&<tr><td colSpan={8}>Agregue camiones en Maestros para comenzar la programación.</td></tr>}
         </tbody></table></div>
       </section>
-      {openResults.length>0&&<section className="section-card"><div className="section-heading"><div><div className="eyebrow">SEGUIMIENTO DE TERRENO</div><h2>Viajes incompletos o suspendidos</h2></div><span className="count-pill">{openResults.length}{openResults.length===100?"+":""}</span></div>
-        <p className="helper-text">Se muestran los últimos partes pendientes de resolver; un nuevo parte realizado o el cierre del servicio quita la alerta. Revise la causa y el siguiente paso en la solicitud.</p>
-        <ul className="fleet-week-pending">{openResults.map(r=><li key={r.service_id}><Link href={`/solicitudes/${r.service_id}`}><strong>{serviceFolio(r)} · {resultLabel[r.outcome]} · {r.client_name}</strong><span>{new Date(r.day).toISOString().slice(0,10)} · {r.waste_type} · {r.driver_name||"Sin conductor"}</span><small>{r.observation}</small></Link></li>)}</ul>
+      {(openResults.total>0||pendingView)&&<section className="section-card" id="partes-pendientes"><div className="section-heading"><div><div className="eyebrow">SEGUIMIENTO DE TERRENO{company?` · ${companyName(company)}`:""}</div><h2>Viajes incompletos o suspendidos</h2></div><span className="count-pill">{openResults.total}</span></div>
+        <p className="helper-text">Un nuevo parte realizado o el cierre del servicio quita la alerta. Revise la causa y el siguiente paso en la solicitud.</p>
+        {openResults.items.length?<ul className="fleet-week-pending">{openResults.items.map(r=><li key={r.service_id}><Link href={`/solicitudes/${r.service_id}`}><strong>{serviceFolio(r)} · {resultLabel[r.outcome]} · {r.client_name}</strong><span>{new Date(r.day).toISOString().slice(0,10)} · {r.waste_type} · {r.driver_name||"Sin conductor"}</span><small>{r.observation}</small></Link></li>)}</ul>:<p className="muted">No hay viajes pendientes en esta vista.</p>}
+        {(page>1||page*100<openResults.total)&&<nav className="records-pagination" aria-label="Páginas de partes pendientes"><span>{page>1&&<Link className="button button-outline" href={partsHref(page-1)}>Anterior</Link>}</span><span>Página {page} · {openResults.total} pendientes</span><span>{page*100<openResults.total&&<Link className="button button-outline" href={partsHref(page+1)}>Siguiente</Link>}</span></nav>}
       </section>}
       <div className="fleet-week-lower"><section className="section-card"><div className="section-heading"><div><div className="eyebrow">DESPACHO</div><h2>Solicitudes sin asignación</h2></div><span className="count-pill">{board.pending.length}</span></div>
         {board.pending.length?<ul className="fleet-week-pending">{board.pending.map(trip=><li key={trip.id}><Link href={`/solicitudes/${trip.id}`}><strong>{serviceFolio(trip)} · {trip.client_name}</strong><span>{trip.site_name} · {trip.waste_type}</span><small>{companyName(trip.operating_company)}{trip.priority!=="normal"?` · Prioridad ${trip.priority}`:""}</small></Link></li>)}</ul>:<p className="muted">No hay solicitudes pendientes de programación.</p>}

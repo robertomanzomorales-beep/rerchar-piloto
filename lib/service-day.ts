@@ -58,13 +58,19 @@ export async function listWeekResults(actor:Actor,from:string,to:string){
     WHERE s.deleted_at IS NULL AND d.day >= $1::date AND d.day < $2::date ORDER BY d.day,d.updated_at LIMIT 1000`,[from,to]);
 }
 
-export async function listOpenDayAlerts(actor:Actor,company=""){
+export async function listOpenDayAlerts(actor:Actor,company="",page=1){
   if(!canPlan(actor))invalid("Acceso de operaciones requerido.");
   if(company&&!(["rerchar","e_y_j"] as string[]).includes(company))invalid("Empresa inválida.");
-  return db.query<DayReportWeek>(`SELECT d.*,s.folio,s.operating_company,c.name AS client_name,s.waste_type FROM (
-      SELECT DISTINCT ON (service_id) * FROM service_day_reports ORDER BY service_id,day DESC
-    ) d JOIN service_requests s ON s.id=d.service_id JOIN clients c ON c.id=s.client_id
-    WHERE s.deleted_at IS NULL AND s.status IN ('programada','en_ruta','pendiente_revision')
-      AND d.outcome IN ('incompleto','suspendido') AND ($1::text='' OR s.operating_company=$1)
-    ORDER BY d.day DESC,d.updated_at DESC LIMIT 100`,[company]);
+  const offset=(Math.max(1,Math.min(10_000,Math.trunc(page)||1))-1)*100;
+  const from=`FROM (SELECT DISTINCT ON (service_id) * FROM service_day_reports ORDER BY service_id,day DESC) d
+    JOIN service_requests s ON s.id=d.service_id`;
+  const where=`WHERE s.deleted_at IS NULL AND s.status IN ('programada','en_ruta','pendiente_revision')
+      AND d.outcome IN ('incompleto','suspendido') AND ($1::text='' OR s.operating_company=$1)`;
+  const [count,items]=await Promise.all([
+    db.query<{total:string}>(`SELECT count(*)::text AS total ${from} ${where}`,[company]),
+    db.query<DayReportWeek>(`SELECT d.*,s.folio,s.operating_company,c.name AS client_name,s.waste_type ${from}
+    JOIN clients c ON c.id=s.client_id ${where}
+    ORDER BY d.day DESC,d.updated_at DESC,d.service_id DESC LIMIT 100 OFFSET $2`,[company,offset]),
+  ]);
+  return {total:Number(count[0]?.total??0),items};
 }
