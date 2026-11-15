@@ -97,15 +97,30 @@ const base=(billingReady:boolean)=>`SELECT g.*,c.name AS counterparty_name,
     COALESCE((SELECT -sum(m.delta_kg) FROM material_stock_movements m WHERE m.guide_item_id=i.id),0)<i.stock_kg)::text AS unposted_stock
   FROM material_guides g JOIN clients c ON c.id=g.counterparty_id LEFT JOIN material_guide_items i ON i.guide_id=g.id`;
 
-export async function listMaterialGuides(actor:Actor,term="",type=""){
+export type GuideView=""|"venta_pendiente"|"stock_pendiente";
+export async function listMaterialGuides(actor:Actor,term="",type="",view:GuideView="",limit=100,offset=0){
   manage(actor);
+  if(!["","venta_pendiente","stock_pendiente"].includes(view))reject("Filtro de guías no válido.");
   const q=term.trim().slice(0,100);
   const kind=["venta","compra","traslado"].includes(type)?type:"";
   const ready=await moduleReady("material_sale_billing");
+  const billingCondition=ready?`(i.receivable_invoice_id IS NOT NULL AND EXISTS (
+    SELECT 1 FROM extra_receivable_invoices f WHERE f.id=i.receivable_invoice_id AND f.status='emitida'
+      AND f.total_clp>COALESCE((SELECT sum(p.amount_clp) FROM extra_receivable_payments p WHERE p.invoice_id=f.id),0))
+    OR i.receivable_invoice_id IS NULL AND i.invoice_status IS DISTINCT FROM 'pagada')`:
+    "i.invoice_status IS DISTINCT FROM 'pagada'";
+  const condition=view==="venta_pendiente"?`g.movement_type='venta' AND EXISTS (
+    SELECT 1 FROM material_guide_items i WHERE i.guide_id=g.id AND
+      (i.arrival_kg IS NULL OR i.invoice_number IS NULL OR
+        (i.invoice_number IS NOT NULL AND ${billingCondition})))`:
+    view==="stock_pendiente"?`g.movement_type='venta' AND EXISTS (
+    SELECT 1 FROM material_guide_items i WHERE i.guide_id=g.id AND i.stock_kg>0 AND
+      COALESCE((SELECT -sum(m.delta_kg) FROM material_stock_movements m WHERE m.guide_item_id=i.id),0)<i.stock_kg)`:"TRUE";
   return db.query<MaterialGuide>(`${base(ready)} WHERE ($1::text='' OR g.guide_number ILIKE '%'||$1||'%'
     OR c.name ILIKE '%'||$1||'%' OR EXISTS (SELECT 1 FROM material_guide_items x WHERE x.guide_id=g.id AND x.material_name ILIKE '%'||$1||'%'))
-    AND ($2::text='' OR g.movement_type=$2)
-    GROUP BY g.id,c.name ORDER BY g.movement_on DESC,g.created_at DESC LIMIT 250`,[q,kind]);
+    AND ($2::text='' OR g.movement_type=$2) AND g.operating_company='rerchar' AND ${condition}
+    GROUP BY g.id,c.name ORDER BY g.movement_on DESC,g.created_at DESC,g.id DESC LIMIT $3 OFFSET $4`,
+    [q,kind,Math.max(1,Math.min(250,Math.trunc(limit)||100)),Number.isSafeInteger(offset)?Math.max(0,Math.min(500_000,offset)):0]);
 }
 
 export async function getMaterialGuide(actor:Actor,id:string){

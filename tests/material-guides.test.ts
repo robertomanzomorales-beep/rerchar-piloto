@@ -12,7 +12,7 @@ test("Control de Guía registra una venta real con varios materiales y conserva 
   const materials=await import("../lib/materials");
   const {entryHeaders,entryRow,buildEntryWorkbook}=await import("../lib/material-export");
   const {addOperationFile}=await import("../lib/operation-files");
-  const {rercharReceiptGuideDashboard,rercharReceiptClosureDashboard}=await import("../lib/company-dashboard");
+  const {rercharReceiptGuideDashboard,rercharReceiptClosureDashboard,rercharMaterialDashboard}=await import("../lib/company-dashboard");
   const stock=await import("../lib/material-stock");
   for(const name of (await readdir(resolve(process.cwd(),"db"))).filter(n=>/^\d+.*\.sql$/.test(n)).sort()){
     const sql=await readFile(resolve(process.cwd(),`db/${name}`),"utf8");
@@ -49,6 +49,8 @@ test("Control de Guía registra una venta real con varios materiales y conserva 
   await materials.updateMaterialGuideFollowup(actor,receipt,{requested_on:"2026-09-02",received_on:"",valued_guide:""});
   assert.equal((await materials.getMaterialReceipt(actor,receipt)).valued_guide,null,"ingreso pendiente sin bloqueo");
   assert.equal((await rercharReceiptGuideDashboard()).pending,"1","la alerta muestra la guía pendiente");
+  assert.deepEqual((await materials.listMaterialReceipts(actor,"guia")).map(r=>r.id),[receipt]);
+  assert.equal((await materials.listMaterialReceipts(actor,"guia",1,1)).length,0,"la cola permite avanzar página sin truncar la alerta");
   await assert.rejects(()=>materials.updateMaterialGuideFollowup(actor,receipt,{requested_on:"2026-09-02",received_on:"2026-09-03",valued_guide:"GV-125"}),
     /Adjunte la guía valorizada/);
   const jpg=()=>new File([new Uint8Array([0xff,0xd8,0xff,0xd9])],"documento.jpg",{type:"image/jpeg"});
@@ -60,6 +62,7 @@ test("Control de Guía registra una venta real con varios materiales y conserva 
   assert.equal((await materials.getMaterialReceipt(actor,receipt)).valued_guide,"GV-125");
   assert.equal((await rercharReceiptGuideDashboard()).pending,"0","al recibirla desaparece la alerta");
   assert.equal((await rercharReceiptClosureDashboard()).invoice_pending,"1","falta confirmar la factura después de la guía");
+  assert.deepEqual((await materials.listMaterialReceipts(actor,"factura")).map(r=>r.id),[receipt]);
   await assert.rejects(()=>materials.updateMaterialReferences(actor,receipt,{entry_sheet:"H-13",invoice_number:"F-125",
     invoice_direction:"emitida",invoice_issued_on:"2026-09-04"}),/Adjunte la factura/);
   await addOperationFile(actor,"receipt",receipt,"factura",jpg());
@@ -67,11 +70,13 @@ test("Control de Guía registra una venta real con varios materiales y conserva 
     invoice_direction:"emitida",invoice_issued_on:"2026-09-04",certificate_number:"C-13"});
   assert.equal((await rercharReceiptClosureDashboard()).invoice_pending,"0");
   assert.equal((await rercharReceiptClosureDashboard()).notice_pending,"1");
+  assert.deepEqual((await materials.listMaterialReceipts(actor,"aviso")).map(r=>r.id),[receipt]);
   await assert.rejects(()=>materials.updateMaterialPayment(actor,receipt,{payment_status:"pagado",paid_on:"2026-09-05",
     payment_reference:"TR-9"}),/Adjunte primero el comprobante/);
   await addOperationFile(actor,"receipt",receipt,"comprobante",jpg());
   await materials.updateMaterialPayment(actor,receipt,{payment_status:"parcial",paid_on:"2026-09-05",payment_reference:"TR-9"});
   assert.equal((await rercharReceiptClosureDashboard()).payment_pending,"1");
+  assert.deepEqual((await materials.listMaterialReceipts(actor,"pago")).map(r=>r.id),[receipt]);
   await materials.updateMaterialPayment(actor,receipt,{payment_status:"pagado",paid_on:"2026-09-06",payment_reference:"TR-10"});
   assert.equal((await rercharReceiptClosureDashboard()).payment_pending,"0");
   await assert.rejects(()=>materials.recordMaterialClosureNotification(actor,receipt,{notified_on:"2026-09-05",
@@ -113,6 +118,10 @@ test("Control de Guía registra una venta real con varios materiales y conserva 
     invoice_difference_kg:0,estimated_clp:6402500,billed_clp:6402500,value_difference_clp:0});
   assert.equal(guide.missing_invoice,"1");
   assert.equal(guide.unposted_stock,"0");
+  assert.equal((await rercharMaterialDashboard()).guides.pending,"1");
+  assert.deepEqual((await guides.listMaterialGuides(actor,"","","venta_pendiente")).map(g=>g.id),[id]);
+  assert.equal((await guides.listMaterialGuides(actor,"","","stock_pendiente")).length,0);
+  assert.equal((await guides.listMaterialGuides(actor,"","","venta_pendiente",1,1)).length,0);
   assert.equal((await stock.listMaterialCatalog(actor)).find(m=>m.id===iron.id)?.quantity_kg,"100.00");
   await assert.rejects(()=>guides.createMaterialGuide(customer,{...base,submission_key:randomUUID()}),guides.MaterialGuideError);
   await assert.rejects(()=>guides.getMaterialGuide(customer,id),guides.MaterialGuideError);

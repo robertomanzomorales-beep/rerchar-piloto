@@ -142,14 +142,14 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
       {label:"Guías valorizadas que vencen en 7 días",count:value(guideAlerts?.upcoming),href:"/seguimiento-guias?estado=proximas"},
       {label:"Guías valorizadas pendientes sin plazo",count:value(guideAlerts?.undated),href:"/seguimiento-guias?estado=sin_plazo"},
     ]:[]),
-    ...(selected==="rerchar"&&canManage(actor)?[{label:"Ventas de material con pesaje, factura o pago pendientes",count:value(materials?.guides.pending),href:"/control-guias"}]:[]),
-    ...(selected==="rerchar"&&canManage(actor)&&receiptGuides?.ready?[{label:"Ingresos esperando guía valorizada",count:value(receiptGuides.pending),href:"/ingresos"}]:[]),
+    ...(selected==="rerchar"&&canManage(actor)?[{label:"Ventas de material con pesaje, factura o pago pendientes",count:value(materials?.guides.pending),href:"/control-guias?vista=venta_pendiente"}]:[]),
+    ...(selected==="rerchar"&&canManage(actor)&&receiptGuides?.ready?[{label:"Ingresos esperando guía valorizada",count:value(receiptGuides.pending),href:"/ingresos?vista=guia"}]:[]),
     ...(selected==="rerchar"&&canManage(actor)&&receiptClosure?.ready?[
-      {label:"Ingresos con factura por completar",count:value(receiptClosure.invoice_pending),href:"/ingresos"},
-      {label:"Ingresos con pago pendiente o parcial",count:value(receiptClosure.payment_pending),href:"/ingresos"},
-      {label:"Ingresos con aviso documental pendiente",count:value(receiptClosure.notice_pending),href:"/ingresos"},
+      {label:"Ingresos con factura por completar",count:value(receiptClosure.invoice_pending),href:"/ingresos?vista=factura"},
+      {label:"Ingresos con pago pendiente o parcial",count:value(receiptClosure.payment_pending),href:"/ingresos?vista=pago"},
+      {label:"Ingresos con aviso documental pendiente",count:value(receiptClosure.notice_pending),href:"/ingresos?vista=aviso"},
     ]:[]),
-    ...(selected==="rerchar"&&canManage(actor)&&materials?.stock_ready?[{label:"Guías anteriores con salida de stock por conciliar",count:value(materials.guides.stock_pending),href:"/control-guias"}]:[]),
+    ...(selected==="rerchar"&&canManage(actor)&&materials?.stock_ready?[{label:"Guías anteriores con salida de stock por conciliar",count:value(materials.guides.stock_pending),href:"/control-guias?vista=stock_pendiente"}]:[]),
     ...(selected==="e_y_j"&&canManage(actor)&&payments?.ready?[{label:"Estados de pago por completar o corregir",count:value(payments.pending),href:"/estados-pago?vista=pendientes"}]:[]),
     ...(edpInvoices?.ready?[...(edpInvoices.order_ready?[
       {label:"EDP aprobados esperando OC del cliente",count:value(edpInvoices.awaiting_order),href:"/estados-pago?vista=sin_oc"},
@@ -214,7 +214,7 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
     <div className="company-metric-grid">
       {showQuotes&&<Link href={`/cotizaciones?empresa=${selected}&vista=gestion`} className="company-metric"><span>Cotizaciones en gestión</span><strong>{value(q?.draft)+value(q?.sent)}</strong><small>{value(q?.draft)} en borrador · {value(q?.sent)} enviadas</small></Link>}
       <Link href={`/solicitudes?empresa=${selected}&estado=abiertas`} className="company-metric"><span>Servicios abiertos</span><strong>{openServices}</strong><small>{value(s?.requested)+value(s?.scheduled)} por iniciar · {value(s?.in_route)} en ruta · {value(s?.pending_review)} en revisión</small></Link>
-      {selected==="rerchar"&&canManage(actor)?<Link href="/control-guias" className="company-metric"><span>Ventas por cerrar</span><strong>{value(materials?.guides.pending)}</strong><small>{value(materials?.guides.total)} guías registradas</small></Link>:!canManage(actor)?<Link href={`/solicitudes?empresa=${selected}&estado=en_ruta`} className="company-metric"><span>En ruta</span><strong>{value(s?.in_route)}</strong><small>En ejecución</small></Link>:null}
+      {selected==="rerchar"&&canManage(actor)?<Link href="/control-guias?vista=venta_pendiente" className="company-metric"><span>Ventas por cerrar</span><strong>{value(materials?.guides.pending)}</strong><small>{value(materials?.guides.total)} guías registradas</small></Link>:!canManage(actor)?<Link href={`/solicitudes?empresa=${selected}&estado=en_ruta`} className="company-metric"><span>En ruta</span><strong>{value(s?.in_route)}</strong><small>En ejecución</small></Link>:null}
       {selected==="e_y_j"&&canManage(actor)&&(payments?.ready?<Link href="/estados-pago?vista=pendientes" className="company-metric"><span>EDP por completar</span><strong>{value(payments.pending)}</strong><small>{value(payments.total)} estados registrados</small></Link>:<div className="company-metric"><span>Estados de pago</span><strong>—</strong><small>Sin datos de este módulo</small></div>)}
       <Link href={`/solicitudes?empresa=${selected}&estado=completada&cierre_mes=${today.slice(0,7)}`} className="company-metric"><span>Cierres del mes</span><strong>{closedThisMonth}</strong><small>{value(s?.completed)} completados en total</small></Link>
     </div>

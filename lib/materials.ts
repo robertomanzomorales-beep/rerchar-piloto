@@ -3,6 +3,7 @@ import type {Actor} from "./auth";
 import {canManage} from "./auth";
 import {db,transaction} from "./db";
 import {catalogName} from "./material-stock";
+import {moduleReady} from "./schema-readiness";
 
 const uuid=z.uuid();
 const optional=(max:number)=>z.string().trim().max(max).optional().default("");
@@ -36,10 +37,23 @@ export type MaterialReceipt={id:string;client_id:string;client_name:string;servi
 const select=`SELECT r.*,c.name AS client_name,s.folio AS service_folio FROM material_receipts r JOIN clients c ON c.id=r.client_id
   LEFT JOIN service_requests s ON s.id=r.service_id`;
 
-export async function listMaterialReceipts(actor:Actor){
+export type ReceiptView=""|"guia"|"factura"|"pago"|"aviso";
+const receiptPredicates:Record<ReceiptView,string>={
+  "":"TRUE",
+  guia:"r.valued_guide_requested_on IS NOT NULL AND r.valued_guide IS NULL",
+  factura:`r.valued_guide_received_on IS NOT NULL AND (r.invoice_number IS NULL OR r.invoice_direction IS NULL
+    OR r.invoice_issued_on IS NULL OR NOT EXISTS (SELECT 1 FROM operation_files f WHERE f.receipt_id=r.id AND f.kind='factura'))`,
+  pago:"r.invoice_number IS NOT NULL AND r.payment_status IN ('pendiente','parcial')",
+  aviso:"r.valued_guide_received_on IS NOT NULL AND r.invoice_direction IS NOT NULL AND r.closure_notified_on IS NULL",
+};
+export async function listMaterialReceipts(actor:Actor,view:ReceiptView="",limit=100,offset=0){
   if(actor.role==="conductor")reject("Sin acceso al registro de material.");
+  if(!Object.hasOwn(receiptPredicates,view))reject("Filtro de ingresos no válido.");
+  if(view==="guia"&&!await moduleReady("receipt_followup"))return [];
+  if(["factura","pago","aviso"].includes(view)&&!await moduleReady("receipt_closure"))return [];
   return db.query<MaterialReceipt>(`${select} WHERE ($1::text<>'cliente' OR r.client_id=$2::uuid)
-    ORDER BY r.movement_on DESC,r.created_at DESC LIMIT 350`,[actor.role,actor.client_id]);
+    AND ${receiptPredicates[view]} ORDER BY r.movement_on DESC,r.created_at DESC,r.id DESC LIMIT $3 OFFSET $4`,
+    [actor.role,actor.client_id,Math.max(1,Math.min(250,Math.trunc(limit)||100)),Number.isSafeInteger(offset)?Math.max(0,Math.min(500_000,offset)):0]);
 }
 export async function getMaterialReceipt(actor:Actor,id:string){
   if(!uuid.safeParse(id).success)reject("Ingreso no encontrado.");
