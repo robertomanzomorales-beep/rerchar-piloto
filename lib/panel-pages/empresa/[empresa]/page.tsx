@@ -135,7 +135,7 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
       {label:"Facturas anteriores por conciliar",count:Number(receivables.legacy),href:`/cobranzas?empresa=${selected}`}]:[]),
     ...(actor.role==="admin"?[{label:"Servicios valorizados pendientes de factura individual",count:unbilledServices,href:`/finanzas?empresa=${selected}&facturacion=pendiente`}]:[]),
     ...(actor.role==="admin"?[{label:"Servicios cerrados con OC del cliente requerida y pendiente",count:clientOrdersPending,href:`/finanzas?empresa=${selected}&oc=pendiente`}]:[]),
-    ...(actor.role==="admin"?[{label:"Cambios de tarifa por comunicar al cliente",count:value(tariffNotices[0]?.total),href:`/finanzas?empresa=${selected}`}]:[]),
+    ...(actor.role==="admin"?[{label:"Cambios de tarifa por comunicar al cliente",count:value(tariffNotices[0]?.total),href:`/finanzas?empresa=${selected}&avisos=pendientes#avisos-tarifa`}]:[]),
     ...(selected==="rerchar"&&canManage(actor)?[
       {label:"Guías valorizadas atrasadas a mi cargo",count:value(guideAlerts?.my_overdue),href:"/seguimiento-guias?estado=mias",urgent:true},
       {label:"Guías valorizadas atrasadas",count:value(guideAlerts?.overdue),href:"/seguimiento-guias?estado=atrasadas",urgent:true},

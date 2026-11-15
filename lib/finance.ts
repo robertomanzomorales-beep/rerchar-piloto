@@ -57,12 +57,14 @@ const serviceSelect=`SELECT s.id,s.folio,s.client_id,s.site_id,s.operating_compa
  LEFT JOIN service_valuations v ON v.service_id=s.id LEFT JOIN service_tariffs t ON t.id=v.tariff_id
  LEFT JOIN service_invoices f ON f.valuation_id=v.id AND f.status='emitida'`;
 
-export async function listFinance(actor:Actor,company="rerchar",clientOcOnly=false,pendingIndividualOnly=false,page=1){
+export async function listFinance(actor:Actor,company="rerchar",clientOcOnly=false,pendingIndividualOnly=false,page=1,noticeFilter:""|"pendiente"="",noticePage=1){
   admin(actor);
   if(!["rerchar","e_y_j","pendiente"].includes(company))reject("Empresa inválida.");
+  if(noticeFilter!==""&&noticeFilter!=="pendiente")reject("Filtro de avisos inválido.");
   const pageNumber=Number.isSafeInteger(page)&&page>0&&page<=10_000?page:1;
+  const noticePageNumber=Number.isSafeInteger(noticePage)&&noticePage>0&&noticePage<=10_000?noticePage:1;
   const pageSize=100;
-  const [serviceRows,contracts,tariffs,clients,sites,notices]=await Promise.all([
+  const [serviceRows,contracts,tariffs,clients,sites,noticeRows,pendingNotices]=await Promise.all([
     db.query<FinancialService>(`SELECT * FROM (${serviceSelect} WHERE s.deleted_at IS NULL AND s.status='completada'
       AND ($1='pendiente' AND s.operating_company IS NULL OR s.operating_company=$1)) AS service
       WHERE ($2::boolean=false OR (requires_client_oc AND client_oc_reference IS NULL AND invoice_id IS NULL AND NOT in_payment_statement))
@@ -85,13 +87,18 @@ export async function listFinance(actor:Actor,company="rerchar",clientOcOnly=fal
       n.reason,n.status,n.notified_on,n.channel,n.recipient,n.reference
       FROM tariff_change_notices n JOIN service_tariffs t ON t.id=n.new_tariff_id
       JOIN service_tariffs old ON old.id=n.old_tariff_id JOIN client_contracts c ON c.id=t.contract_id
-      JOIN clients cl ON cl.id=c.client_id WHERE c.operating_company=$1
-      ORDER BY CASE n.status WHEN 'pendiente' THEN 0 ELSE 1 END,n.created_at DESC LIMIT 100`,[company]),
+      JOIN clients cl ON cl.id=c.client_id WHERE c.operating_company=$1 AND ($2::text='' OR n.status=$2)
+      ORDER BY CASE n.status WHEN 'pendiente' THEN 0 ELSE 1 END,n.created_at DESC,n.id DESC LIMIT $3 OFFSET $4`,
+      [company,noticeFilter,pageSize+1,(noticePageNumber-1)*pageSize]),
+    db.query<{total:string}>(`SELECT count(*)::text AS total FROM tariff_change_notices n
+      JOIN service_tariffs t ON t.id=n.new_tariff_id JOIN client_contracts c ON c.id=t.contract_id
+      WHERE n.status='pendiente' AND c.operating_company=$1`,[company]),
   ]);
   const services=serviceRows.slice(0,pageSize);
   const edpInvoices=await listEdpServiceInvoices(services.map(service=>service.id));
   return {services,edpInvoices,hasMoreServices:serviceRows.length>pageSize,
-    contracts,tariffs,clients,sites,notices};
+    contracts,tariffs,clients,sites,notices:noticeRows.slice(0,pageSize),hasMoreNotices:noticeRows.length>pageSize,
+    pendingNoticeCount:pendingNotices[0]?.total??"0"};
 }
 
 export async function pendingClientOrders(actor:Actor,company:Company){

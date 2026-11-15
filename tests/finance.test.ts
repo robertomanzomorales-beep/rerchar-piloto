@@ -50,9 +50,15 @@ test("tarifa vigente, valorización, reemisión, pagos y margen conservan saldos
   assert.equal(currentRate[0].price,"1200.00");
   const [notice]=(await finance.listFinance(owner,"rerchar")).notices;
   assert.equal(notice.status,"pendiente");
+  assert.equal((await finance.listFinance(owner,"rerchar",false,false,1,"pendiente")).pendingNoticeCount,"1");
+  assert.deepEqual((await finance.listFinance(owner,"rerchar",false,false,1,"pendiente")).notices.map(n=>n.id),[notice.id]);
+  assert.equal((await finance.listFinance(owner,"rerchar",false,false,1,"pendiente",2)).notices.length,0);
+  assert.equal((await finance.listFinance(owner,"e_y_j",false,false,1,"pendiente")).notices.length,0);
   await assert.rejects(()=>finance.recordTariffNotice(owner,notice.id,{channel:"correo",recipient:"No es correo",notified_on:"2026-10-01",reference:"Correo enviado el 1 de octubre"}),finance.FinanceError);
   await finance.recordTariffNotice(owner,notice.id,{channel:"correo",recipient:"cliente@example.cl",notified_on:"2026-10-01",reference:"Correo enviado el 1 de octubre"});
   assert.equal((await finance.listFinance(owner,"rerchar")).notices[0].status,"enviado");
+  assert.equal((await finance.listFinance(owner,"rerchar",false,false,1,"pendiente")).pendingNoticeCount,"0");
+  assert.equal((await finance.listFinance(owner,"rerchar",false,false,1,"pendiente")).notices.length,0);
   await assert.rejects(()=>finance.recordTariffNotice(owner,notice.id,{channel:"correo",recipient:"cliente@example.cl",notified_on:"2026-10-01",reference:"Intento de duplicar aviso"}),finance.FinanceError);
   let {service:detail}=await finance.getFinancialService(owner,service.id);
   assert.equal(detail.quantity,"50.00");
