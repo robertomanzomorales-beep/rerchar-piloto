@@ -129,6 +129,13 @@
   .app-shell .progress-step { font-size: 11px; font-weight: 560; }
   .app-shell .progress-step.done { color: var(--company-strong); }
   .app-shell .progress-step.done .progress-number { border-color: var(--company-border); background: var(--company-soft); color: var(--company-strong); }
+  .app-shell .progress-step.current { color: var(--company-strong); font-weight: 670; }
+  .app-shell .progress-step.current .progress-number { border-color: var(--company-accent); background: var(--company-accent); color: #fff; }
+  .app-shell .progress-number { border-radius: 3px; font-variant-numeric: tabular-nums; }
+  .app-shell .service-guidance { border-left-width: 3px; box-shadow: 0 2px 9px #122e2610; }
+  .app-shell .service-guidance strong { min-width: 145px; }
+  .app-shell .service-guidance a { border-bottom: 1px solid var(--company-accent); text-decoration: none; }
+  .app-shell #nuevo-ingreso { scroll-margin-top: 18px; }
   .app-shell .timeline strong { color: #40565f; font-weight: 580; }
   .app-shell .timeline small { color: #87969b; }
 }

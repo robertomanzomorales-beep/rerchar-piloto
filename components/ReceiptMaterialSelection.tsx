@@ -6,13 +6,19 @@ import type {ReceiptSourceService} from "@/lib/material-receipt-sources";
 type Material={id:string;name:string};
 type Details={site_name:string;origin:string;destination:string;driver_name:string;driver_tax_id:string;truck_plate:string;trailer_plate:string};
 const blank:Details={site_name:"",origin:"",destination:"",driver_name:"",driver_tax_id:"",truck_plate:"",trailer_plate:""};
-export function ReceiptMaterialSelection({clients,services,materials,linked}:{clients:{id:string;name:string}[];services:ReceiptSourceService[];materials:Material[];linked:{service_id:string;material_id:string}[]}){
-  const [mode,setMode]=useState<"directa"|"programada">("directa");
-  const [client,setClient]=useState("");
-  const [service,setService]=useState("");
-  const [material,setMaterial]=useState("");
-  const [details,setDetails]=useState<Details>(blank);
-  const [ticket,setTicket]=useState("");
+const sourceDetails=(found:ReceiptSourceService):Details=>({site_name:found.site_name,origin:found.origin,
+  destination:found.destination,driver_name:found.driver_name??"",driver_tax_id:found.driver_tax_id??"",
+  truck_plate:found.truck_plate??"",trailer_plate:found.trailer_plate??""});
+export function ReceiptMaterialSelection({clients,services,materials,linked,initialServiceId=""}:{clients:{id:string;name:string}[];
+  services:ReceiptSourceService[];materials:Material[];linked:{service_id:string;material_id:string}[];initialServiceId?:string}){
+  const initial=services.find(item=>item.id===initialServiceId);
+  const initialIds=[...new Set(linked.filter(item=>item.service_id===initial?.id).map(item=>item.material_id))];
+  const [mode,setMode]=useState<"directa"|"programada">(initial?"programada":"directa");
+  const [client,setClient]=useState(initial?.client_id??"");
+  const [service,setService]=useState(initial?.id??"");
+  const [material,setMaterial]=useState(initialIds.length===1?initialIds[0]:"");
+  const [details,setDetails]=useState<Details>(initial?sourceDetails(initial):blank);
+  const [ticket,setTicket]=useState(initial?.destination_tickets.length===1?initial.destination_tickets[0]:"");
   const [originGuide,setOriginGuide]=useState("");
   const [transferGuide,setTransferGuide]=useState("");
   const [entrySheet,setEntrySheet]=useState("");
@@ -23,9 +29,7 @@ export function ReceiptMaterialSelection({clients,services,materials,linked}:{cl
     const found=services.find(item=>item.id===id);
     const materialIds=[...new Set(linked.filter(item=>item.service_id===id).map(item=>item.material_id))];
     setMaterial(materialIds.length===1?materialIds[0]:"");
-    setDetails(found?{site_name:found.site_name,origin:found.origin,destination:found.destination,
-      driver_name:found.driver_name??"",driver_tax_id:found.driver_tax_id??"",
-      truck_plate:found.truck_plate??"",trailer_plate:found.trailer_plate??""}:blank);
+    setDetails(found?sourceDetails(found):blank);
     setTicket(found?.destination_tickets.length===1?found.destination_tickets[0]:"");
     setOriginGuide("");setTransferGuide("");setEntrySheet("");
   };

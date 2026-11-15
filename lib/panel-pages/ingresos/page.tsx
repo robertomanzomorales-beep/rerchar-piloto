@@ -16,7 +16,7 @@ import {listReceiptSourceServices} from "@/lib/material-receipt-sources";
 
 const date=(v:Date|string)=>v instanceof Date?v.toISOString().slice(0,10):String(v).slice(0,10);
 
-export default async function MaterialReceipts({searchParams}:{searchParams:Promise<{error?:string;ok?:string}>}){
+export default async function MaterialReceipts({searchParams}:{searchParams:Promise<{error?:string;ok?:string;servicio?:string}>}){
   const actor=await requireActor();if(actor.role==="conductor")redirect("/");
   if(!await moduleReady("ingresos"))return <ModuleUnavailable title="Ingresos de material" company="rerchar"/>;
   const [query,rows,clients,services,catalog,linked]=await Promise.all([searchParams,listMaterialReceipts(actor),
@@ -27,17 +27,18 @@ export default async function MaterialReceipts({searchParams}:{searchParams:Prom
       JOIN service_requests s ON s.id=sm.service_id WHERE s.operating_company='rerchar' AND s.deleted_at IS NULL
       AND s.id IN (SELECT id FROM service_requests WHERE operating_company='rerchar' AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 300)`):Promise.resolve([])]);
   const currentMonth=new Intl.DateTimeFormat("sv-SE",{timeZone:"America/Santiago",year:"numeric",month:"2-digit"}).format(new Date());
+  const initialServiceId=services.some(service=>service.id===query.servicio)?query.servicio:"";
   const guidePending=rows.filter(r=>!r.valued_guide&&r.valued_guide_requested_on).length;
   const invoicePending=rows.filter(r=>r.valued_guide_received_on&&(!r.invoice_number||!r.invoice_direction||!r.invoice_issued_on)).length;
   const paymentPending=rows.filter(r=>r.invoice_number&&["pendiente","parcial"].includes(r.payment_status)).length;
   return <><div className="page-title-row"><div><div className="eyebrow">ENTRADAS Y EXCEDENTES 2026</div><h1>Ingresos de material</h1><p className="page-intro">Tickets, pesos de origen y llegada, impurezas, guías, facturas y respaldo por cliente.</p></div><span className="title-icon"><PackageCheck size={24}/></span></div><Notice error={query.error} ok={query.ok}/>
     {canManage(actor)&&<section className="section-card"><div className="section-heading"><div><div className="eyebrow">PLANILLA DE CAROL</div><h2>Descargar entrada de material</h2></div><span className="count-pill">{guidePending} guías · {invoicePending} facturas · {paymentPending} pagos pendientes entre los registros visibles</span></div><p className="helper-text">Archivo Excel con las 21 columnas de la planilla 2026, ordenado por fecha. Los pesos y totales salen de cada ingreso registrado; puede filtrar por mes y cliente.</p><form action="/api/ingresos/exportar" method="get" className="form-grid"><label>Mes<input name="mes" type="month" defaultValue={currentMonth} required/></label><label>Cliente (opcional)<select name="cliente" defaultValue=""><option value="">Todos los clientes</option>{clients.map(client=><option key={client.id} value={client.id}>{client.name}</option>)}</select></label><div className="field-full form-footer"><button className="button button-outline" type="submit">Descargar Excel</button></div></form></section>}
-    {canManage(actor)&&<section className="section-card"><div className="section-heading"><div><div className="eyebrow">NUEVO REGISTRO</div><h2>Entrada o excedente</h2></div><Link href="/materiales-stock" className="button button-outline">Stock de materiales</Link></div>
+    {canManage(actor)&&<section id="nuevo-ingreso" className="section-card"><div className="section-heading"><div><div className="eyebrow">NUEVO REGISTRO</div><h2>Entrada o excedente</h2></div><Link href="/materiales-stock" className="button button-outline">Stock de materiales</Link></div>
       <p className="helper-text">Indique la base del peso neto: en las planillas de entrada varía entre peso de proveedor y peso RERCHAR; en excedentes se calcula sobre RERCHAR. Una diferencia con el neto anotado requiere explicación.</p>
       <form action={createMaterialAction} className="form-grid">
         <label>Tipo<select name="kind" defaultValue="ingreso"><option value="ingreso">Entrada de material</option><option value="excedente">Excedente RESITER / SPENCE</option></select></label>
         <label>Fecha de movimiento<input name="movement_on" type="date" required/></label>
-        <ReceiptMaterialSelection clients={clients} services={services.map(s=>({...s,folio:serviceFolio(s)}))} materials={catalog} linked={linked}/>
+        <ReceiptMaterialSelection key={initialServiceId||"directa"} clients={clients} services={services.map(s=>({...s,folio:serviceFolio(s)}))} materials={catalog} linked={linked} initialServiceId={initialServiceId}/>
         <label>Nombre si no figura en catálogo<input name="material_name" maxLength={180}/></label>
         <div className="form-section-title field-full">Pesos de la planilla (kg)</div>
         <label>Peso proveedor<input name="supplier_kg" type="number" min="0" step="0.01"/></label><label>Peso RERCHAR<input name="rerchar_kg" type="number" min="0" step="0.01"/></label><label>Impurezas<input name="impurity_kg" type="number" min="0" step="0.01" defaultValue="0"/></label><label>Base del neto<select name="net_basis"><option value="rerchar">Peso RERCHAR − impurezas</option><option value="proveedor">Peso proveedor − impurezas</option></select></label><label>Neto anotado (opcional)<input name="net_reported_kg" type="number" min="0" step="0.01"/></label><label>Informe impurezas<input name="impurity_report" maxLength={80}/></label>
