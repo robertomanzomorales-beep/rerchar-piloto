@@ -1,8 +1,8 @@
 import {getActor} from "@/lib/auth";
 import {chileCsvDay} from "@/lib/chile-csv";
 import type {Company} from "@/lib/companies";
-import {filterReceivables,parseReceivableFilter,receivablesCsv} from "@/lib/receivable-export";
-import {listReceivables,todayChile} from "@/lib/receivables";
+import {parseReceivableFilter,receivablesCsvHeader,receivablesCsvRows} from "@/lib/receivable-export";
+import {listReceivablesPage,todayChile} from "@/lib/receivables";
 
 export async function GET(request:Request){
   const actor=await getActor();
@@ -14,8 +14,24 @@ export async function GET(request:Request){
   const company:Company=requestedCompany;
   const filter=parseReceivableFilter(params.get("estado"));
   const today=todayChile();
-  const rows=filterReceivables(await listReceivables(actor,company),filter,today);
-  return new Response(receivablesCsv(rows,company,today),{headers:{
+  const first=await listReceivablesPage(actor,company,filter,today,500,0);
+  const encoder=new TextEncoder();
+  let offset=first.items.length;
+  const stream=new ReadableStream<Uint8Array>({
+    start(controller){
+      controller.enqueue(encoder.encode(receivablesCsvHeader()+receivablesCsvRows(first.items,company,today)));
+      if(offset>=first.total)controller.close();
+    },
+    async pull(controller){
+      try{
+        const batch=await listReceivablesPage(actor,company,filter,today,500,offset);
+        if(batch.items.length)controller.enqueue(encoder.encode(receivablesCsvRows(batch.items,company,today)));
+        offset+=batch.items.length;
+        if(!batch.items.length||offset>=batch.total)controller.close();
+      }catch(error){controller.error(error);}
+    },
+  });
+  return new Response(stream,{headers:{
     "Content-Type":"text/csv; charset=utf-8",
     "Content-Disposition":`attachment; filename="cobranzas-${company}-${chileCsvDay()}.csv"`,
     "Cache-Control":"private, no-store","X-Content-Type-Options":"nosniff",

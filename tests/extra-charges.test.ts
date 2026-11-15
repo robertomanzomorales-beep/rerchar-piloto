@@ -107,4 +107,17 @@ test("flete falso y sobreestadía siguen parte, decisión y empresa sin alterar 
   assert.equal(pendingLegacy[0].id,legacy.id);
   assert.equal(pendingLegacy[0].source,"cargo");
   assert.equal((await receivables.listLegacyReconciliation(admin,"e_y_j")).length,0);
+  await db.query(`INSERT INTO extra_receivable_invoices(issuer,client_id,invoice_number,issued_on,due_on,total_clp,created_by)
+    SELECT 'rerchar',$1::uuid,'PRUEBA-'||n,'2026-10-01'::date,
+      CASE WHEN n<=500 THEN '2026-10-13'::date ELSE '2026-10-21'::date END,1000,$2::uuid
+    FROM generate_series(1,501) n`,[client.id,admin.id]);
+  const overdue=await receivables.listReceivablesPage(admin,"rerchar","vencidas","2026-10-14",101,0);
+  assert.equal(overdue.total,500,"las 500 vencidas están en el conteo exacto");
+  assert.equal(overdue.items.length,101);
+  assert.equal((await receivables.listReceivablesPage(admin,"rerchar","vencidas","2026-10-14",101,499)).items.length,1);
+  const all=await receivables.listReceivablesPage(admin,"rerchar","todas","2026-10-14",500,500);
+  assert.equal(all.total,502,"la factura más allá del límite anterior sigue accesible");
+  assert.equal(all.items.length,2);
+  assert.equal((await receivables.listReceivablesPage(admin,"rerchar","proximas","2026-10-14")).total,1);
+  assert.equal((await receivables.listReceivablesPage(admin,"e_y_j","vencidas","2026-10-14")).total,0);
 });

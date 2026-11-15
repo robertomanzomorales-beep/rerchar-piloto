@@ -3,13 +3,13 @@ import Link from "next/link";
 import {redirect} from "next/navigation";
 import {Banknote} from "lucide-react";
 import {requireActor} from "@/lib/auth";
-import {listReceivables,listLegacyReconciliation,receivablesOverview,todayChile} from "@/lib/receivables";
+import {listReceivablesPage,listLegacyReconciliation,receivablesOverview,todayChile} from "@/lib/receivables";
 import {registerExtraReceivablePaymentAction,voidExtraReceivableInvoiceAction} from "@/app/receivable-actions";
 import {invoiceExtraChargeAction} from "@/app/extra-charge-actions";
 import {Notice} from "@/components/UI";
 import {SubmitButton} from "@/components/Transition";
 import {companyName} from "@/lib/companies";
-import {filterReceivables,parseReceivableFilter} from "@/lib/receivable-export";
+import {parseReceivableFilter} from "@/lib/receivable-export";
 
 const day=(value:Date|string)=>value instanceof Date?value.toISOString().slice(0,10):String(value).slice(0,10);
 const money=(value:string|number)=>Number(value).toLocaleString("es-CL",{maximumFractionDigits:0});
@@ -21,15 +21,16 @@ export default async function Receivables({searchParams}:{searchParams:Promise<{
   const requested=Number(query.pagina),page=Number.isSafeInteger(requested)&&requested>=1&&requested<=10_000?requested:1;
   const filter=parseReceivableFilter(query.estado);
   const today=todayChile();
-  const [invoices,overview,legacyResult]=await Promise.all([
-    reconcile?Promise.resolve([]):listReceivables(actor,company),receivablesOverview(actor,company,today),
+  const [invoicePage,overview,legacyResult]=await Promise.all([
+    reconcile?Promise.resolve({total:0,items:[]}):listReceivablesPage(actor,company,filter,today,101,(page-1)*100),receivablesOverview(actor,company,today),
     reconcile?listLegacyReconciliation(actor,company,101,(page-1)*100):Promise.resolve([]),
   ]);
   const legacy=legacyResult.slice(0,100),hasMoreLegacy=legacyResult.length>100;
   const legacyHref=(next:number)=>`/cobranzas?${new URLSearchParams({empresa:company,estado:"conciliar",pagina:String(next)})}#conciliacion`;
+  const visible=invoicePage.items.slice(0,100),hasMoreInvoices=invoicePage.items.length>100;
+  const invoiceHref=(next:number)=>`/cobranzas?${new URLSearchParams({empresa:company,estado:filter,pagina:String(next)})}#facturas-clientes`;
   const inSeven=new Date(`${today}T12:00:00Z`);inSeven.setUTCDate(inSeven.getUTCDate()+7);
   const seven=inSeven.toISOString().slice(0,10);
-  const visible=filterReceivables(invoices,filter,today);
   return <>
     <div className="page-title-row"><div><div className="eyebrow">ADMINISTRACIÓN · {companyName(company)}</div><h1>Cobranza clientes</h1><p className="page-intro">Facturas externas de servicios, estados de pago, ventas de material y cargos extraordinarios, con saldos y alertas.</p></div><Banknote size={23}/></div>
     <Notice error={query.error} ok={query.ok}/>
@@ -55,8 +56,8 @@ export default async function Receivables({searchParams}:{searchParams:Promise<{
           </form>}</article>)}</div>:<p className="muted">No hay facturas anteriores por conciliar en esta empresa.</p>}
       {(page>1||hasMoreLegacy)&&<nav className="records-pagination" aria-label="Páginas de facturas por conciliar"><span>{page>1&&<Link className="button button-outline" href={legacyHref(page-1)}>Anterior</Link>}</span><span>Página {page} · {overview.legacy} pendientes</span><span>{hasMoreLegacy&&<Link className="button button-outline" href={legacyHref(page+1)}>Siguiente</Link>}</span></nav>}
     </section>}
-    <p className="helper-text">Cada folio se cuenta una vez. El total es el registrado desde la factura emitida externamente; los cargos aprobados sin factura no se incluyen. {reconcile?"La cola de conciliación muestra hasta 100 facturas por página.":"La vista y su CSV muestran hasta 500 facturas por empresa."} No se emiten DTE desde esta pantalla.</p>
-    {!reconcile&&<section className="section-card"><div className="section-heading"><div><div className="eyebrow">FACTURAS DE CLIENTES</div><h2>Seguimiento de pago</h2></div><span className="count-pill">{visible.length}</span></div>
+    <p className="helper-text">Cada folio se cuenta una vez. El total es el registrado desde la factura emitida externamente; los cargos aprobados sin factura no se incluyen. {reconcile?"La cola de conciliación muestra hasta 100 facturas por página.":"La vista muestra 100 facturas por página y el CSV exporta todas las del filtro."} No se emiten DTE desde esta pantalla.</p>
+    {!reconcile&&<section className="section-card" id="facturas-clientes"><div className="section-heading"><div><div className="eyebrow">FACTURAS DE CLIENTES</div><h2>Seguimiento de pago</h2></div><span className="count-pill">{invoicePage.total}</span></div>
       {visible.length?<div className="record-list">{visible.map(invoice=>{
         const balance=Number(invoice.total_clp)-Number(invoice.paid_clp),due=day(invoice.due_on);
         return <article key={`${invoice.source}-${invoice.id}`} className="note-block">
@@ -78,6 +79,7 @@ export default async function Receivables({searchParams}:{searchParams:Promise<{
           </>}
         </article>;
       })}</div>:<p className="muted">No hay facturas en esta vista. Cambie el estado o registre una factura desde el servicio, el EDP o la guía de material.</p>}
+      {(page>1||hasMoreInvoices)&&<nav className="records-pagination" aria-label="Páginas de facturas de clientes"><span>{page>1&&<Link className="button button-outline" href={invoiceHref(page-1)}>Anterior</Link>}</span><span>Página {page} · {invoicePage.total} facturas en esta vista</span><span>{hasMoreInvoices&&<Link className="button button-outline" href={invoiceHref(page+1)}>Siguiente</Link>}</span></nav>}
     </section>}
   </>;
 }

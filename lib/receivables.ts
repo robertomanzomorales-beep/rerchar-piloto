@@ -2,6 +2,7 @@ import type {Actor} from "./auth";
 import {db} from "./db";
 import type {Company} from "./companies";
 import {moduleReady} from "./schema-readiness";
+import type {ReceivableFilter} from "./receivable-export";
 
 export class ReceivableError extends Error {}
 function admin(actor:Actor){if(actor.role!=="admin")throw new ReceivableError("Acceso administrativo requerido.");}
@@ -39,6 +40,27 @@ export async function listReceivables(actor:Actor,company:Company){
   const [ready,materialReady]=await Promise.all([moduleReady("edp_billing"),moduleReady("material_sale_billing")]);
   return db.query<Receivable>(`SELECT * FROM (${base(ready)} UNION ALL ${extraordinary(ready,materialReady)}) r
     ORDER BY (r.total_clp::numeric-r.paid_clp::numeric)<=0,r.due_on,r.invoice_number LIMIT 500`,[company]);
+}
+
+export async function listReceivablesPage(actor:Actor,company:Company,filter:ReceivableFilter,on=todayChile(),limit=101,offset=0){
+  admin(actor);validCompany(company);
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(on))throw new ReceivableError("Fecha inválida.");
+  if(!["todas","vencidas","proximas","pendientes","pagadas"].includes(filter))throw new ReceivableError("Estado inválido.");
+  const [ready,materialReady]=await Promise.all([moduleReady("edp_billing"),moduleReady("material_sale_billing")]);
+  const from=`FROM (${base(ready)} UNION ALL ${extraordinary(ready,materialReady)}) r`;
+  const where=`WHERE $2::text='todas'
+    OR ($2::text='pendientes' AND r.total_clp::numeric>r.paid_clp::numeric)
+    OR ($2::text='pagadas' AND r.total_clp::numeric<=r.paid_clp::numeric)
+    OR ($2::text='vencidas' AND r.total_clp::numeric>r.paid_clp::numeric AND r.due_on<$3::date)
+    OR ($2::text='proximas' AND r.total_clp::numeric>r.paid_clp::numeric
+      AND r.due_on>=$3::date AND r.due_on<=$3::date+7)`;
+  const [count,items]=await Promise.all([
+    db.query<{total:string}>(`SELECT count(*)::text AS total ${from} ${where}`,[company,filter,on]),
+    db.query<Receivable>(`SELECT r.* ${from} ${where}
+      ORDER BY (r.total_clp::numeric-r.paid_clp::numeric)<=0,r.due_on,r.invoice_number,r.id
+      LIMIT $4 OFFSET $5`,[company,filter,on,Math.max(1,Math.min(1000,limit)),Math.max(0,offset)]),
+  ]);
+  return {total:Number(count[0]?.total??0),items};
 }
 
 export async function listUnverifiedServiceInvoices(actor:Actor,company:Company){

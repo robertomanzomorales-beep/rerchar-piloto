@@ -30,10 +30,14 @@ function csv(value:string|number){
   return `"${safe.replaceAll('"','""')}"`;
 }
 
-export function receivablesCsv(rows:Receivable[],company:Company,today:string){
-  const seven=plusDays(today,7);
+export function receivablesCsvHeader(){
   const header=["Empresa","Folio factura","Cliente","Origen","Emisión","Vencimiento","Días vencidos","Estado","Total CLP","Abonado CLP","Saldo CLP","EDP vinculados","Cargos vinculados","Guías vinculadas"];
-  const lines=[header.map(csv).join(";")];
+  return `\uFEFF${header.map(csv).join(";")}\r\n`;
+}
+
+export function receivablesCsvRows(rows:Receivable[],company:Company,today:string){
+  const seven=plusDays(today,7);
+  const lines:string[]=[];
   for(const invoice of rows){
     const due=day(invoice.due_on),amount=balance(invoice);
     const daysOverdue=amount>0&&due<today?Math.round((Date.parse(`${today}T12:00:00Z`)-Date.parse(`${due}T12:00:00Z`))/86400000):0;
@@ -44,5 +48,9 @@ export function receivablesCsv(rows:Receivable[],company:Company,today:string){
       day(invoice.issued_on),due,daysOverdue,status,money(invoice.total_clp),money(invoice.paid_clp),money(amount),
       invoice.edp_count,invoice.extra_count,invoice.guide_count].map(csv).join(";"));
   }
-  return `\uFEFF${lines.join("\r\n")}\r\n`;
+  return lines.length?`${lines.join("\r\n")}\r\n`:"";
+}
+
+export function receivablesCsv(rows:Receivable[],company:Company,today:string){
+  return receivablesCsvHeader()+receivablesCsvRows(rows,company,today);
 }

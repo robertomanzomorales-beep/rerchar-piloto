@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {filterReceivables,parseReceivableFilter,receivablesCsv} from "../lib/receivable-export";
+import {filterReceivables,parseReceivableFilter,receivablesCsv,receivablesCsvHeader,receivablesCsvRows} from "../lib/receivable-export";
 import type {Receivable} from "../lib/receivables";
 
 const invoice=(id:string,due_on:string,total_clp:string,paid_clp:string,client_name="Cliente"):Receivable=>({
@@ -31,4 +31,7 @@ test("CSV de cada empresa conserva saldo y protege textos al abrir una planilla"
   assert.match(receivablesCsv([row],"e_y_j","2026-10-14"),/"E y J";"F-1"/);
   row.source="material";row.guide_count="2";
   assert.match(receivablesCsv([row],"rerchar","2026-10-14"),/"Venta de material".*"2"\r\n$/s);
+  assert.equal(receivablesCsvHeader()+receivablesCsvRows([row],"rerchar","2026-10-14")+
+    receivablesCsvRows([row],"rerchar","2026-10-14"),receivablesCsv([row,row],"rerchar","2026-10-14"),
+    "el CSV por lotes conserva un único encabezado y BOM");
 });
