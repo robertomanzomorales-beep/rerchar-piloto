@@ -84,6 +84,19 @@ test("RERCHAR y E y J mantienen servicios, cotizaciones y facturas en su empresa
   const closed=await pilot.getService(actor,rentalId);
   assert.equal(closed.status,"completada");
   assert.equal(closed.gross_kg,null,"el arriendo no fabrica un pesaje");
+  assert.ok((await pilot.listServices(actor,"","abiertas","e_y_j")).some(service=>service.id===eyjId));
+  assert.ok(!(await pilot.listServices(actor,"","abiertas","e_y_j")).some(service=>service.id===rentalId),
+    "el indicador de abiertos no incluye los arriendos cerrados");
+  const [{closed_at:originalClosedAt}]=await db.query<{closed_at:Date}>("SELECT closed_at FROM service_requests WHERE id=$1",[rentalId]);
+  await db.query("UPDATE service_requests SET closed_at='2026-11-01T02:59:00Z' WHERE id=$1",[rentalId]);
+  assert.deepEqual((await pilot.listServices(actor,"","completada","e_y_j","",100,"2026-10")).map(service=>service.id),[rentalId],
+    "el cierre antes de medianoche en Chile pertenece a octubre");
+  assert.equal((await pilot.listServices(actor,"","completada","e_y_j","",100,"2026-11")).length,0);
+  await db.query("UPDATE service_requests SET closed_at='2026-11-01T03:01:00Z' WHERE id=$1",[rentalId]);
+  assert.deepEqual((await pilot.listServices(actor,"","completada","e_y_j","",100,"2026-11")).map(service=>service.id),[rentalId],
+    "el cierre después de medianoche en Chile pertenece a noviembre");
+  assert.equal((await pilot.listServices(actor,"","completada","e_y_j","",100,"2026-10")).length,0);
+  await db.query("UPDATE service_requests SET closed_at=$2 WHERE id=$1",[rentalId,originalClosedAt]);
   await assert.rejects(()=>pilot.completeRental(actor,rentalId),pilot.PilotError);
   await assert.rejects(()=>pilot.finishService(actor,rentalId,{gross_kg:"100",tare_kg:"0"}),pilot.PilotError);
 

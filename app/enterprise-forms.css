@@ -74,6 +74,8 @@
   .app-shell .search-field:focus-within { border-color: var(--company-accent); box-shadow: 0 0 0 3px var(--company-soft); }
   .app-shell .search-field input { border: 0 !important; outline: 0 !important; box-shadow: none !important; background: transparent !important; }
   .app-shell .filters { gap: 9px; flex-wrap: wrap; align-items: end; margin-bottom: 16px; }
+  .app-shell .filters .request-close-month { display: grid; gap: 3px; width: min(160px,100%); min-width: 0; color: #63767b; font-size: 10px; font-weight: 650; }
+  .app-shell .filters .request-close-month input { min-width: 0; min-height: 40px; }
   .app-shell .filters.quote-filters { display: grid; gap: 12px 16px; }
   .app-shell .quote-filters .button { min-height: 40px; }
 
