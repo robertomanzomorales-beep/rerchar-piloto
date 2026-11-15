@@ -1,16 +1,15 @@
 # Continuidad RERCHAR — 15 de noviembre de 2026
 
-## Último avance: panel de control
+## Dirección visual confirmada por Roberto
 
-- Roberto pidió continuar los pendientes y trabajar más el diseño del panel: más elegante, moderno y elaborado.
-- Se renovaron los paneles de ambas empresas: indicadores separados, gráfico de actividad, distribución circular de estados, agrupación de accesos, listas recientes, espacios, tipografía, contraste, estados vacíos y adaptación móvil.
-- `CompanyDashboard.tsx` separa la presentación de las consultas de empresa; `DashboardAlerts.tsx` permite filtrar Todos/Prioritarios y ampliar la lista. Las consultas y permisos existentes se mantienen en la página de empresa.
-- Saldo por cobrar: sólo administración, desde `receivablesOverview`, con enlace a la cobranza de la empresa. No se fabrican tendencias ni datos.
-- Continuación funcional: las alertas de acreditación abren `/personal` con empresa y vigencia exactas. Personal permite filtrar vencidas/próximas/todas y cada empresa.
-- Verificación: 41 pruebas aprobadas; tipos y compilación correctos. Recorrido HTTP con ambas empresas, cuatro perfiles (administración, operaciones, cliente y conductor), ocultación del saldo a perfiles no administrativos y cuatro combinaciones de empresa/vigencia de acreditación: correcto.
-- Se prepararon vistas internas con datos ficticios, pero el navegador rechazó `file://` por su política. No volver a intentar archivos locales ni rutas alternativas para eludir esa restricción; revisar el sitio HTTPS autorizado.
-- Revisión visual real pendiente: el intento mediante el formulario seguro devolvió «Correo o contraseña incorrectos». No se reintentó ni se modificaron cuentas. Se requiere que Roberto complete el acceso para terminar la revisión visual; no afirmar que se verificaron escritorio/móvil en navegador.
-- Las mejoras anteriores de Cobranza quedaron publicadas en `53ef494` con check correcto del proyecto principal.
+- Roberto rechazó el rediseño `d11643f`: colores demasiado sutiles, aspecto infantil por tarjetas redondeadas/iconos y pérdida del carácter profesional anterior.
+- Se recupera la base visual de `53ef494`: panel compacto, indicadores en una banda, gráficos de líneas y barras, encabezado con marca, tablas y bloques rectangulares.
+- RERCHAR se identifica claramente en verde y E y J en azul. Reforzar esa separación en menú, selección activa, cabecera y datos principales; no volver a neutralizar ambos espacios ni introducir tarjetas decorativas.
+- Las mejoras funcionales se conservan: filtro Todos/Prioritarios, saldo administrativo resumido, filtros de acreditación por empresa y vigencia, y toda la paginación/Cobranza anterior.
+- El acceso real ya se completó mediante intervención de Roberto. Sesión administradora abierta en el navegador; filtro de prioridades comprobado (1 aviso prioritario frente a 5 totales de RERCHAR). No se modificaron documentos ni pagos reales.
+- Verificación visual: revisar la versión corregida en la sesión abierta después del despliegue, en ambos espacios. El espaciado de los gráficos vuelve a las reglas acotadas de la base anterior; las pruebas automatizadas no sustituyen esa comprobación.
+- El navegador sólo admite HTTP(S), no archivos locales. DevTools está bloqueado por la organización: no volver a intentar activarlo. Para revisar otras anchuras se puede usar el tamaño normal de la ventana, sin cambiar políticas.
+- Base publicada antes de esta corrección: `d11643f`; base funcional de Cobranza: `53ef494`. Verificar siempre el check **Vercel – rerchar-piloto** del nuevo commit.
 
 ## Proyecto y punto recuperado
 

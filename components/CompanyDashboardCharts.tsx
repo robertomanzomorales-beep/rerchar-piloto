@@ -46,25 +46,15 @@ export function ActivityChart({months,company,currentPeriod}:{months:MonthActivi
   </section>;
 }
 
-const stateColors:Record<string,string>={solicitada:"#d9b16c",programada:"#7f9eaf",en_ruta:"#70b5ab",pendiente_revision:"#c99b7c",completada:"#438b6a",cancelada:"#c6d1ca"};
-
 export function StatusComposition({items,company}:{items:ServiceStatus[];company:string}){
   const total=items.reduce((sum,item)=>sum+item.count,0);
   const completed=items.find(item=>item.status==="completada")?.count??0;
-  const circumference=2*Math.PI*64;
-  let offset=0;
-  const segments=items.filter(item=>item.count>0).map(item=>{
-    const length=item.count/total*circumference;
-    const segment={...item,length,offset};offset+=length;return segment;
-  });
   return <section className={`section-card company-chart-card company-chart-card--status${total===0?" company-chart-card--empty":""}`} aria-labelledby="status-title">
-    <div className="company-chart-head"><div><span className="eyebrow">DISTRIBUCIÓN ACTUAL</span><h2 id="status-title">Estado de la operación</h2><p>La cartera de servicios, etapa por etapa.</p></div></div>
-    {total>0?<><div className="company-status-body"><svg className="company-status-ring" viewBox="0 0 180 180" role="img" aria-label={`${total} servicios registrados; ${completed} completados. ${items.map(item=>`${item.label}: ${item.count}`).join(". ")}`}>
-      <circle className="ring-track" cx="90" cy="90" r="64" fill="none" strokeWidth="15"/>
-      {segments.map(segment=><circle key={segment.status} cx="90" cy="90" r="64" fill="none" stroke={stateColors[segment.status]??"#a5b6aa"} strokeWidth="15" strokeDasharray={`${segment.length.toFixed(3)} ${(circumference-segment.length).toFixed(3)}`} strokeDashoffset={-segment.offset} transform="rotate(-90 90 90)"/>)}
-      <text className="ring-total" x="90" y="89" textAnchor="middle" style={{fontSize:total>99999?24:30}}>{total.toLocaleString("es-CL")}</text><text className="ring-caption" x="90" y="108" textAnchor="middle">servicios</text>
-    </svg><div className="company-status-chart">{items.map(item=><Link href={`/solicitudes?empresa=${company}&estado=${item.status}`} className="company-status-row" key={item.status}>
-      <span className="company-status-dot" style={{background:stateColors[item.status]??"#a5b6aa"}} aria-hidden="true"/><span className="status-label">{item.label}</span><strong>{item.count.toLocaleString("es-CL")}</strong><small>{Math.round(item.count/total*100)}%</small>
-    </Link>)}</div></div><p className="company-composition-caption"><strong>{Math.round(completed/total*100)}% completados</strong> sobre todos los servicios registrados, incluidos los cancelados.</p></>:<div className="company-chart-empty"><strong>Aún no hay servicios registrados</strong><span>Cuando comience la operación, aquí verá el avance por estado.</span><Link href={`/solicitudes?empresa=${company}`}>Revisar solicitudes</Link></div>}
+    <div className="company-chart-head"><div><span className="eyebrow">DISTRIBUCIÓN ACTUAL</span><h2 id="status-title">Cartera operativa</h2><p>Servicios por etapa, incluidos los cancelados</p></div><div className="company-chart-total"><strong>{total}</strong><span>servicios</span></div></div>
+    {total>0?<><div className="company-composition" role="img" aria-label={items.map(item=>`${item.label}: ${item.count} de ${total}`).join("; ")}>
+      {items.filter(item=>item.count>0).map(item=><span className={`company-composition-segment status-${item.status}`} key={item.status} style={{width:`${item.count/total*100}%`}} title={`${item.label}: ${item.count}`}/>)}
+    </div><p className="company-composition-caption"><strong>{Math.round(completed/total*100)}%</strong> completados sobre el total registrado</p><div className="company-status-chart">{items.map(item=><Link href={`/solicitudes?empresa=${company}&estado=${item.status}`} className="company-status-row" key={item.status}>
+      <span className={`company-status-dot status-${item.status}`} aria-hidden="true"/><span className="status-label">{item.label}</span><span className="company-status-meter"><i className={`status-${item.status}`} style={{width:`${item.count/total*100}%`}}/></span><strong>{item.count}</strong><small>{Math.round(item.count/total*100)}%</small>
+    </Link>)}</div></>:<div className="company-chart-empty"><strong>Aún no hay servicios registrados</strong><span>Cuando comience la operación, aquí verá el avance por estado.</span><Link href={`/solicitudes?empresa=${company}`}>Revisar solicitudes</Link></div>}
   </section>;
 }
