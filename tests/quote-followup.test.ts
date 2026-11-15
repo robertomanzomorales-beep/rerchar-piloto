@@ -45,6 +45,7 @@ test("E y J cotiza disposición, cliente responde y OC/respaldo siguen el mismo 
   await assert.rejects(()=>followup.recordQuoteClientOrder(viewer,quoteId,{reference:"OC-326",received_on:"2026-10-19"}),followup.QuoteFollowupError);
   const [site]=await db.query<{id:string}>("INSERT INTO client_sites(client_id,name) VALUES($1,'Faena piloto') RETURNING id",[client.id]);
   const pilot=await import("../lib/pilot");
+  const guides=await import("../lib/guides");
   await assert.rejects(()=>pilot.createService(staff,{submission_key:randomUUID(),client_id:client.id,site_id:site.id,
     quote_id:quoteId,operating_company:"e_y_j",request_category:"venta",service_type:"venta",waste_type:"Material",
     estimated_kg:"",origin:"Bodega Calama",destination:"Faena piloto",priority:"normal",notes:""}),/tipo de solicitud no corresponde|clase de solicitud debe coincidir/);
@@ -52,15 +53,33 @@ test("E y J cotiza disposición, cliente responde y OC/respaldo siguen el mismo 
     quote_id:quoteId,operating_company:"e_y_j",request_category:"servicios",service_type:"arriendo",waste_type:"Equipo industrial",
     estimated_kg:"",origin:"Bodega Calama",destination:"Faena piloto",rental_from:"2026-10-20",rental_to:"2026-10-21",
     priority:"normal",notes:"Cotización puntual"});
+  await assert.rejects(()=>guides.saveGuideControl(staff,service,{guide_number:"G-ARR-1",movement_date:"2026-10-20",movement_type:"servicio",origin_kg:"100"}),/arriendo.*sin guía ni pesaje/);
   await assert.rejects(()=>pilot.scheduleRental(staff,service,{asset_id:""}),/Adjunte el respaldo de la OC/);
   const bytes=Buffer.from("%PDF-1.4\n1 0 obj\n<<>>\nendobj\n%%EOF");
   const docId=await followup.uploadQuoteDocument(staff,quoteId,"orden_compra",new File([bytes],"oc-cliente.pdf",{type:"application/pdf"}));
   assert.equal((await followup.getQuoteDocument(viewer,docId))?.filename,"oc-cliente.pdf");
   assert.equal(await followup.getQuoteDocument(stranger,docId),null);
+  const [edp]=await db.query<{id:string}>(`INSERT INTO payment_statements
+    (submission_key,client_id,number,period_on,statement_type,client_name,client_tax_id,client_address,client_contact,status,created_by)
+    VALUES ($1,$2,'EDP-10','2026-10-31','arriendo','Cliente E y J','12.345.678-9','Calama','Contacto','aprobado',$3) RETURNING id`,
+    [randomUUID(),client.id,staff.id]);
+  await db.query(`INSERT INTO payment_statement_operations(statement_id,service_id,line_number,description,recorded_by)
+    VALUES ($1,$2,1,'Arriendo respaldado',$3)`,[edp.id,service,staff.id]);
+  const [externalInvoice]=await db.query<{id:string}>(`INSERT INTO extra_receivable_invoices
+    (issuer,client_id,invoice_number,issued_on,due_on,total_clp,created_by)
+    VALUES ('e_y_j',$1,'EYJ-EDP-10','2026-11-01','2026-11-30',100000,$2) RETURNING id`,[client.id,staff.id]);
+  await db.query("UPDATE payment_statements SET receivable_invoice_id=$2 WHERE id=$1",[edp.id,externalInvoice.id]);
   const record=await followup.getQuoteFollowup(staff,quoteId);
   assert.equal(record.quote.client_order_reference,"OC-325");
   assert.equal(record.documents.length,1);
   assert.equal(record.services.length,1);
+  assert.deepEqual(record.statements.map(item=>[item.service_id,item.id,item.invoice_id,item.invoice_number]),
+    [[service,edp.id,externalInvoice.id,"EYJ-EDP-10"]],"el expediente sigue la factura externa del EDP sin atribuir su total a cada servicio");
+  assert.equal((await followup.getQuoteFollowup(viewer,quoteId)).statements.length,1);
+  await db.query("UPDATE payment_statements SET status='observado' WHERE id=$1",[edp.id]);
+  assert.equal((await followup.getQuoteFollowup(viewer,quoteId)).statements.length,0,"el portal no expone EDP internos u observados");
+  assert.equal((await followup.getQuoteFollowup(staff,quoteId)).statements.length,1);
+  await db.query("UPDATE payment_statements SET status='aprobado' WHERE id=$1",[edp.id]);
   await pilot.scheduleRental(staff,service,{asset_id:""});
   await assert.rejects(()=>followup.recordQuoteOrderException(staff,quoteId,"Acuerdo con cliente sin OC"),/Existe una OC adjunta/);
   const exceptionQuoteId=await quotes.createQuote(staff,{submission_key:randomUUID(),client_id:client.id,issuer:"e_y_j",title:"Arriendo puntual sin OC",

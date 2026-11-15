@@ -22,9 +22,14 @@ export default async function GuidePage({params,searchParams}:{params:Promise<{i
   try{service=await getService(actor,id);}catch(error){if(error instanceof PilotError)notFound();throw error;}
   const [guides,query]=await Promise.all([listGuideControls(actor,id),searchParams]);
   const editing=guides.find(g=>g.id===query.editar);
+  const rental=service.service_type==="arriendo";
+  if(rental&&!guides.length)return <><Link href={`/solicitudes/${id}`} className="back-link"><ArrowLeft size={16}/> Volver al arriendo</Link>
+    <section className="section-card"><h1>Control de guías y pesajes</h1><p>El arriendo se gestiona con su período y respaldos de ejecución. No requiere guía ni pesaje.</p>
+      <Link className="button button-primary" href={`/solicitudes/${id}`}>Ver arriendo y adjuntar respaldo</Link></section></>;
   return <>
-    <div className="order-actions print-hide"><Link href={`/solicitudes/${id}`} className="back-link"><ArrowLeft size={16}/> Volver al servicio</Link>{service.operating_company&&<PrintButton label="Imprimir control / guardar PDF"/>}</div>
+    <div className="order-actions print-hide"><Link href={`/solicitudes/${id}`} className="back-link"><ArrowLeft size={16}/> Volver al servicio</Link>{service.operating_company&&(!rental||guides.length>0)&&<PrintButton label="Imprimir control / guardar PDF"/>}</div>
     {!service.operating_company&&<p role="alert" className="notice notice-error print-hide">Confirme la empresa operadora antes de imprimir este control.</p>}
+    {rental&&<p role="status" className="helper-text print-hide">El arriendo se respalda con documentos de ejecución y no registra guía ni pesaje. Cualquier control anterior se conserva para revisión.</p>}
     <div className="print-hide"><Notice error={query.error} ok={query.ok}/></div>
     <article className="order-sheet" data-company={service.operating_company??"unassigned"}><header className="order-header"><div><DocumentBrand company={service.operating_company}/><div className="order-system">{companyName(service.operating_company)}</div><h1>Control de guías y pesajes</h1></div><div className="order-number"><small>SERVICIO</small><h1>{serviceFolio(service)}</h1></div></header>
       <div className="order-section"><div className="order-grid"><div><small>Cliente / faena</small><strong>{service.client_name} · {service.site_name}</strong></div><div><small>Ruta</small><strong>{service.origin} → {service.destination}</strong></div><div><small>Material</small><strong>{service.waste_type}</strong></div><div><small>Camión / conductor</small><strong>{service.asset_label??"Pendiente"} · {service.driver_name??"Pendiente"}</strong></div></div></div>
@@ -36,7 +41,7 @@ export default async function GuidePage({params,searchParams}:{params:Promise<{i
       {!guides.length&&<p className="order-muted">Aún no se registran guías con control de pesaje.</p>}
       <footer className="order-footer">Registro operativo interno · Las diferencias reflejan las fórmulas del control de guías de 2026.</footer>
     </article>
-    {canManage(actor)&&<section id="editar" className="section-card print-hide"><div className="section-heading"><div><div className="eyebrow">GUÍA DE TRASLADO / VALORIZACIÓN</div><h2><Weight size={19}/> {editing?`Actualizar guía ${editing.guide_number}, ítem ${editing.line_number}`:"Agregar un material a una guía"}</h2></div></div>
+    {canManage(actor)&&!rental&&<section id="editar" className="section-card print-hide"><div className="section-heading"><div><div className="eyebrow">GUÍA DE TRASLADO / VALORIZACIÓN</div><h2><Weight size={19}/> {editing?`Actualizar guía ${editing.guide_number}, ítem ${editing.line_number}`:"Agregar un material a una guía"}</h2></div></div>
       <p className="helper-text">Registre un ítem por material y pesaje. Si una guía lleva más de un material, repita el número de guía e indique ítem 2, 3, etc. Para corregir un ítem use «Editar este ítem»; los campos vacíos conservan su valor anterior. Cada cambio queda auditado.</p>
       <form action={saveGuideControlAction} className="form-grid"><input type="hidden" name="service_id" value={id}/><input type="hidden" name="control_id" value={editing?.id??""}/>
         <label>Número de guía<input name="guide_number" required maxLength={50} defaultValue={editing?.guide_number??""} readOnly={!!editing}/></label><label>Número de ítem / material<input name="line_number" type="number" min="1" max="100" step="1" required defaultValue={editing?.line_number??1} readOnly={!!editing}/></label><label>Fecha<input name="movement_date" type="date" required defaultValue={iso(editing?.movement_date??null)}/></label>

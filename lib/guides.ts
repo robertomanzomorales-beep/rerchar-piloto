@@ -57,8 +57,9 @@ export async function saveGuideControl(actor:Actor,serviceId:string,input:unknow
     freight_company:optional(160),freight_invoice_number:optional(80),freight_guide_reference:optional(80),
     freight_payment_required:z.enum(["","si","no","pendiente"]).default("")}).parse(input);
   return transaction(async tx=>{
-    const [service]=await tx.query<{id:string;guide_number:string|null}>("SELECT id,guide_number FROM service_requests WHERE id=$1 AND deleted_at IS NULL FOR UPDATE",[id]);
+    const [service]=await tx.query<{id:string;guide_number:string|null;service_type:string}>("SELECT id,guide_number,service_type FROM service_requests WHERE id=$1 AND deleted_at IS NULL FOR UPDATE",[id]);
     if(!service)reject("Servicio no encontrado.");
+    if(service.service_type==="arriendo")reject("Un arriendo se respalda con documentos de ejecución, sin guía ni pesaje.");
     const [activeCertificate]=await tx.query("SELECT id FROM service_certificates WHERE service_id=$1 AND status='vigente' LIMIT 1",[id]);
     if(activeCertificate)reject("Revoque el certificado vigente antes de cambiar los pesos o guías vinculados al servicio.");
     const [previous]=data.control_id?await tx.query<GuideControl>(

@@ -2,6 +2,7 @@ import {z} from "zod";
 import type {Actor} from "./auth";
 import {canManage} from "./auth";
 import {db,transaction} from "./db";
+import {moduleReady} from "./schema-readiness";
 
 const uuid=z.uuid();
 export class QuoteFollowupError extends Error{}
@@ -68,19 +69,30 @@ export async function getQuoteFollowup(actor:Actor,quoteId:string){
   const [quote]=await db.query<{client_id:string;status:string;client_order_reference:string|null;client_order_on:Date|string|null;client_order_exception:string|null}>(
     "SELECT client_id,status,client_order_reference,client_order_on,client_order_exception FROM client_quotes WHERE id=$1",[quoteId]);
   if(!quote||actor.role==="cliente"&&actor.client_id!==quote.client_id)reject("Cotización no disponible.");
-  const [documents,services]=await Promise.all([
+  const edpReady=await moduleReady("edp_service_import")&&await moduleReady("edp_billing");
+  const [documents,services,statements]=await Promise.all([
     db.query<{id:string;kind:string;filename:string;uploaded_at:Date|string}>(
       "SELECT id,kind,filename,uploaded_at FROM client_quote_documents WHERE quote_id=$1 ORDER BY uploaded_at DESC",[quoteId]),
-    db.query<{id:string;folio:string;status:string;guide_number:string|null;scheduled_for:Date|string|null;invoice_number:string|null;invoice_id:string|null;paid_clp:string;invoice_total_clp:string|null;certificate_id:string|null}>(`SELECT s.id,s.folio,s.status,s.guide_number,s.scheduled_for,
+    db.query<{id:string;folio:string;service_type:string;status:string;guide_number:string|null;scheduled_for:Date|string|null;invoice_number:string|null;invoice_id:string|null;paid_clp:string;invoice_total_clp:string|null;certificate_id:string|null}>(`SELECT s.id,s.folio,s.service_type,s.status,s.guide_number,s.scheduled_for,
       i.invoice_number,i.id AS invoice_id,COALESCE((SELECT sum(p.amount_clp) FROM invoice_payments p WHERE p.invoice_id=i.id),0)::text AS paid_clp,
       i.total_clp AS invoice_total_clp,
       (SELECT c.id FROM service_certificates c WHERE c.service_id=s.id AND c.status='vigente' ORDER BY c.version DESC LIMIT 1) AS certificate_id
       FROM service_requests s LEFT JOIN service_valuations v ON v.service_id=s.id
       LEFT JOIN service_invoices i ON i.valuation_id=v.id AND i.status='emitida'
       WHERE s.quote_id=$1 AND s.deleted_at IS NULL ORDER BY s.created_at DESC`,[quoteId]),
+    edpReady?db.query<{service_id:string;id:string;number:string;status:string;invoice_id:string|null;invoice_number:string|null}>(`
+      SELECT DISTINCT ON (o.service_id) o.service_id,p.id,p.number,p.status,
+        COALESCE(i.id,f.id) AS invoice_id,COALESCE(i.invoice_number,f.invoice_number) AS invoice_number
+      FROM payment_statement_operations o JOIN payment_statements p ON p.id=o.statement_id
+      JOIN service_requests s ON s.id=o.service_id
+      LEFT JOIN extra_receivable_invoices i ON i.id=p.receivable_invoice_id AND i.status='emitida'
+      LEFT JOIN service_invoices f ON f.id=p.service_invoice_id AND f.status='emitida'
+      WHERE s.quote_id=$1 AND s.deleted_at IS NULL
+        AND ($2::text<>'cliente' OR p.status IN ('enviado','aprobado'))
+      ORDER BY o.service_id,p.created_at DESC,p.id DESC`,[quoteId,actor.role]):Promise.resolve([]),
   ]);
   const evidence=await db.query<{id:string;service_id:string;description:string;document_kind:string;original_filename:string|null}>(`SELECT e.id,e.service_id,e.description,e.document_kind,e.original_filename
     FROM service_evidence e JOIN service_requests s ON s.id=e.service_id
     WHERE s.quote_id=$1 AND s.deleted_at IS NULL AND e.storage_key IS NOT NULL ORDER BY e.created_at DESC`,[quoteId]);
-  return {quote,documents,services,evidence};
+  return {quote,documents,services,statements,evidence};
 }
