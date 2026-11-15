@@ -8,15 +8,19 @@ import { SubmitButton } from "@/components/Transition";
 
 function iso(value:Date|string){return value instanceof Date?value.toISOString().slice(0,10):String(value).slice(0,10);}
 const formatDay=(value:Date|string)=>chileDate(`${iso(value)}T12:00:00Z`,false);
-export default async function Personnel({searchParams}:{searchParams:Promise<{error?:string;ok?:string}>}) {
+export default async function Personnel({searchParams}:{searchParams:Promise<{error?:string;ok?:string;empresa?:string;vigencia?:string}>}) {
   const actor=await requireActor();
   if(!canManage(actor)) redirect("/");
-  const [{workers,clients,sites,requirements,credentials,externalDrivers,externalCredentials},expiryAlerts,query]=await Promise.all([listPersonnel(actor),listCredentialAlerts(actor),searchParams]);
+  const query=await searchParams;
+  const company=query.empresa==="rerchar"||query.empresa==="e_y_j"?query.empresa:undefined;
+  const validity=query.vigencia==="vencidas"||query.vigencia==="proximas"?query.vigencia:"todas";
+  const [{workers,clients,sites,requirements,credentials,externalDrivers,externalCredentials},allExpiryAlerts]=await Promise.all([listPersonnel(actor),listCredentialAlerts(actor,company)]);
+  const expiryAlerts=allExpiryAlerts.filter(alert=>validity==="vencidas"?alert.days_left<0:validity==="proximas"?alert.days_left>=0:true);
   const today=new Intl.DateTimeFormat("sv-SE",{timeZone:"America/Santiago",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
   const activeDrivers=workers.filter((worker)=>worker.role==="conductor");
   const pending=[...credentials,...externalCredentials].filter((credential)=>credential.state==="pendiente").length;
-  const expired=expiryAlerts.filter((credential)=>credential.days_left<0).length;
-  const upcoming=expiryAlerts.length-expired;
+  const expired=allExpiryAlerts.filter((credential)=>credential.days_left<0).length;
+  const upcoming=allExpiryAlerts.length-expired;
   const coverage=sites.flatMap((site)=>{
     const required=requirements.filter((r)=>r.client_id===site.client_id && (!r.site_id || r.site_id===site.id));
     if(!required.length) return [];
@@ -32,6 +36,7 @@ export default async function Personnel({searchParams}:{searchParams:Promise<{er
     <Notice error={query.error} ok={query.ok}/>
     <div className="supply-summary"><div><strong>{activeDrivers.length} + {externalDrivers.length}</strong><span>Propios + terceros</span></div><div><strong>{pending}</strong><span>Documentos por revisar</span></div><div><strong>{expired}</strong><span>Acreditaciones vencidas</span></div><div><strong>{upcoming}</strong><span>Próximas a vencer</span></div></div>
     <section className="section-card" id="vencimientos"><div className="section-heading"><div><div className="eyebrow">VIGENCIA POR CLIENTE Y FAENA</div><h2><CalendarClock size={19}/> Alertas de acreditación</h2></div><span className="count-pill">{expiryAlerts.length}</span></div>
+      <form action="/personal#vencimientos" method="GET" className="filters"><label>Empresa de la alerta<select name="empresa" defaultValue={company??""}><option value="">Todas las empresas</option><option value="rerchar">RERCHAR</option><option value="e_y_j">E y J</option></select></label><label>Vigencia<select name="vigencia" defaultValue={validity}><option value="todas">Todas las alertas</option><option value="vencidas">Vencidas</option><option value="proximas">Próximas a vencer</option></select></label><button className="button button-outline" type="submit">Aplicar</button></form>
       <p className="helper-text">Cada requisito usa su plazo de aviso, inicialmente 30 días. Se muestra la credencial verificada de mayor vigencia por conductor y requisito; las renovaciones reemplazan la alerta anterior.</p>
       {expiryAlerts.length?<div className="table-wrap"><table className="data-table"><thead><tr><th>Conductor</th><th>Cliente / faena</th><th>Requisito</th><th>Vencimiento</th><th>Estado</th></tr></thead><tbody>{expiryAlerts.map(a=><tr key={a.id}><td><strong>{a.worker_name}</strong><span className="table-sub">{a.source==="tercero"?"Tercero":"Propio"}</span></td><td>{a.client_name}<span className="table-sub">{a.site_name??"Todas las faenas"}</span></td><td>{a.requirement_name}</td><td>{formatDay(a.expires_on)}</td><td><span className="inventory-low">{a.days_left<0?"Vencida":a.days_left===0?"Vence hoy":`${a.days_left} día(s) restantes`}</span></td></tr>)}</tbody></table></div>:<p className="muted">No hay acreditaciones verificadas dentro del plazo de aviso o vencidas.</p>}
     </section>

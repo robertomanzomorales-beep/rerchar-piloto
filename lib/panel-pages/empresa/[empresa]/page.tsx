@@ -1,13 +1,9 @@
-import Link from "next/link";
-import Image from "next/image";
 import { notFound } from "next/navigation";
-import { ArrowRight, ArrowLeft, Plus, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { requireActor, canManage } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { companies, type Company } from "@/lib/companies";
 import { listServices } from "@/lib/pilot";
-import { listQuotes, quoteFolio, quoteOrderReadySql, quoteReadyForSchedulingSql } from "@/lib/quotes";
-import { ServiceTable, chileDate } from "@/components/UI";
+import { listQuotes, quoteOrderReadySql, quoteReadyForSchedulingSql } from "@/lib/quotes";
 import {rercharMaterialDashboard,rercharReceiptGuideDashboard,rercharReceiptClosureDashboard,eyjPaymentDashboard,eyjEdpInvoiceDashboard} from "@/lib/company-dashboard";
 import {eyjBillingCalendarDashboard} from "@/lib/payment-calendar";
 import {pendingExtraChargeCount} from "@/lib/extra-charges";
@@ -18,13 +14,13 @@ import {moduleReady} from "@/lib/schema-readiness";
 import {pendingClientOrders,pendingIndividualInvoices} from "@/lib/finance";
 import {listCredentialAlerts} from "@/lib/personnel";
 import {guideFollowupOverview} from "@/lib/service-ledger";
-import {ActivityChart,StatusComposition,type MonthActivity,type ServiceStatus} from "@/components/CompanyDashboardCharts";
+import type {MonthActivity,ServiceStatus} from "@/components/CompanyDashboardCharts";
+import CompanyDashboard,{type DashboardMetric} from "@/components/CompanyDashboard";
+import type {DashboardAlert} from "@/components/DashboardAlerts";
 
 type ServiceMetrics = { total:string; requested:string; scheduled:string; in_route:string; pending_review:string; completed:string; cancelled:string; critical:string };
 type QuoteMetrics = { total:string; draft:string; sent:string; accepted:string; expired:string; awaiting_order:string; awaiting_service:string };
-type DashboardAlert = {label:string;count:number;href:string;urgent?:boolean};
 const value = (v:string|undefined) => Number(v ?? 0);
-const quoteStatusLabels:Record<string,string>={borrador:"Borrador",enviada:"Enviada",aceptada:"Aceptada",rechazada:"Rechazada"};
 
 export default async function CompanyHome({params}:{params:Promise<{empresa:string}>}) {
   const actor = await requireActor();
@@ -119,8 +115,8 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
   ];
   const alerts:DashboardAlert[]=[
     ...(canManage(actor)?[
-      {label:"Acreditaciones vencidas de conductores",count:credentialAlerts.filter(c=>c.days_left<0).length,href:"/personal#vencimientos",urgent:true},
-      {label:"Acreditaciones próximas a vencer",count:credentialAlerts.filter(c=>c.days_left>=0).length,href:"/personal#vencimientos"},
+      {label:"Acreditaciones vencidas de conductores",count:credentialAlerts.filter(c=>c.days_left<0).length,href:`/personal?empresa=${selected}&vigencia=vencidas#vencimientos`,urgent:true},
+      {label:"Acreditaciones próximas a vencer",count:credentialAlerts.filter(c=>c.days_left>=0).length,href:`/personal?empresa=${selected}&vigencia=proximas#vencimientos`},
     ]:[]),
     ...(showQuotes?[{label:"Cotizaciones enviadas con vigencia vencida",count:value(q?.expired),href:`/cotizaciones?empresa=${selected}&vista=vencidas`,urgent:true}]:[]),
     ...(canManage(actor)?[{label:"Servicios cotizados con OC o respaldo pendiente",count:value(q?.awaiting_order),href:`/cotizaciones?empresa=${selected}&vista=sin_oc`},
@@ -172,8 +168,6 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
     ]:[]),
   ];
   const activeAlerts=alerts.filter(a=>a.count>0).sort((a,b)=>Number(Boolean(b.urgent))-Number(Boolean(a.urgent)));
-  const urgentAlerts=activeAlerts.filter(a=>a.urgent).length;
-  const alertItem=(alert:DashboardAlert)=><Link href={alert.href} key={alert.label} className={`company-alert ${alert.urgent?"company-alert--urgent":""}`}><strong>{alert.count}</strong><span>{alert.label}</span>{alert.urgent&&<small>Prioritaria</small>}</Link>;
   const processGroups=selected==="rerchar"?[
     {title:"Compra y recepción",detail:"Del acuerdo comercial al ingreso físico y la guía valorizada",links:[
       ...(showQuotes?[{label:"Cotizar compra",href:`/cotizaciones/nueva?empresa=rerchar&tipo=compra`}]:[]),
@@ -199,32 +193,15 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
       ...(actor.role==="admin"?[{label:"Facturación y cobro",href:"/finanzas?empresa=e_y_j"}]:[]),
     ]}]:[]),
   ];
-  return <div className="company-dashboard-page">
-    <Link href="/" className="back-link"><ArrowLeft size={15}/> Empresas</Link>
-    <div className="page-title-row company-dashboard-heading"><div className="company-dashboard-identity">
-      <div className={`company-dashboard-brand company-dashboard-brand--${selected}`}>
-        {selected==="rerchar"?<Image src="/rerchar-logo-transparente.png" alt="RERCHAR Economía Circular" width={892} height={311} loading="eager"/>:<span><strong>E y J</strong><small>SERVICIOS INTEGRALES</small></span>}
-      </div>
-      <div><div className="eyebrow">{company.name} · VISIÓN OPERATIVA</div><h1>{selected==="rerchar"?"Materiales y trazabilidad":"Servicios y contratos"}</h1><p className="page-intro">{selected==="rerchar"?"Compra, recepción, venta y salida de materiales":"Ejecución, estados de pago y cierre contractual"}</p></div></div>
-      {canManage(actor) && <Link href={`/cotizaciones/nueva?empresa=${selected}`} className="button button-primary"><Plus size={17}/> Nueva cotización</Link>}
-    </div>
-    {value(unclassified[0]?.total)>0&&<p className="company-unclassified"><AlertTriangle size={17}/><span><strong>{value(unclassified[0]?.total)} servicios anteriores por clasificar.</strong> No se suman a ninguna empresa hasta confirmar sus documentos de origen.</span><Link href="/solicitudes?empresa=pendiente">Revisar <ArrowRight size={15}/></Link></p>}
-    {urgentAlerts>0&&<div className="company-priority-note" role="status"><AlertTriangle size={17}/><span><strong>{urgentAlerts} {urgentAlerts===1?"categoría prioritaria requiere":"categorías prioritarias requieren"} atención.</strong> Revise los vencimientos y servicios críticos en las alertas.</span><a href="#alertas">Revisar pendientes</a></div>}
-    <div className="company-section-caption"><span>RESUMEN OPERATIVO</span><p>{company.short} · datos registrados al {todayLabel}</p></div>
-    <div className="company-metric-grid">
-      {showQuotes&&<Link href={`/cotizaciones?empresa=${selected}&vista=gestion`} className="company-metric"><span>Cotizaciones en gestión</span><strong>{value(q?.draft)+value(q?.sent)}</strong><small>{value(q?.draft)} en borrador · {value(q?.sent)} enviadas</small></Link>}
-      <Link href={`/solicitudes?empresa=${selected}&estado=abiertas`} className="company-metric"><span>Servicios abiertos</span><strong>{openServices}</strong><small>{value(s?.requested)+value(s?.scheduled)} por iniciar · {value(s?.in_route)} en ruta · {value(s?.pending_review)} en revisión</small></Link>
-      {selected==="rerchar"&&canManage(actor)?<Link href="/control-guias?vista=venta_pendiente" className="company-metric"><span>Ventas por cerrar</span><strong>{value(materials?.guides.pending)}</strong><small>{value(materials?.guides.total)} guías registradas</small></Link>:!canManage(actor)?<Link href={`/solicitudes?empresa=${selected}&estado=en_ruta`} className="company-metric"><span>En ruta</span><strong>{value(s?.in_route)}</strong><small>En ejecución</small></Link>:null}
-      {selected==="e_y_j"&&canManage(actor)&&(payments?.ready?<Link href="/estados-pago?vista=pendientes" className="company-metric"><span>EDP por completar</span><strong>{value(payments.pending)}</strong><small>{value(payments.total)} estados registrados</small></Link>:<div className="company-metric"><span>Estados de pago</span><strong>—</strong><small>Sin datos de este módulo</small></div>)}
-      <Link href={`/solicitudes?empresa=${selected}&estado=completada&cierre_mes=${today.slice(0,7)}`} className="company-metric"><span>Cierres del mes</span><strong>{closedThisMonth}</strong><small>{value(s?.completed)} completados en total</small></Link>
-    </div>
-    <div className="company-analytics">
-      <ActivityChart months={months} company={selected} currentPeriod={today.slice(0,7)}/>
-      <StatusComposition items={serviceBars} company={selected}/>
-    </div>
-    <section id="alertas" className="section-card company-alerts"><div className="section-heading"><div><div className="eyebrow">SEGUIMIENTO</div><h2>Alertas y pendientes</h2><p>Situaciones que requieren revisión del equipo</p></div><span className="count-pill">{urgentAlerts>0?`${urgentAlerts} prioritarias · `:""}{activeAlerts.length} categorías activas</span></div><div className="company-alert-list">{activeAlerts.slice(0,8).map(alertItem)}</div>{activeAlerts.length>8&&<details className="company-alert-more"><summary>Ver {activeAlerts.length-8} alertas adicionales</summary><div className="company-alert-list">{activeAlerts.slice(8).map(alertItem)}</div></details>}{!activeAlerts.length&&<p className="helper-text"><CheckCircle2 size={15}/> Sin pendientes registrados en estas categorías.</p>}</section>
-    <section className="company-workflow" aria-label="Procesos operativos"><div className="company-workflow-label"><span>RECORRIDOS DE {company.short.toUpperCase()}</span><strong>{selected==="rerchar"?"Compra y venta siguen recorridos distintos":"Ejecución y cierre contractual"}</strong></div><div className="company-workflow-groups">{processGroups.map(group=><div className="company-process-group" key={group.title}><div className="company-process-heading"><h2>{group.title}</h2><p>{group.detail}</p></div><ol>{group.links.map((item,index)=><li key={item.href}><Link href={item.href}><span className="workflow-index">{String(index+1).padStart(2,"0")}</span><span>{item.label}</span></Link></li>)}</ol></div>)}</div></section>
-    {showQuotes && <section className="section-card company-recent-section"><div className="section-heading"><div><div className="eyebrow">COMERCIAL · {company.short}</div><h2>Cotizaciones recientes</h2></div><Link href={`/cotizaciones?empresa=${selected}`} className="text-link">Ver todas <ArrowRight size={16}/></Link></div>{quotes.length ? <div className="table-wrap"><table className="data-table"><thead><tr><th>Folio</th><th>Cliente</th><th>Asunto</th><th>Estado</th><th>Fecha</th></tr></thead><tbody>{quotes.slice(0,5).map(item=><tr key={item.id}><td><Link className="table-main" href={`/cotizaciones/${item.id}`}>{quoteFolio(item)}</Link></td><td>{item.client_name}</td><td className="company-quote-title">{item.title}</td><td><span className={`company-quote-status company-quote-status--${item.status}`}>{quoteStatusLabels[item.status]??item.status}</span></td><td>{chileDate(item.created_at,false)}</td></tr>)}</tbody></table></div> : <div className="company-recent-empty"><strong>Sin cotizaciones registradas</strong><span>Las propuestas de {company.short} aparecerán aquí cuando se guarde la primera.</span>{canManage(actor)&&<Link href={`/cotizaciones/nueva?empresa=${selected}`}>Preparar cotización <ArrowRight size={15}/></Link>}</div>}</section>}
-    <section className="section-card company-recent-section"><div className="section-heading"><div><div className="eyebrow">OPERACIÓN · {company.short}</div><h2>Solicitudes recientes</h2></div><Link href={`/solicitudes?empresa=${selected}`} className="text-link">Ver todas <ArrowRight size={16}/></Link></div>{services.length?<ServiceTable services={services.slice(0,8)}/>:<div className="company-recent-empty"><strong>Sin servicios registrados</strong><span>Las solicitudes de {company.short} se mostrarán aquí al comenzar la operación.</span><Link href={`/solicitudes?empresa=${selected}`}>Abrir solicitudes <ArrowRight size={15}/></Link></div>}</section>
-  </div>;
+  const metrics:DashboardMetric[]=[];
+  if(showQuotes)metrics.push({label:"Cotizaciones en gestión",amount:value(q?.draft)+value(q?.sent),detail:`${value(q?.draft)} en borrador · ${value(q?.sent)} enviadas`,href:`/cotizaciones?empresa=${selected}&vista=gestion`,kind:"quotes"});
+  metrics.push({label:"Servicios abiertos",amount:openServices,detail:`${value(s?.requested)+value(s?.scheduled)} por iniciar · ${value(s?.in_route)} en ruta · ${value(s?.pending_review)} en revisión`,href:`/solicitudes?empresa=${selected}&estado=abiertas`,kind:"services"});
+  if(selected==="rerchar"&&canManage(actor))metrics.push({label:"Ventas por cerrar",amount:value(materials?.guides.pending),detail:`${value(materials?.guides.total)} guías registradas`,href:"/control-guias?vista=venta_pendiente",kind:"sales"});
+  else if(!canManage(actor))metrics.push({label:"En ruta",amount:value(s?.in_route),detail:"Servicios en ejecución",href:`/solicitudes?empresa=${selected}&estado=en_ruta`,kind:"route"});
+  if(selected==="e_y_j"&&canManage(actor))metrics.push(payments?.ready?{label:"EDP por completar",amount:value(payments.pending),detail:`${value(payments.total)} estados registrados`,href:"/estados-pago?vista=pendientes",kind:"edp"}:{label:"Estados de pago",amount:"—",detail:"Sin datos de este módulo",kind:"edp"});
+  metrics.push({label:"Cierres del mes",amount:closedThisMonth,detail:`${value(s?.completed)} completados en total`,href:`/solicitudes?empresa=${selected}&estado=completada&cierre_mes=${today.slice(0,7)}`,kind:"closed"});
+  return <CompanyDashboard company={selected} name={company.name} shortName={company.short}
+    todayLabel={todayLabel} currentPeriod={today.slice(0,7)} canManage={canManage(actor)} showQuotes={showQuotes}
+    metrics={metrics} months={months} statuses={serviceBars} alerts={activeAlerts} processes={processGroups}
+    quotes={quotes} services={services} unclassified={value(unclassified[0]?.total)} receivables={receivables}/>;
 }
