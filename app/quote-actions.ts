@@ -5,7 +5,7 @@ import {redirect} from "next/navigation";
 import {revalidatePath} from "next/cache";
 import {ZodError} from "zod";
 import {requireActor} from "@/lib/auth";
-import {QuoteError,createQuote,updateQuotePresentation,addQuoteLine,updateQuoteLine,removeQuoteLine,recordManualQuoteDelivery,recordQuoteDecision,resolveQuoteSending,sendQuote,confirmPurchaseTax,setQuoteUfRate} from "@/lib/quotes";
+import {QuoteError,createQuote,updateQuotePresentation,addQuoteLine,updateQuoteLine,removeQuoteLine,recordManualQuoteDelivery,recordQuoteDecision,resolveQuoteSending,sendQuote,confirmPurchaseTax,setQuoteUfRate,reopenQuoteRevision} from "@/lib/quotes";
 import {QuoteFollowupError,recordQuoteClientOrder,recordQuoteOrderException,uploadQuoteDocument} from "@/lib/quote-followup";
 
 const v=(form:FormData,key:string)=>String(form.get(key)??"");
@@ -62,6 +62,12 @@ export async function sendQuoteAction(form:FormData){
 export async function manualQuoteDeliveryAction(form:FormData){
   const actor=await requireActor();const id=v(form,"quote_id"),path=`/cotizaciones/${encodeURIComponent(id)}`;
   try{await recordManualQuoteDelivery(actor,id,{channel:v(form,"channel"),recipient:v(form,"recipient"),reference:v(form,"reference")});}
+  catch(error){redirect(`${path}?error=${encodeURIComponent(message(error))}`);}
+  revalidatePath("/","layout");redirect(`${path}?ok=1`);
+}
+export async function reopenQuoteRevisionAction(form:FormData){
+  const actor=await requireActor();const id=v(form,"quote_id"),path=`/cotizaciones/${encodeURIComponent(id)}`;
+  try{await reopenQuoteRevision(actor,id,v(form,"reason"));}
   catch(error){redirect(`${path}?error=${encodeURIComponent(message(error))}`);}
   revalidatePath("/","layout");redirect(`${path}?ok=1`);
 }

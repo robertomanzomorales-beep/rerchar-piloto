@@ -38,7 +38,7 @@ export type Quote={id:string;folio:string;display_folio:string|null;submission_k
   client_email:string|null;client_address:string|null;title:string;company_intro:string|null;proposal_objective:string|null;
   notes:string|null;issued_on:Date|string;valid_until:Date|string;vat_rate:string;status:string;sent_at:Date|null;created_at:Date;
   uf_rate_clp:string|null;uf_rate_on:Date|string|null;client_order_reference:string|null;client_order_on:Date|string|null;
-  route_required:boolean;commercial_kind:"general"|"compra_material";tax_review_status:"no_aplica"|"pendiente"|"sin_iva"|"con_iva";tax_review_note:string|null;segments?:string[]};
+  route_required:boolean;commercial_kind:"general"|"compra_material";tax_review_status:"no_aplica"|"pendiente"|"sin_iva"|"con_iva";tax_review_note:string|null;issued_version:number;segments?:string[]};
 export type QuoteLine={id:string;position:number;description:string;quantity:string;unit:string;unit_price_clp:string;taxable:boolean;
   currency:"CLP"|"UF";unit_price_uf:string|null;
   principal:string|null;segment:string|null;waste_category:string|null;destination_id:string|null;destination_name:string|null;destination_required:boolean;
@@ -219,6 +219,33 @@ export async function getQuote(actor:Actor,quoteId:string){
     WHERE quote_id=$1 AND reviewed_for_truck=true`,[quoteId]);
   return {quote,lines,route:route??null,totals:quoteTotals(lines,Number(quote.vat_rate))};
 }
+export async function reopenQuoteRevision(actor:Actor,quoteId:string,reason:unknown){
+  canEdit(actor);const id=uuid.parse(quoteId),note=z.string().trim().min(10).max(500).parse(reason);
+  await transaction(async tx=>{
+    // El enlace de respuesta bloquea su fila antes de la cotización; mantener el mismo orden evita interbloqueos.
+    await tx.query("SELECT quote_id FROM quote_response_tokens WHERE quote_id=$1 FOR UPDATE",[id]);
+    const [quote]=await tx.query<{status:string;issued_version:number;client_order_reference:string|null}>(
+      "SELECT status,issued_version,client_order_reference FROM client_quotes WHERE id=$1 FOR UPDATE",[id]);
+    if(!quote||!["enviada","rechazada"].includes(quote.status))
+      reject("Sólo una cotización entregada sin aceptación puede abrir una nueva versión.");
+    if(quote.client_order_reference)reject("Una cotización con OC no puede reabrirse.");
+    const [linked]=await tx.query("SELECT id FROM service_requests WHERE quote_id=$1 AND deleted_at IS NULL LIMIT 1",[id]);
+    if(linked)reject("Una cotización vinculada a un servicio no puede reabrirse.");
+    if(quote.issued_version<1)reject("No existe un PDF entregado que pueda conservarse como versión anterior.");
+    const [archive]=await tx.query<{sha256:string}>(`INSERT INTO client_quote_issued_versions
+      (quote_id,version,pdf,sha256,channel,recorded_by,recorded_at,correction_reason,archived_by)
+      SELECT quote_id,$2,pdf,sha256,channel,recorded_by,recorded_at,$3,$4
+      FROM client_quote_pdf_snapshots WHERE quote_id=$1 RETURNING sha256`,[id,quote.issued_version,note,actor.id]);
+    if(!archive)reject("No existe un PDF entregado que pueda conservarse como versión anterior.");
+    await tx.query("DELETE FROM client_quote_pdf_snapshots WHERE quote_id=$1",[id]);
+    await tx.query("DELETE FROM quote_response_tokens WHERE quote_id=$1",[id]);
+    await tx.query("UPDATE client_quotes SET status='borrador',sent_at=NULL WHERE id=$1",[id]);
+    await tx.query(`INSERT INTO audit_events(actor_id,action,entity_type,entity_id,previous_value,next_value)
+      VALUES($1,'reopen_revision','client_quote',$2,$3,$4)`,[actor.id,id,
+      JSON.stringify({status:quote.status,version:quote.issued_version,sha256:archive.sha256}),
+      JSON.stringify({status:"borrador",next_version:quote.issued_version+1,reason:note})]);
+  });
+}
 export async function createQuote(actor:Actor,input:unknown){
   canEdit(actor);
   const data=z.object({submission_key:uuid,client_id:uuid,issuer:z.enum(["rerchar","e_y_j"]),title:z.string().trim().min(3).max(180),
@@ -393,7 +420,7 @@ export async function recordManualQuoteDelivery(actor:Actor,quoteId:string,input
     const pdf=Buffer.from(await renderQuotePdf(quote,lines,"",route??null));
     await tx.query(`INSERT INTO client_quote_pdf_snapshots(quote_id,pdf,sha256,channel,recorded_by)
       VALUES($1,$2,$3,'manual',$4)`,[id,pdf,createHash("sha256").update(pdf).digest("hex"),actor.id]);
-    await tx.query("UPDATE client_quotes SET status='enviada',sent_at=now() WHERE id=$1",[id]);
+    await tx.query("UPDATE client_quotes SET status='enviada',sent_at=now(),issued_version=issued_version+1 WHERE id=$1",[id]);
     await tx.query("INSERT INTO audit_events(actor_id,action,entity_type,entity_id,next_value) VALUES ($1,'manual_delivery','client_quote',$2,$3)",
       [actor.id,id,JSON.stringify(data)]);
   });
@@ -406,7 +433,8 @@ export async function resolveQuoteSending(actor:Actor,quoteId:string,outcome:"bo
   await transaction(async tx=>{
     const [row]=await tx.query<{status:string}>("SELECT status FROM client_quotes WHERE id=$1 FOR UPDATE",[id]);
     if(row?.status!=="enviando")reject("Esta cotización no necesita resolución de envío.");
-    await tx.query("UPDATE client_quotes SET status=$2,sent_at=CASE WHEN $2='enviada' THEN now() ELSE NULL END WHERE id=$1",[id,outcome]);
+    await tx.query(`UPDATE client_quotes SET status=$2,sent_at=CASE WHEN $2='enviada' THEN now() ELSE NULL END,
+      issued_version=CASE WHEN $2='borrador' THEN greatest(0,issued_version-1) ELSE issued_version END WHERE id=$1`,[id,outcome]);
     if(outcome==="borrador"){
       await tx.query("DELETE FROM quote_response_tokens WHERE quote_id=$1",[id]);
       await tx.query("DELETE FROM client_quote_pdf_snapshots WHERE quote_id=$1",[id]);
@@ -490,7 +518,7 @@ export async function sendQuote(actor:Actor,quoteId:string,ccInput=""){
     const pdf=Buffer.from(await renderQuotePdf(quote,lines,"",route??null));
     await tx.query(`INSERT INTO client_quote_pdf_snapshots(quote_id,pdf,sha256,channel,recorded_by)
       VALUES($1,$2,$3,'smtp',$4)`,[id,pdf,createHash("sha256").update(pdf).digest("hex"),actor.id]);
-    await tx.query("UPDATE client_quotes SET status='enviando' WHERE id=$1",[id]);
+    await tx.query("UPDATE client_quotes SET status='enviando',issued_version=issued_version+1 WHERE id=$1",[id]);
     return {quote,pdf,recipient:quote.client_email};
   });
   const token=randomBytes(32).toString("hex");
