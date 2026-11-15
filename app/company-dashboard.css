@@ -1,0 +1,132 @@
+/* Company workspaces: operational hierarchy and analytical graphics. */
+@media screen {
+  .app-shell .company-dashboard-page { --dashboard-ink:#263c44; --dashboard-muted:#60747c; --dashboard-rule:#dfe8e9; --dashboard-neutral:#a8b8bf; }
+  .app-shell .company-dashboard-page > .back-link { display:inline-flex; margin:0 0 15px; color:#61767d; font-size:11px; }
+  .app-shell .company-dashboard-page .company-dashboard-heading {
+    min-height:116px; margin:0 0 20px; padding:17px 24px; gap:24px;
+    border:1px solid var(--company-border); border-left:4px solid var(--company-accent); border-top-width:1px;
+    border-radius:4px; background:var(--dashboard-surface); box-shadow:none;
+  }
+  .app-shell .company-dashboard-page .company-dashboard-heading::after { display:none; }
+  .app-shell .company-dashboard-page .company-dashboard-identity { gap:21px; }
+  .app-shell .company-dashboard-page .company-dashboard-brand { width:146px; min-height:60px; padding-right:19px; }
+  .app-shell .company-dashboard-page .company-dashboard-brand img { width:124px; }
+  .app-shell .company-dashboard-page .company-dashboard-brand--e_y_j strong { font-size:29px; }
+  .app-shell .company-dashboard-page .company-dashboard-heading h1 { margin:4px 0 3px; font-size:clamp(22px,2vw,27px); font-weight:650; letter-spacing:-.035em; }
+  .app-shell .company-dashboard-page .company-dashboard-heading .page-intro { color:var(--dashboard-muted); font-size:11px; line-height:1.4; }
+  .app-shell .company-dashboard-page .company-dashboard-heading > .button-primary { min-height:37px; margin-left:auto; padding-inline:13px; font-size:11px; }
+
+  .app-shell .company-dashboard-page .company-priority-note { display:flex; align-items:center; gap:10px; margin:0 0 18px; padding:10px 14px; border:1px solid #eddac7; border-left:3px solid #b87940; background:#fffaf5; color:#6b503a; font-size:11px; line-height:1.45; }
+  .app-shell .company-dashboard-page .company-priority-note svg { flex:none; color:#aa7040; }
+  .app-shell .company-dashboard-page .company-priority-note strong { font-weight:680; }
+  .app-shell .company-dashboard-page .company-priority-note a { margin-left:auto; color:#875a35; font-weight:660; white-space:nowrap; text-underline-offset:3px; }
+  .app-shell .company-dashboard-page .company-section-caption { display:flex; align-items:baseline; gap:14px; margin:0 0 9px; }
+  .app-shell .company-dashboard-page .company-section-caption span { color:var(--company-strong); font-size:10px; font-weight:700; letter-spacing:.095em; }
+  .app-shell .company-dashboard-page .company-section-caption p { margin:0; color:var(--dashboard-muted); font-size:11px; }
+  .app-shell .company-dashboard-page .company-metric-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(155px,1fr)); margin:0 0 17px; border:1px solid var(--dashboard-rule); border-radius:4px; background:#fff; }
+  .app-shell .company-dashboard-page .company-metric { min-height:100px; padding:15px 18px 14px; border:0; border-right:1px solid var(--dashboard-rule); border-top:0; border-radius:0; }
+  .app-shell .company-dashboard-page .company-metric:last-child { border-right:0; }
+  .app-shell .company-dashboard-page .company-metric:hover { border-top:0; background:var(--company-soft); }
+  .app-shell .company-dashboard-page .company-metric span { color:var(--dashboard-muted); font-size:11px; font-weight:580; }
+  .app-shell .company-dashboard-page .company-metric strong { color:var(--dashboard-ink); font-size:30px; font-weight:640; line-height:1.02; font-variant-numeric:tabular-nums; letter-spacing:-.045em; }
+  .app-shell .company-dashboard-page .company-metric small { color:#6b7e84; font-size:10px; }
+  .app-shell .company-dashboard-page .company-analytics { display:grid; grid-template-columns:minmax(0,1.12fr) minmax(0,.88fr); gap:14px; margin:0 0 16px; }
+  .app-shell .company-dashboard-page .company-chart-card { min-width:0; min-height:334px; margin:0; padding:18px 20px 15px; border:1px solid var(--dashboard-rule); border-radius:4px; box-shadow:none; }
+  .app-shell .company-dashboard-page .company-chart-head { display:flex; justify-content:space-between; align-items:start; gap:12px; }
+  .app-shell .company-dashboard-page .company-chart-head .eyebrow { color:var(--company-accent); font-size:9px; letter-spacing:.1em; font-weight:700; }
+  .app-shell .company-dashboard-page .company-chart-head h2 { margin:4px 0 2px; color:var(--dashboard-ink); font-size:16px; font-weight:650; letter-spacing:-.02em; }
+  .app-shell .company-dashboard-page .company-chart-head p { margin:0; color:var(--dashboard-muted); font-size:10px; line-height:1.35; }
+  .app-shell .company-dashboard-page .company-chart-total { display:grid; justify-items:end; gap:2px; min-width:55px; }
+  .app-shell .company-dashboard-page .company-chart-total strong { color:var(--dashboard-ink); font-size:24px; font-weight:640; line-height:1; font-variant-numeric:tabular-nums; letter-spacing:-.04em; }
+  .app-shell .company-dashboard-page .company-chart-total span { color:var(--dashboard-muted); font-size:9px; }
+  .app-shell .company-dashboard-page .company-chart-legend { display:flex; gap:18px; margin:19px 0 8px; font-size:10px; color:var(--dashboard-muted); }
+  .app-shell .company-dashboard-page .company-chart-legend span { display:inline-flex; align-items:center; gap:6px; }
+  .app-shell .company-dashboard-page .company-chart-legend i { display:block; width:8px; height:8px; border-radius:1px; }
+  .app-shell .company-dashboard-page .company-chart-legend .legend-opened { background:var(--company-accent); }
+  .app-shell .company-dashboard-page .company-chart-legend .legend-closed { background:var(--dashboard-neutral); }
+  .app-shell .company-dashboard-page .company-chart-legend b { color:var(--dashboard-ink); font-weight:670; font-variant-numeric:tabular-nums; }
+  .app-shell .company-dashboard-page .company-chart-figure { margin:0; padding-top:12px; }
+  .app-shell .company-dashboard-page .company-chart-plot { display:grid; grid-template-columns:25px minmax(0,1fr); gap:6px; height:208px; }
+  .app-shell .company-dashboard-page .company-chart-ticks { display:flex; flex-direction:column; justify-content:space-between; height:171px; padding-top:1px; color:#87989e; font-size:9px; font-variant-numeric:tabular-nums; text-align:right; }
+  .app-shell .company-dashboard-page .company-chart-months { display:flex; position:relative; min-width:0; height:208px; }
+  .app-shell .company-dashboard-page .company-chart-grid { display:flex; position:absolute; top:6px; right:0; bottom:31px; left:0; z-index:0; flex-direction:column; justify-content:space-between; pointer-events:none; }
+  .app-shell .company-dashboard-page .company-chart-grid span { display:block; width:100%; border-top:1px solid #e9eeee; }
+  .app-shell .company-dashboard-page .company-chart-grid span:last-child { border-top-color:#bfcdd0; }
+  .app-shell .company-dashboard-page .company-chart-month { position:relative; z-index:1; flex:1; min-width:0; }
+  .app-shell .company-dashboard-page .company-chart-bars { display:flex; align-items:flex-end; justify-content:center; gap:4px; position:absolute; right:2px; bottom:31px; left:2px; height:170px; }
+  .app-shell .company-dashboard-page .company-chart-bar { display:block; position:relative; width:min(38%,22px); min-width:5px; background:var(--company-accent); border-radius:2px 2px 0 0; }
+  .app-shell .company-dashboard-page .company-chart-bar--closed { background:var(--dashboard-neutral); }
+  .app-shell .company-dashboard-page .company-chart-bar b { position:absolute; bottom:100%; left:50%; transform:translate(-50%,-3px); color:var(--dashboard-ink); font-size:9px; font-weight:650; font-variant-numeric:tabular-nums; }
+  .app-shell .company-dashboard-page .company-chart-month-label { display:block; position:absolute; right:0; bottom:0; left:0; padding-top:7px; color:var(--dashboard-muted); font-size:10px; text-align:center; text-transform:capitalize; }
+  .app-shell .company-dashboard-page .company-chart-month.is-current .company-chart-month-label { border-top:2px solid var(--company-accent); padding-top:5px; color:var(--company-strong); font-weight:650; }
+  .app-shell .company-dashboard-page .company-chart-figure figcaption { margin:4px 0 0 31px; color:#788a90; font-size:9px; line-height:1.35; }
+  .app-shell .company-dashboard-page .company-composition { display:flex; width:100%; height:15px; margin:28px 0 17px; overflow:hidden; background:#edf1f2; border-radius:2px; }
+  .app-shell .company-dashboard-page .company-composition-segment { display:block; height:100%; min-width:0; }
+  .app-shell .company-dashboard-page :is(.company-composition-segment,.company-status-dot).status-solicitada { background:#d5dfe0; }
+  .app-shell .company-dashboard-page :is(.company-composition-segment,.company-status-dot).status-programada { background:#91b9b8; }
+  .app-shell .company-dashboard-page :is(.company-composition-segment,.company-status-dot).status-en_ruta { background:#5d8d98; }
+  .app-shell .company-dashboard-page :is(.company-composition-segment,.company-status-dot).status-pendiente_revision { background:#c99c65; }
+  .app-shell .company-dashboard-page :is(.company-composition-segment,.company-status-dot).status-completada { background:var(--company-accent); }
+  .app-shell .company-dashboard-page :is(.company-composition-segment,.company-status-dot).status-cancelada { background:#a8b4b9; }
+  .app-shell .company-dashboard-page .company-status-chart { display:grid; gap:0; margin:0; }
+  .app-shell .company-dashboard-page .company-status-row { display:grid; grid-template-columns:8px minmax(0,1fr) 30px 34px; gap:10px; align-items:center; min-height:32px; padding:4px 2px; border-bottom:1px solid #edf1f2; color:var(--dashboard-ink); text-decoration:none; font-size:10px; }
+  .app-shell .company-dashboard-page .company-status-row:hover { background:var(--company-soft); color:var(--company-strong); }
+  .app-shell .company-dashboard-page .company-status-dot { display:block; width:8px; height:8px; border-radius:1px; }
+  .app-shell .company-dashboard-page .company-status-row strong { font-size:11px; color:var(--dashboard-ink); text-align:right; font-variant-numeric:tabular-nums; }
+  .app-shell .company-dashboard-page .company-status-row small { color:var(--dashboard-muted); font-size:10px; text-align:right; font-variant-numeric:tabular-nums; }
+  .app-shell .company-dashboard-page .company-chart-empty { min-height:205px; border:0; }
+
+  .app-shell .company-dashboard-page .company-alerts { margin:0 0 21px; padding:18px 20px 15px; border:1px solid var(--dashboard-rule); border-left:3px solid var(--company-accent); border-radius:4px; box-shadow:none; scroll-margin-top:16px; }
+  .app-shell .company-dashboard-page .company-alerts .section-heading { align-items:start; }
+  .app-shell .company-dashboard-page .company-alerts .section-heading h2 { margin:4px 0 2px; color:var(--dashboard-ink); font-size:16px; font-weight:650; }
+  .app-shell .company-dashboard-page .company-alerts .section-heading p { margin:0; color:var(--dashboard-muted); font-size:10px; }
+  .app-shell .company-dashboard-page .company-alerts .count-pill { border:1px solid var(--dashboard-rule); border-radius:3px; background:#f7f9f9; color:var(--dashboard-muted); font-size:10px; font-weight:600; }
+  .app-shell .company-dashboard-page .company-alert-list { gap:0 19px; }
+  .app-shell .company-dashboard-page .company-alert { min-height:43px; padding:7px 2px; gap:10px; }
+  .app-shell .company-dashboard-page .company-alert strong { min-width:23px; color:var(--company-strong); font-size:14px; text-align:right; }
+  .app-shell .company-dashboard-page .company-alert--urgent strong { color:#a36537; }
+  .app-shell .company-dashboard-page .company-alert span { font-size:11px; }
+
+  .app-shell .company-dashboard-page .company-workflow { padding:0 0 22px; border-bottom:0; }
+  .app-shell .company-dashboard-page .company-workflow-label { margin:0 0 11px; }
+  .app-shell .company-dashboard-page .company-workflow-label span { font-size:10px; color:var(--company-strong); }
+  .app-shell .company-dashboard-page .company-workflow-label strong { font-size:10px; }
+  .app-shell .company-dashboard-page .company-workflow-groups { gap:14px; }
+  .app-shell .company-dashboard-page .company-process-group { border:1px solid var(--dashboard-rule); border-radius:4px; background:#fff; }
+  .app-shell .company-dashboard-page .company-process-heading { padding:14px 17px 12px; background:var(--company-soft); }
+  .app-shell .company-dashboard-page .company-process-heading h2 { font-size:14px; }
+  .app-shell .company-dashboard-page .company-process-group li a { min-height:37px; padding:8px 17px; }
+  .app-shell .company-dashboard-page .company-process-group .workflow-index { min-width:23px; font-weight:650; }
+}
+@media screen and (max-width:1200px) {
+  .app-shell .company-dashboard-page .company-dashboard-heading > .button-primary { margin-left:auto; }
+  .app-shell .company-dashboard-page .company-analytics { grid-template-columns:1fr; }
+  .app-shell .company-dashboard-page .company-chart-card { min-height:0; }
+}
+@media screen and (max-width:860px) {
+  .app-shell .company-dashboard-page .company-metric-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .app-shell .company-dashboard-page .company-metric:nth-child(2n) { border-right:0; }
+  .app-shell .company-dashboard-page .company-metric:nth-child(n+3) { border-top:1px solid var(--dashboard-rule); }
+}
+@media screen and (max-width:650px) {
+  .app-shell .company-dashboard-page .company-dashboard-heading { padding:16px; gap:12px; }
+  .app-shell .company-dashboard-page .company-dashboard-identity { gap:12px; align-items:center; }
+  .app-shell .company-dashboard-page .company-dashboard-brand { width:96px; min-height:52px; padding-right:10px; }
+  .app-shell .company-dashboard-page .company-dashboard-brand img { width:86px; }
+  .app-shell .company-dashboard-page .company-dashboard-brand--e_y_j strong { font-size:22px; }
+  .app-shell .company-dashboard-page .company-dashboard-heading h1 { font-size:20px; }
+  .app-shell .company-dashboard-page .company-dashboard-heading > .button-primary { width:100%; margin-left:0; }
+  .app-shell .company-dashboard-page .company-priority-note { align-items:flex-start; flex-wrap:wrap; }
+  .app-shell .company-dashboard-page .company-priority-note a { margin:0 0 0 27px; }
+  .app-shell .company-dashboard-page .company-section-caption { display:grid; gap:3px; }
+  .app-shell .company-dashboard-page .company-alert-list { grid-template-columns:1fr; }
+  .app-shell .company-dashboard-page .company-workflow-groups { grid-template-columns:1fr; }
+}
+@media screen and (max-width:420px) {
+  .app-shell .company-dashboard-page .company-dashboard-identity { display:flex; }
+  .app-shell .company-dashboard-page .company-metric { padding:13px 12px; }
+  .app-shell .company-dashboard-page .company-metric strong { font-size:26px; }
+  .app-shell .company-dashboard-page .company-chart-card { padding:16px 13px 14px; }
+  .app-shell .company-dashboard-page .company-chart-bars { gap:2px; }
+  .app-shell .company-dashboard-page .company-alerts .section-heading { flex-wrap:wrap; gap:8px; }
+}

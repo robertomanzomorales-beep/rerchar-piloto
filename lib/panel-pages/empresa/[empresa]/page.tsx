@@ -18,10 +18,10 @@ import {moduleReady} from "@/lib/schema-readiness";
 import {pendingClientOrders} from "@/lib/finance";
 import {listCredentialAlerts} from "@/lib/personnel";
 import {guideFollowupOverview} from "@/lib/service-ledger";
+import {ActivityChart,StatusComposition,type MonthActivity,type ServiceStatus} from "@/components/CompanyDashboardCharts";
 
-type ServiceMetrics = { total:string; requested:string; scheduled:string; in_route:string; pending_review:string; completed:string; critical:string };
+type ServiceMetrics = { total:string; requested:string; scheduled:string; in_route:string; pending_review:string; completed:string; cancelled:string; critical:string };
 type QuoteMetrics = { total:string; draft:string; sent:string; accepted:string; expired:string; awaiting_order:string; awaiting_service:string };
-type Month = { period:string; total:string };
 type DashboardAlert = {label:string;count:number;href:string;urgent?:boolean};
 const value = (v:string|undefined) => Number(v ?? 0);
 
@@ -42,6 +42,7 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
       count(*) FILTER (WHERE status='en_ruta')::text AS in_route,
       count(*) FILTER (WHERE status='pendiente_revision')::text AS pending_review,
       count(*) FILTER (WHERE status='completada')::text AS completed,
+      count(*) FILTER (WHERE status='cancelada')::text AS cancelled,
       count(*) FILTER (WHERE priority='critica' AND status IN ('solicitada','programada','en_ruta','pendiente_revision'))::text AS critical
       FROM service_requests WHERE operating_company=$1 AND deleted_at IS NULL
       AND ($2::text <> 'cliente' OR client_id=$3::uuid)
@@ -54,14 +55,29 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
       ,count(*) FILTER (WHERE status='aceptada' AND client_order_reference IS NULL AND client_order_exception IS NULL)::text AS awaiting_order
       ,count(*) FILTER (WHERE status='aceptada' AND (client_order_reference IS NOT NULL OR client_order_exception IS NOT NULL)
         AND NOT EXISTS (SELECT 1 FROM service_requests s WHERE s.quote_id=client_quotes.id AND s.deleted_at IS NULL))::text AS awaiting_service
-      FROM client_quotes WHERE issuer=$1 AND ($2::text <> 'cliente' OR client_id=$3::uuid)`,[selected,actor.role,actor.client_id,today]) : Promise.resolve([]),
-    db.query<Month>(`SELECT to_char(series.month,'YYYY-MM') AS period,count(s.id)::text AS total
-      FROM generate_series(date_trunc('month',now())-interval '5 months',date_trunc('month',now()),interval '1 month') AS series(month)
-      LEFT JOIN service_requests s ON s.created_at>=series.month AND s.created_at<series.month+interval '1 month'
-        AND s.operating_company=$1 AND s.deleted_at IS NULL
-        AND ($2::text <> 'cliente' OR s.client_id=$3::uuid)
-        AND ($2::text <> 'conductor' OR s.driver_id=$4::uuid)
-      GROUP BY series.month ORDER BY series.month`,[selected,actor.role,actor.client_id,actor.id]),
+      FROM client_quotes WHERE issuer=$1 AND ($2::text <> 'cliente' OR (client_id=$3::uuid AND status IN ('enviada','aceptada','rechazada')))`,[selected,actor.role,actor.client_id,today]) : Promise.resolve([]),
+    db.query<MonthActivity>(`WITH series AS (
+        SELECT generate_series(date_trunc('month',now() AT TIME ZONE 'America/Santiago')-interval '5 months',
+          date_trunc('month',now() AT TIME ZONE 'America/Santiago'),interval '1 month') AS month
+      ), opened AS (
+        SELECT date_trunc('month',s.created_at AT TIME ZONE 'America/Santiago') AS month,count(*) AS total
+        FROM service_requests s WHERE s.operating_company=$1 AND s.deleted_at IS NULL
+          AND s.created_at >= (SELECT min(month) AT TIME ZONE 'America/Santiago' FROM series)
+          AND ($2::text <> 'cliente' OR s.client_id=$3::uuid)
+          AND ($2::text <> 'conductor' OR s.driver_id=$4::uuid)
+        GROUP BY 1
+      ), closed AS (
+        SELECT date_trunc('month',s.closed_at AT TIME ZONE 'America/Santiago') AS month,count(*) AS total
+        FROM service_requests s WHERE s.operating_company=$1 AND s.deleted_at IS NULL AND s.status='completada'
+          AND s.closed_at >= (SELECT min(month) AT TIME ZONE 'America/Santiago' FROM series)
+          AND ($2::text <> 'cliente' OR s.client_id=$3::uuid)
+          AND ($2::text <> 'conductor' OR s.driver_id=$4::uuid)
+        GROUP BY 1
+      )
+      SELECT to_char(series.month,'YYYY-MM') AS period,coalesce(opened.total,0)::text AS opened,
+        coalesce(closed.total,0)::text AS closed
+      FROM series LEFT JOIN opened USING (month) LEFT JOIN closed USING (month)
+      ORDER BY series.month`,[selected,actor.role,actor.client_id,actor.id]),
     selected==="rerchar"&&canManage(actor) ? guideFollowupOverview(actor,today) : Promise.resolve(null),
     actor.role === "admin" ? supplierInvoiceOverview(actor,selected,today) : Promise.resolve(null),
     canManage(actor) ? db.query<{total:string}>("SELECT count(*)::text AS total FROM service_requests WHERE operating_company IS NULL AND deleted_at IS NULL") : Promise.resolve([]),
@@ -92,23 +108,14 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
       WHERE n.status='pendiente' AND c.operating_company=$1`,[selected]):Promise.resolve([]),
   ]);
   const s=serviceStats[0],q=quoteStats[0];
-  const maxMonth=Math.max(1,...months.map(m=>value(m.total)));
-  const chartMaximum=Math.max(4,Math.ceil(maxMonth/4)*4);
-  const chartY=(count:number)=>190-160*count/chartMaximum;
-  const chartX=(index:number)=>57+index*108;
-  const chartPath=months.map((m,index)=>`${index===0?"M":"L"} ${chartX(index)} ${chartY(value(m.total))}`).join(" ");
-  const chartArea=`${chartPath} L ${chartX(months.length-1)} 190 L ${chartX(0)} 190 Z`;
-  const monthLabel=new Intl.DateTimeFormat("es-CL",{month:"short",timeZone:"UTC"});
-  const serviceBars=[
-    {label:"Solicitadas",status:"solicitada",count:value(s?.requested),color:selected==="rerchar"?"#b1c7bb":"#b6c6d4"},
-    {label:"Programadas",status:"programada",count:value(s?.scheduled),color:selected==="rerchar"?"#80aa91":"#83a5bf"},
-    {label:"En ruta",status:"en_ruta",count:value(s?.in_route),color:selected==="rerchar"?"#438468":"#537fa3"},
-    {label:"En revisión",status:"pendiente_revision",count:value(s?.pending_review),color:selected==="rerchar"?"#b39756":"#aa8c61"},
-    {label:"Completadas",status:"completada",count:value(s?.completed),color:selected==="rerchar"?"#185a42":"#284f76"},
+  const serviceBars:ServiceStatus[]=[
+    {label:"Solicitadas",status:"solicitada",count:value(s?.requested)},
+    {label:"Programadas",status:"programada",count:value(s?.scheduled)},
+    {label:"En ruta",status:"en_ruta",count:value(s?.in_route)},
+    {label:"En revisión",status:"pendiente_revision",count:value(s?.pending_review)},
+    {label:"Completadas",status:"completada",count:value(s?.completed)},
+    {label:"Cancelados",status:"cancelada",count:value(s?.cancelled)},
   ];
-  const chartTotal=serviceBars.reduce((sum,item)=>sum+item.count,0);
-  const maxStatus=Math.max(1,...serviceBars.map(item=>item.count));
-  const activityTotal=months.reduce((sum,m)=>sum+value(m.total),0);
   const alerts:DashboardAlert[]=[
     ...(canManage(actor)?[
       {label:"Acreditaciones vencidas de conductores",count:credentialAlerts.filter(c=>c.days_left<0).length,href:"/personal#vencimientos",urgent:true},
@@ -191,17 +198,18 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
       ...(actor.role==="admin"?[{label:"Facturación y cobro",href:"/finanzas?empresa=e_y_j"}]:[]),
     ]}]:[]),
   ];
-  return <>
+  return <div className="company-dashboard-page">
     <Link href="/" className="back-link"><ArrowLeft size={15}/> Empresas</Link>
     <div className="page-title-row company-dashboard-heading"><div className="company-dashboard-identity">
       <div className={`company-dashboard-brand company-dashboard-brand--${selected}`}>
         {selected==="rerchar"?<Image src="/rerchar-logo-transparente.png" alt="RERCHAR Economía Circular" width={892} height={311} priority/>:<span><strong>E y J</strong><small>SERVICIOS INTEGRALES</small></span>}
       </div>
-      <div><div className="eyebrow">{company.name} · PANEL OPERATIVO</div><h1>{selected==="rerchar"?"Gestión de materiales":"Servicios industriales"}</h1><p className="page-intro">{selected==="rerchar"?"Valorización, movimientos y trazabilidad":"Contratos, servicios y estados de pago"}</p></div></div>
+      <div><div className="eyebrow">{company.name} · VISIÓN OPERATIVA</div><h1>{selected==="rerchar"?"Materiales y trazabilidad":"Servicios y contratos"}</h1><p className="page-intro">{selected==="rerchar"?"Compra, recepción, venta y salida de materiales":"Ejecución, estados de pago y cierre contractual"}</p></div></div>
       {canManage(actor) && <Link href={`/cotizaciones/nueva?empresa=${selected}`} className="button button-primary"><Plus size={17}/> Nueva cotización</Link>}
     </div>
     {value(unclassified[0]?.total)>0&&<p className="company-unclassified"><AlertTriangle size={17}/><span><strong>{value(unclassified[0]?.total)} servicios anteriores por clasificar.</strong> No se suman a ninguna empresa hasta confirmar sus documentos de origen.</span><Link href="/solicitudes?empresa=pendiente">Revisar <ArrowRight size={15}/></Link></p>}
-    <section className="company-workflow" aria-label="Procesos operativos"><div className="company-workflow-label"><span>PROCESOS DE {company.short.toUpperCase()}</span><strong>{selected==="rerchar"?"Compra y venta siguen recorridos distintos":"Ejecución y cierre contractual"}</strong></div><div className="company-workflow-groups">{processGroups.map(group=><div className="company-process-group" key={group.title}><div className="company-process-heading"><h2>{group.title}</h2><p>{group.detail}</p></div><ol>{group.links.map((item,index)=><li key={item.href}><Link href={item.href}><span className="workflow-index">{String(index+1).padStart(2,"0")}</span><span>{item.label}</span><ArrowRight size={14} aria-hidden="true"/></Link></li>)}</ol></div>)}</div></section>
+    {urgentAlerts>0&&<div className="company-priority-note" role="status"><AlertTriangle size={17}/><span><strong>{urgentAlerts} {urgentAlerts===1?"categoría prioritaria requiere":"categorías prioritarias requieren"} atención.</strong> Revise los vencimientos y servicios críticos en las alertas.</span><a href="#alertas">Revisar pendientes</a></div>}
+    <div className="company-section-caption"><span>RESUMEN OPERATIVO</span><p>Cifras de {company.short} actualizadas con los registros del sistema</p></div>
     <div className="company-metric-grid">
       {showQuotes&&<Link href={`/cotizaciones?empresa=${selected}`} className="company-metric"><span>Cotizaciones</span><strong>{value(q?.total)}</strong><small>{value(q?.accepted)} aceptadas</small></Link>}
       <Link href={`/solicitudes?empresa=${selected}`} className="company-metric"><span>Servicios registrados</span><strong>{value(s?.total)}</strong><small>{value(s?.requested)} por planificar</small></Link>
@@ -210,15 +218,12 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
       <Link href={`/solicitudes?empresa=${selected}&estado=completada`} className="company-metric"><span>Completados</span><strong>{value(s?.completed)}</strong><small>Con cierre registrado</small></Link>
     </div>
     <div className="company-analytics">
-      <section className="section-card company-chart-card"><div className="eyebrow">ACTIVIDAD · SEIS MESES</div><div className="chart-heading"><h2>Servicios ingresados</h2><strong>{activityTotal} <span>en el período</span></strong></div>{activityTotal>0?<figure className="company-trend"><svg viewBox="0 0 660 235" role="img" aria-label={`Servicios ingresados por mes: ${months.map(m=>`${monthLabel.format(new Date(`${m.period}-01T00:00:00Z`))} ${value(m.total)}`).join(", ")}`} preserveAspectRatio="xMidYMid meet"><defs><linearGradient id={`trend-area-${selected}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--company-accent)" stopOpacity=".13"/><stop offset="100%" stopColor="var(--company-accent)" stopOpacity="0"/></linearGradient></defs>
-        {[0,1,2,3,4].map(i=><g key={i}><line className="chart-gridline" x1="48" x2="638" y1={30+i*40} y2={30+i*40}/><text className="chart-axis-label" x="37" y={34+i*40} textAnchor="end">{chartMaximum-i*chartMaximum/4}</text></g>)}
-        <path className="chart-trend-area" d={chartArea} fill={`url(#trend-area-${selected})`}/><path className="chart-trend-line" d={chartPath}/>
-        {months.map((m,index)=><g className="chart-observation" key={m.period} tabIndex={0} aria-label={`${monthLabel.format(new Date(`${m.period}-01T00:00:00Z`))}: ${value(m.total)} servicios`}><line className="chart-observation-guide" x1={chartX(index)} x2={chartX(index)} y1={chartY(value(m.total))} y2="190"/><circle className="chart-observation-hit" cx={chartX(index)} cy={chartY(value(m.total))} r="18"/><circle className="chart-trend-point" cx={chartX(index)} cy={chartY(value(m.total))} r="3"/><g className="chart-observation-tip" transform={`translate(${chartX(index)-37} ${Math.max(7,chartY(value(m.total))-42)})`}><rect width="74" height="27" rx="3"/><text x="37" y="18" textAnchor="middle">{value(m.total)} servicios</text></g><text className="chart-month-label" x={chartX(index)} y="218" textAnchor="middle">{monthLabel.format(new Date(`${m.period}-01T00:00:00Z`))}</text></g>)}
-      </svg><figcaption>Registros creados por mes · escala de servicios</figcaption></figure>:<div className="company-chart-empty"><strong>Sin movimientos en este período</strong><span>La actividad se dibuja a partir de los servicios registrados en esta empresa.</span><Link href={`/solicitudes?empresa=${selected}`}>Ver solicitudes <ArrowRight size={14}/></Link></div>}</section>
-      <section className="section-card company-chart-card"><div className="eyebrow">ESTADO ACTUAL</div><div className="chart-heading"><h2>Distribución de servicios</h2><strong>{chartTotal} <span>registrados</span></strong></div>{chartTotal>0?<><div className="company-status-chart">{serviceBars.map(item=><Link href={`/solicitudes?empresa=${selected}&estado=${item.status}`} className="company-status-row" key={item.status}><span className="status-label">{item.label}</span><span className="status-track" aria-hidden="true"><span style={{width:`${100*item.count/maxStatus}%`,backgroundColor:item.color}}/></span><strong>{item.count}</strong><small>{Math.round(100*item.count/chartTotal)}%</small></Link>)}</div><p className="helper-text">Distribución de servicios activos y completados. Excluye cancelados.</p></>:<div className="company-chart-empty"><strong>Aún no hay servicios</strong><span>Cuando comience la operación, aquí verá su distribución por estado.</span><Link href={`/solicitudes?empresa=${selected}`}>Ver solicitudes <ArrowRight size={14}/></Link></div>}</section>
+      <ActivityChart months={months} company={selected} currentPeriod={today.slice(0,7)}/>
+      <StatusComposition items={serviceBars} company={selected}/>
     </div>
-    <section className="section-card company-alerts"><div className="section-heading"><div><div className="eyebrow">ATENCIÓN DEL EQUIPO</div><h2>Alertas y pendientes</h2></div><span className="count-pill">{urgentAlerts>0?`${urgentAlerts} prioritarias · `:""}{activeAlerts.length} categorías activas</span></div><div className="company-alert-list">{activeAlerts.slice(0,8).map(alertItem)}</div>{activeAlerts.length>8&&<details className="company-alert-more"><summary>Ver {activeAlerts.length-8} alertas adicionales</summary><div className="company-alert-list">{activeAlerts.slice(8).map(alertItem)}</div></details>}{!activeAlerts.length&&<p className="helper-text"><CheckCircle2 size={15}/> Sin pendientes registrados en estas categorías.</p>}</section>
+    <section id="alertas" className="section-card company-alerts"><div className="section-heading"><div><div className="eyebrow">SEGUIMIENTO</div><h2>Alertas y pendientes</h2><p>Situaciones que requieren revisión del equipo</p></div><span className="count-pill">{urgentAlerts>0?`${urgentAlerts} prioritarias · `:""}{activeAlerts.length} categorías activas</span></div><div className="company-alert-list">{activeAlerts.slice(0,8).map(alertItem)}</div>{activeAlerts.length>8&&<details className="company-alert-more"><summary>Ver {activeAlerts.length-8} alertas adicionales</summary><div className="company-alert-list">{activeAlerts.slice(8).map(alertItem)}</div></details>}{!activeAlerts.length&&<p className="helper-text"><CheckCircle2 size={15}/> Sin pendientes registrados en estas categorías.</p>}</section>
+    <section className="company-workflow" aria-label="Procesos operativos"><div className="company-workflow-label"><span>RECORRIDOS DE {company.short.toUpperCase()}</span><strong>{selected==="rerchar"?"Compra y venta siguen recorridos distintos":"Ejecución y cierre contractual"}</strong></div><div className="company-workflow-groups">{processGroups.map(group=><div className="company-process-group" key={group.title}><div className="company-process-heading"><h2>{group.title}</h2><p>{group.detail}</p></div><ol>{group.links.map((item,index)=><li key={item.href}><Link href={item.href}><span className="workflow-index">{String(index+1).padStart(2,"0")}</span><span>{item.label}</span></Link></li>)}</ol></div>)}</div></section>
     {showQuotes && <section className="section-card"><div className="section-heading"><div><div className="eyebrow">COMERCIAL · {company.short}</div><h2>Cotizaciones recientes</h2></div><Link href={`/cotizaciones?empresa=${selected}`} className="text-link">Ver todas <ArrowRight size={16}/></Link></div>{quotes.length ? <div className="table-wrap"><table className="data-table"><thead><tr><th>Folio</th><th>Cliente</th><th>Asunto</th><th>Estado</th><th>Fecha</th></tr></thead><tbody>{quotes.slice(0,5).map(item=><tr key={item.id}><td><Link href={`/cotizaciones/${item.id}`}><strong>{quoteFolio(item)}</strong></Link></td><td>{item.client_name}</td><td>{item.title}</td><td>{item.status}</td><td>{chileDate(item.created_at)}</td></tr>)}</tbody></table></div> : <p className="muted">Aún no hay cotizaciones registradas para {company.short}.</p>}</section>}
     <section className="section-card"><div className="section-heading"><div><div className="eyebrow">OPERACIÓN · {company.short}</div><h2>Solicitudes recientes</h2></div><Link href={`/solicitudes?empresa=${selected}`} className="text-link">Ver todas <ArrowRight size={16}/></Link></div><ServiceTable services={services.slice(0,8)}/></section>
-  </>;
+  </div>;
 }

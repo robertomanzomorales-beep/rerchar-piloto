@@ -4,6 +4,7 @@ import "./operational-polish.css";
 import "./enterprise-forms.css";
 import "./brand-presence.css";
 import "./workflow-design.css";
+import "./company-dashboard.css";
 
 export const metadata: Metadata = {
   title: { default: "RERCHAR y E y J · Operaciones", template: "%s · RERCHAR y E y J" },
