@@ -226,3 +226,25 @@
 @media screen and (prefers-reduced-motion: reduce) {
   .app-shell .company-choice { transition: none; }
 }
+
+/* The issuer remains identifiable on every printable operational document. */
+.order-sheet[data-company="rerchar"] { --document-accent: #157454; --document-ink: #204b3b; }
+.order-sheet[data-company="e_y_j"] { --document-accent: #315f84; --document-ink: #214766; }
+.order-sheet[data-company] { border-top: 3px solid var(--document-accent); }
+.order-sheet[data-company] .order-header { border-bottom: 1px solid #d8e2e3; padding-top: 8px; }
+.order-sheet[data-company] .order-number small,
+.order-sheet[data-company] .order-section h2 { color: var(--document-accent); }
+.order-sheet[data-company] .order-number h1 { color: var(--document-ink); font-variant-numeric: tabular-nums; }
+.order-sheet[data-company] .order-system { color: #66777c; font-weight: 550; letter-spacing: .01em; }
+.order-sheet[data-company] .order-grid small { color: #65767d; font-weight: 550; }
+.order-sheet[data-company] .order-grid strong { color: #2b3d45; font-weight: 610; }
+.order-sheet[data-company] .order-section { border-bottom-color: #e3e9e9; }
+.order-sheet[data-company] .data-table th { color: var(--document-ink); background: #f2f6f6; }
+.order-sheet[data-company] .quote-totals > div:last-child { border-top-color: var(--document-accent); color: var(--document-ink); }
+.order-sheet[data-company] .order-footer { color: #66777c; }
+.order-eyj-brand { display: grid; width: max-content; gap: 3px; padding: 3px 0 4px; color: #214766; }
+.order-eyj-brand strong { font-size: 34px; font-weight: 660; line-height: 1; letter-spacing: -.075em; }
+.order-eyj-brand span { font-size: 9px; font-weight: 650; text-transform: uppercase; letter-spacing: .115em; }
+@media print {
+  .order-sheet[data-company] { border: 0; border-top: 2px solid var(--document-accent); }
+}

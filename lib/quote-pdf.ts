@@ -11,7 +11,7 @@ export async function renderQuotePdf(quote:Quote,lines:QuoteLine[],warning="",ro
   const doc=await PDFDocument.create();doc.registerFontkit(fontkit);
   const regular=await doc.embedFont(await readFile(resolve(process.cwd(),"public/fonts/montserrat-regular.ttf")),{subset:true});
   const bold=await doc.embedFont(await readFile(resolve(process.cwd(),"public/fonts/montserrat-bold.ttf")),{subset:true});
-  const logo=quote.issuer==="rerchar"?await doc.embedPng(await readFile(resolve(process.cwd(),"public/rerchar-logo-transparente.png"))):null;
+  const logo=quote.issuer==="rerchar"?await doc.embedPng(await readFile(resolve(process.cwd(),"public/rerchar-logo.png"))):null;
   const certifications=quote.issuer==="rerchar"?await doc.embedPng(await readFile(resolve(process.cwd(),"public/rerchar-certificaciones-iso.png"))):null;
   const isRerchar=quote.issuer==="rerchar";
   const dark=isRerchar?rgb(0.12,0.18,0.16):rgb(0.12,0.18,0.25);

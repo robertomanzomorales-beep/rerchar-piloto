@@ -23,8 +23,8 @@ export default async function EntrySheet({params}:{params:Promise<{id:string}>})
   const amounts=materialAmounts(receipt);
   return <>
     <div className="order-actions print-hide"><Link href={`/ingresos/${id}`} className="back-link">← Volver al ingreso</Link><PrintButton label="Imprimir hoja / guardar PDF"/></div>
-    <article className="order-sheet">
-      <header className="order-header"><div><Image src="/rerchar-logo-transparente.png" alt="RERCHAR Economía Circular" width={2124} height={740} className="order-logo"/><div className="order-system">RERCHAR CHILE SPA · REGISTRO DE RECEPCIÓN</div></div><div className="order-number"><small>{receipt.entry_sheet?"HOJA INGRESO DE MATERIALES N°":"REFERENCIA DEL INGRESO"}</small><h1>{receipt.entry_sheet||receipt.weighing_ticket||receipt.transfer_guide||receipt.origin_guide}</h1></div></header>
+    <article className="order-sheet" data-company="rerchar">
+      <header className="order-header"><div><Image src="/rerchar-logo.png" alt="RERCHAR Economía Circular" width={892} height={311} className="order-logo"/><div className="order-system">RERCHAR CHILE SPA · REGISTRO DE RECEPCIÓN</div></div><div className="order-number"><small>{receipt.entry_sheet?"HOJA INGRESO DE MATERIALES N°":"REFERENCIA DEL INGRESO"}</small><h1>{receipt.entry_sheet||receipt.weighing_ticket||receipt.transfer_guide||receipt.origin_guide}</h1></div></header>
       <div className="order-section"><h2>Empresa y recepción</h2><div className="order-grid">
         <div><small>Empresa / cliente</small><strong>{receipt.client_name}</strong></div><div><small>Conductor</small><strong>{receipt.driver_name||"No informado"}</strong></div>
         {client.tax_id&&<div><small>RUT empresa</small><strong>{client.tax_id}</strong></div>}{receipt.driver_tax_id&&<div><small>RUT conductor</small><strong>{receipt.driver_tax_id}</strong></div>}
