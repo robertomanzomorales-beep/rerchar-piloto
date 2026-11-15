@@ -106,6 +106,11 @@ test("panel RERCHAR no cae entre migraciones y E y J calcula los dos formatos ED
   await assert.rejects(()=>calendar.createBillingCycle(viewer,input),calendar.PaymentCalendarError);
   await assert.rejects(()=>calendar.createBillingCycle(owner,{...input,send_on:"2026-01-30"}),/envío no puede preceder/);
   const cycleId=await calendar.createBillingCycle(owner,input);
+  assert.deepEqual((await calendar.listBillingCycles(viewer,"cortes",100,0,"2026-01-26")).map(c=>c.id),[cycleId]);
+  assert.equal((await calendar.listBillingCycles(viewer,"envios",100,0,"2026-01-26")).length,0);
+  assert.deepEqual((await calendar.listBillingCycles(viewer,"atrasados",100,0,"2026-02-05")).map(c=>c.id),[cycleId]);
+  assert.equal((await calendar.listBillingCycles(viewer,"cortes",1,1,"2026-01-26")).length,0);
+  assert.equal((await calendar.eyjBillingCalendarDashboard("2026-01-26")).total,"1");
   await assert.rejects(()=>calendar.createBillingCycle(owner,{...input,period_from:"2026-01-15"}),/período que se cruza/);
   const autoCycle=await calendar.createBillingCycle(owner,{...input,period_from:"2026-03-01",period_to:"2026-03-31",
     cutoff_on:"2026-04-01",send_on:"2026-04-03"});

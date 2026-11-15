@@ -31,10 +31,21 @@ const cycleSelect=`SELECT b.*,c.name AS client_name,p.number AS statement_number
   FROM payment_statement_cycles b JOIN clients c ON c.id=b.client_id
   LEFT JOIN payment_statements p ON p.id=b.statement_id`;
 
-export async function listBillingCycles(actor:Actor){
+export type BillingCycleView=""|"cortes"|"envios"|"atrasados";
+const cyclePredicates:Record<BillingCycleView,string>={
+  "":"$1::date IS NOT NULL",
+  cortes:"b.cutoff_on BETWEEN $1::date AND $1::date+7 AND COALESCE(p.status,'') NOT IN ('enviado','aprobado')",
+  envios:"b.send_on BETWEEN $1::date AND $1::date+7 AND COALESCE(p.status,'') NOT IN ('enviado','aprobado')",
+  atrasados:"b.send_on<$1::date AND COALESCE(p.status,'') NOT IN ('enviado','aprobado')",
+};
+export async function listBillingCycles(actor:Actor,filter:BillingCycleView="",limit=100,offset=0,asOf?:string){
   view(actor);
+  if(!Object.hasOwn(cyclePredicates,filter))reject("Filtro de calendario no válido.");
+  const today=asOf??new Intl.DateTimeFormat("sv-SE",{timeZone:"America/Santiago",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
+  if(!z.iso.date().safeParse(today).success)reject("Fecha de calendario inválida.");
   return db.query<BillingCycle>(`${cycleSelect} WHERE b.issuer='e_y_j'
-    ORDER BY b.send_on,b.cutoff_on,b.created_at LIMIT 350`);
+    AND ${cyclePredicates[filter]} ORDER BY b.send_on,b.cutoff_on,b.created_at,b.id LIMIT $2 OFFSET $3`,
+    [today,Math.max(1,Math.min(250,Math.trunc(limit)||100)),Number.isSafeInteger(offset)?Math.max(0,Math.min(500_000,offset)):0]);
 }
 
 export async function getBillingCycle(actor:Actor,id:string){
@@ -147,7 +158,7 @@ export async function eyjBillingCalendarDashboard(asOf?:string){
   const today=asOf??new Intl.DateTimeFormat("sv-SE",{timeZone:"America/Santiago",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
   if(!z.iso.date().safeParse(today).success)throw new Error("Fecha de panel inválida.");
   try{
-    const [row]=await db.query<{cutoffs:string;sends:string;overdue:string}>(`SELECT
+    const [row]=await db.query<{total:string;cutoffs:string;sends:string;overdue:string}>(`SELECT count(*)::text AS total,
       count(*) FILTER (WHERE b.cutoff_on<=$1::date+7 AND b.cutoff_on>=$1::date
         AND COALESCE(p.status,'') NOT IN ('enviado','aprobado'))::text AS cutoffs,
       count(*) FILTER (WHERE b.send_on<=$1::date+7 AND b.send_on>=$1::date
@@ -158,7 +169,7 @@ export async function eyjBillingCalendarDashboard(asOf?:string){
     return {...row,ready:true};
   }catch(error){
     if(typeof error==="object"&&error!==null&&"code" in error&&["42P01","42703"].includes(String(error.code)))
-      return {cutoffs:"0",sends:"0",overdue:"0",ready:false};
+      return {total:"0",cutoffs:"0",sends:"0",overdue:"0",ready:false};
     throw error;
   }
 }

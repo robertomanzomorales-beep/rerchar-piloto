@@ -156,9 +156,9 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
       {label:"EDP con OC listos para asociar factura",count:value(edpInvoices.ready_to_invoice),href:"/estados-pago?vista=lista_factura"},
     ]:[{label:"EDP aprobados sin factura asociada",count:value(edpInvoices.unbilled),href:"/estados-pago?vista=sin_factura"}])]:[]),
     ...(selected==="e_y_j"&&canManage(actor)&&billingCalendar?.ready?[
-      {label:"Cortes de EDP en los próximos 7 días",count:value(billingCalendar.cutoffs),href:"/estados-pago/calendario"},
-      {label:"Envíos de EDP en los próximos 7 días",count:value(billingCalendar.sends),href:"/estados-pago/calendario"},
-      {label:"Envíos de EDP atrasados",count:value(billingCalendar.overdue),href:"/estados-pago/calendario",urgent:true},
+      {label:"Cortes de EDP en los próximos 7 días",count:value(billingCalendar.cutoffs),href:"/estados-pago/calendario?vista=cortes"},
+      {label:"Envíos de EDP en los próximos 7 días",count:value(billingCalendar.sends),href:"/estados-pago/calendario?vista=envios"},
+      {label:"Envíos de EDP atrasados",count:value(billingCalendar.overdue),href:"/estados-pago/calendario?vista=atrasados",urgent:true},
     ]:[]),
     ...(invoiceAlerts?[
       {label:"Facturas de proveedores vencidas con saldo",count:value(invoiceAlerts.overdue),href:`/facturas-recibidas?empresa=${selected}&estado=vencidas`,urgent:true},
