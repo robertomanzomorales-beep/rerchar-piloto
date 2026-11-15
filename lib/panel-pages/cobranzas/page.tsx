@@ -25,6 +25,13 @@ export default async function Receivables({searchParams}:{searchParams:Promise<{
     reconcile?Promise.resolve({total:0,items:[]}):listReceivablesPage(actor,company,filter,today,101,(page-1)*100),receivablesOverview(actor,company,today),
     reconcile?listLegacyReconciliation(actor,company,101,(page-1)*100):Promise.resolve([]),
   ]);
+  const lastPage=Math.max(1,Math.ceil((reconcile?Number(overview.legacy):invoicePage.total)/100));
+  if(page>lastPage){
+    const params=new URLSearchParams({empresa:company,estado:reconcile?"conciliar":filter,pagina:String(lastPage)});
+    if(query.ok==="1")params.set("ok","1");
+    if(query.error)params.set("error",query.error);
+    redirect(`/cobranzas?${params}`);
+  }
   const legacy=legacyResult.slice(0,100),hasMoreLegacy=legacyResult.length>100;
   const legacyHref=(next:number)=>`/cobranzas?${new URLSearchParams({empresa:company,estado:"conciliar",pagina:String(next)})}#conciliacion`;
   const visible=invoicePage.items.slice(0,100),hasMoreInvoices=invoicePage.items.length>100;
@@ -70,12 +77,13 @@ export default async function Receivables({searchParams}:{searchParams:Promise<{
             {invoice.service_id&&<Link href={`/solicitudes/${invoice.service_id}`}>Ver servicio asociado →</Link>}
             {balance>0&&<details className="reference-control"><summary>Registrar abono comprobado</summary><form action={registerExtraReceivablePaymentAction} className="form-grid detail-form">
               <input type="hidden" name="invoice_id" value={invoice.id}/><input type="hidden" name="company" value={company}/><input type="hidden" name="submission_key" value={randomUUID()}/>
+              <input type="hidden" name="estado" value={filter}/><input type="hidden" name="pagina" value={page}/>
               <label>Monto abonado CLP (máximo ${money(balance)})<input name="amount_clp" type="number" min="0.01" max={balance} step="0.01" required/></label>
               <label>Fecha del pago<input name="paid_on" type="date" min={day(invoice.issued_on)} max={today} defaultValue={today} required/></label>
               <label className="field-full">Referencia del comprobante<input name="reference" minLength={2} maxLength={120} required/></label>
               <div className="field-full form-footer"><SubmitButton className="button button-primary">Guardar abono</SubmitButton></div>
             </form></details>}
-            {Number(invoice.paid_clp)===0&&<details className="cancel-control"><summary>Anular factura registrada por error</summary><form action={voidExtraReceivableInvoiceAction} className="form-grid detail-form"><input type="hidden" name="invoice_id" value={invoice.id}/><input type="hidden" name="company" value={company}/><label className="field-full">Motivo<input name="reason" minLength={5} maxLength={500} required/></label><div className="field-full form-footer"><SubmitButton className="button button-outline">Confirmar anulación</SubmitButton></div></form></details>}
+            {Number(invoice.paid_clp)===0&&<details className="cancel-control"><summary>Anular factura registrada por error</summary><form action={voidExtraReceivableInvoiceAction} className="form-grid detail-form"><input type="hidden" name="invoice_id" value={invoice.id}/><input type="hidden" name="company" value={company}/><input type="hidden" name="estado" value={filter}/><input type="hidden" name="pagina" value={page}/><label className="field-full">Motivo<input name="reason" minLength={5} maxLength={500} required/></label><div className="field-full form-footer"><SubmitButton className="button button-outline">Confirmar anulación</SubmitButton></div></form></details>}
           </>}
         </article>;
       })}</div>:<p className="muted">No hay facturas en esta vista. Cambie el estado o registre una factura desde el servicio, el EDP o la guía de material.</p>}

@@ -5,9 +5,15 @@ import {revalidatePath} from "next/cache";
 import {ZodError} from "zod";
 import {requireActor} from "@/lib/auth";
 import {ExtraChargeError,registerExtraReceivablePayment,voidExtraReceivableInvoice} from "@/lib/extra-charges";
+import {parseReceivableFilter} from "@/lib/receivable-export";
 
 const v=(form:FormData,key:string)=>String(form.get(key)??"");
-const page=(form:FormData)=>`/cobranzas?empresa=${v(form,"company")==="e_y_j"?"e_y_j":"rerchar"}`;
+const page=(form:FormData)=>{
+  const requested=Number(v(form,"pagina"));
+  const current=Number.isSafeInteger(requested)&&requested>=1&&requested<=10_000?requested:1;
+  return `/cobranzas?${new URLSearchParams({empresa:v(form,"company")==="e_y_j"?"e_y_j":"rerchar",
+    estado:parseReceivableFilter(v(form,"estado")),pagina:String(current)})}`;
+};
 async function run(path:string,fn:()=>Promise<unknown>):Promise<never>{
   try{await fn();}catch(error){
     const message=error instanceof ExtraChargeError?error.message:error instanceof ZodError?"Revise monto, fecha y referencia.":"No se pudo registrar la operación.";
