@@ -129,7 +129,7 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
     ...(canManage(actor)?[{label:"Servicios con documentos por validar",count:value(s?.pending_review),href:`/solicitudes?empresa=${selected}&estado=pendiente_revision`}]:[]),
     ...(canManage(actor)?[{label:"Averías del checklist abiertas",count:value(checklistFaults[0]?.total),href:`/mantenimiento?empresa=${selected}&averias=abiertas#averias-checklist`}]:[]),
     ...(canManage(actor)?[{label:"Viajes incompletos o suspendidos pendientes",count:value(dayIssues[0]?.total),href:`/agenda?empresa=${selected}&partes=pendientes#partes-pendientes`}]:[]),
-    ...(canManage(actor)?[{label:"Fletes falsos y sobreestadías por decidir",count:extraChargePending,href:`/cobros-extraordinarios?empresa=${selected}`}]:[]),
+    ...(canManage(actor)?[{label:"Cargos extraordinarios por decidir",count:extraChargePending,href:`/cobros-extraordinarios?empresa=${selected}&estado=propuestos#cargos-parte`}]:[]),
     ...(receivables?[{label:"Facturas de clientes vencidas con saldo",count:Number(receivables.overdue),href:`/cobranzas?empresa=${selected}&estado=vencidas`,urgent:true},
       {label:"Facturas de clientes que vencen en 7 días",count:Number(receivables.upcoming),href:`/cobranzas?empresa=${selected}&estado=proximas`},
       {label:"Facturas anteriores por conciliar",count:Number(receivables.legacy),href:`/cobranzas?empresa=${selected}`}]:[]),

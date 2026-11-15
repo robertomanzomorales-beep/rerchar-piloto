@@ -31,11 +31,24 @@ const select=`SELECT x.*,s.folio::text AS folio,s.operating_company,c.name AS cl
   FROM service_extra_charges x JOIN service_requests s ON s.id=x.service_id JOIN clients c ON c.id=s.client_id
   JOIN users u ON u.id=x.created_by LEFT JOIN users d ON d.id=x.decided_by WHERE s.deleted_at IS NULL`;
 
-export async function listExtraCharges(actor:Actor,company:Company){
+export type ExtraChargeView=""|"propuesto"|"aprobado";
+export async function listExtraCharges(actor:Actor,company:Company,view:ExtraChargeView="",limit=100,offset=0){
   staff(actor);
   if(!["rerchar","e_y_j"].includes(company))reject("Empresa inválida.");
-  return db.query<ExtraCharge>(`${select} AND s.operating_company=$1 ORDER BY
-    CASE x.status WHEN 'propuesto' THEN 0 WHEN 'aprobado' THEN 1 ELSE 2 END,x.service_day DESC,x.created_at DESC LIMIT 300`,[company]);
+  return db.query<ExtraCharge>(`${select} AND s.operating_company=$1 AND ($2::text='' OR x.status=$2)
+    ORDER BY CASE x.status WHEN 'propuesto' THEN 0 WHEN 'aprobado' THEN 1 ELSE 2 END,
+    x.service_day DESC,x.created_at DESC,x.id DESC LIMIT $3 OFFSET $4`,[company,view,Math.max(1,Math.min(101,limit)),Math.max(0,offset)]);
+}
+export async function extraChargeOverview(actor:Actor,company:Company){
+  staff(actor);
+  if(!["rerchar","e_y_j"].includes(company))reject("Empresa inválida.");
+  const [row]=await db.query<{total:string;proposed:string;approved:string;approved_clp:string}>(`SELECT count(*)::text AS total,
+    count(*) FILTER (WHERE x.status='propuesto')::text AS proposed,
+    count(*) FILTER (WHERE x.status='aprobado')::text AS approved,
+    COALESCE(sum(x.amount_clp) FILTER (WHERE x.status='aprobado'),0)::text AS approved_clp
+    FROM service_extra_charges x JOIN service_requests s ON s.id=x.service_id
+    WHERE s.deleted_at IS NULL AND s.operating_company=$1`,[company]);
+  return row;
 }
 export async function serviceExtraCharges(actor:Actor,serviceId:string){
   staff(actor);

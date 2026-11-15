@@ -42,10 +42,15 @@ test("flete falso y sobreestadía siguen parte, decisión y empresa sin alterar 
   assert.equal(await charges.proposeExtraCharge(ops,rerchar,first),id,"el reenvío es idempotente");
   assert.equal((await charges.listExtraCharges(ops,"rerchar")).length,1);
   assert.equal((await charges.listExtraCharges(ops,"e_y_j")).length,0);
+  assert.equal((await charges.extraChargeOverview(ops,"rerchar")).proposed,"1");
+  assert.deepEqual((await charges.listExtraCharges(ops,"rerchar","propuesto")).map(x=>x.id),[id]);
   await assert.rejects(()=>charges.decideExtraCharge(ops,id,{status:"aprobado",decision_note:"Aceptado por cliente",amount_clp:"706000"}),charges.ExtraChargeError);
   await assert.rejects(()=>charges.decideExtraCharge(admin,id,{status:"aprobado",decision_note:"Aceptado por cliente",amount_clp:""}),/monto/);
   await charges.decideExtraCharge(admin,id,{status:"aprobado",decision_note:"Acordado con cliente",amount_clp:"706000"});
   assert.equal(await charges.pendingExtraChargeCount(ops,"rerchar"),0);
+  assert.equal((await charges.listExtraCharges(ops,"rerchar","propuesto")).length,0);
+  assert.equal((await charges.listExtraCharges(ops,"rerchar","aprobado"))[0].id,id);
+  assert.equal((await charges.extraChargeOverview(ops,"rerchar")).approved_clp,"706000.00");
   await assert.rejects(()=>charges.decideExtraCharge(admin,id,{status:"descartado",decision_note:"Sin cobro",amount_clp:""}),/resuelto/);
   await assert.rejects(()=>charges.invoiceExtraCharge(admin,id,{invoice_number:"F-1050",invoiced_on:"2026-10-11",due_on:"2026-11-11",total_clp:"840140"}),/anteceder/);
   await charges.invoiceExtraCharge(admin,id,{invoice_number:"F-1050",invoiced_on:"2026-10-13",due_on:"2026-11-13",total_clp:"840140"});
@@ -79,4 +84,15 @@ test("flete falso y sobreestadía siguen parte, decisión y empresa sin alterar 
   await charges.voidExtraReceivableInvoice(admin,eyjInvoice.id,"Folio ingresado por error");
   assert.equal((await receivables.listReceivables(admin,"e_y_j")).length,0);
   assert.equal((await charges.serviceExtraCharges(ops,eyj)).find(x=>x.id===third)?.status,"aprobado");
+  await db.query(`INSERT INTO service_extra_charges(submission_key,service_id,service_day,kind,reason,
+    source_outcome,source_observation,created_by)
+    SELECT gen_random_uuid(),$1::uuid,'2026-10-12'::date,'flete_falso','Pendiente de decisión',
+      'incompleto','Cliente suspendió carguío por clima',$2::uuid FROM generate_series(1,101)`,[rerchar,ops.id]);
+  const firstPage=await charges.listExtraCharges(ops,"rerchar","propuesto",101,0);
+  const secondPage=await charges.listExtraCharges(ops,"rerchar","propuesto",101,100);
+  assert.equal(await charges.pendingExtraChargeCount(ops,"rerchar"),101);
+  assert.equal((await charges.extraChargeOverview(ops,"rerchar")).proposed,"101");
+  assert.equal(firstPage.length,101,"la consulta permite detectar la página siguiente");
+  assert.equal(secondPage.length,1);
+  assert.equal(firstPage[100].id,secondPage[0].id);
 });
