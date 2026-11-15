@@ -46,6 +46,9 @@
   }
   .app-shell .topbar { border-top: 2px solid var(--company-border); border-bottom-color: var(--company-border); }
   .app-shell .topbar-label { font-weight: 660; color: var(--brand-deep); }
+  .app-shell .topbar-actions { grid-column: 3; display: flex; align-items: center; justify-self: end; gap: 16px; min-width: 0; }
+  .app-shell .topbar-actions .topbar-search-trigger { margin-left: 0; flex: none; }
+  .app-shell .topbar-actions .topbar-user { position: static; grid-column: auto; max-width: min(24vw,200px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
   /* Two clear workspaces: each has its own masthead, content and action. */
   .app-shell .company-selector {
@@ -179,6 +182,7 @@
   .app-shell .brand-sidebar .brand-art { max-width: 184px; }
 }
 @media screen and (max-width: 860px) {
+  .app-shell .topbar-actions { margin-left: auto; }
   .app-shell .mobile-brand-combined { display: inline-flex; align-items: center; gap: 6px; color: #294866; white-space: nowrap; }
   .app-shell .mobile-brand-combined img { width: 75px; height: auto; }
   .app-shell .mobile-brand-combined i { width: 1px; height: 20px; background: #c5d6d6; }
