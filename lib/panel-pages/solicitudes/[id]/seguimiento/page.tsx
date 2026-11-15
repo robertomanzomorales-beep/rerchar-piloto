@@ -7,6 +7,7 @@ import {saveGuideFollowupAction,saveCommercialAction} from "@/app/operation-acti
 import {Notice} from "@/components/UI";
 import {SubmitButton} from "@/components/Transition";
 import PrintButton from "@/components/PrintButton";
+import DocumentBrand from "@/components/DocumentBrand";
 import {companyName,serviceFolio} from "@/lib/companies";
 import {db} from "@/lib/db";
 
@@ -20,7 +21,7 @@ export default async function ServiceFollowup({params,searchParams}:{params:Prom
     "SELECT id,name FROM users WHERE active=true AND role IN ('admin','operaciones') ORDER BY name"):[];
   return <><div className="order-actions print-hide"><Link href={`/solicitudes/${id}`} className="back-link">← Servicio</Link>{s.operating_company&&<PrintButton label="Imprimir ficha comercial / PDF"/>}</div><div className="print-hide"><Notice error={query.error} ok={query.ok}/></div>
     {!s.operating_company&&<p role="alert" className="notice notice-error print-hide">Confirme la empresa operadora antes de imprimir esta ficha.</p>}
-    <article className="order-sheet"><header className="order-header"><div><div className="order-system">{companyName(s.operating_company)}</div><h1>{isEyj?"Seguimiento comercial y documental":"Seguimiento del servicio y guías"}</h1></div><div className="order-number"><small>SERVICIO</small><h1>{serviceFolio(s)}</h1></div></header>
+    <article className="order-sheet" data-company={s.operating_company??"unassigned"}><header className="order-header"><div><DocumentBrand company={s.operating_company}/><div className="order-system">{companyName(s.operating_company)}</div><h1>{isEyj?"Seguimiento comercial y documental":"Seguimiento del servicio y guías"}</h1></div><div className="order-number"><small>SERVICIO</small><h1>{serviceFolio(s)}</h1></div></header>
       <div className="order-section"><div className="order-grid">{([
         ["Cliente / faena",`${s.client_name} · ${s.site_name}`],["Ruta",`${s.origin} → ${s.destination}`],
         ["Cotización",c?.quote_reference||"—"],["Orden de compra cliente",c?.order_reference||"—"],

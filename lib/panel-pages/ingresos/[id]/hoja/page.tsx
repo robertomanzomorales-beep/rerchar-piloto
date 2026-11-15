@@ -1,10 +1,10 @@
 import Link from "next/link";
-import Image from "next/image";
 import {notFound} from "next/navigation";
 import {requireActor} from "@/lib/auth";
 import {db} from "@/lib/db";
 import {getMaterialReceipt,materialAmounts,MaterialError} from "@/lib/materials";
 import PrintButton from "@/components/PrintButton";
+import DocumentBrand from "@/components/DocumentBrand";
 import {moduleReady} from "@/lib/schema-readiness";
 import ModuleUnavailable from "@/components/ModuleUnavailable";
 
@@ -24,7 +24,7 @@ export default async function EntrySheet({params}:{params:Promise<{id:string}>})
   return <>
     <div className="order-actions print-hide"><Link href={`/ingresos/${id}`} className="back-link">← Volver al ingreso</Link><PrintButton label="Imprimir hoja / guardar PDF"/></div>
     <article className="order-sheet" data-company="rerchar">
-      <header className="order-header"><div><Image src="/rerchar-logo.png" alt="RERCHAR Economía Circular" width={892} height={311} className="order-logo"/><div className="order-system">RERCHAR CHILE SPA · REGISTRO DE RECEPCIÓN</div></div><div className="order-number"><small>{receipt.entry_sheet?"HOJA INGRESO DE MATERIALES N°":"REFERENCIA DEL INGRESO"}</small><h1>{receipt.entry_sheet||receipt.weighing_ticket||receipt.transfer_guide||receipt.origin_guide}</h1></div></header>
+      <header className="order-header"><div><DocumentBrand company="rerchar"/><div className="order-system">RERCHAR CHILE SPA · REGISTRO DE RECEPCIÓN</div></div><div className="order-number"><small>{receipt.entry_sheet?"HOJA INGRESO DE MATERIALES N°":"REFERENCIA DEL INGRESO"}</small><h1>{receipt.entry_sheet||receipt.weighing_ticket||receipt.transfer_guide||receipt.origin_guide}</h1></div></header>
       <div className="order-section"><h2>Empresa y recepción</h2><div className="order-grid">
         <div><small>Empresa / cliente</small><strong>{receipt.client_name}</strong></div><div><small>Conductor</small><strong>{receipt.driver_name||"No informado"}</strong></div>
         {client.tax_id&&<div><small>RUT empresa</small><strong>{client.tax_id}</strong></div>}{receipt.driver_tax_id&&<div><small>RUT conductor</small><strong>{receipt.driver_tax_id}</strong></div>}

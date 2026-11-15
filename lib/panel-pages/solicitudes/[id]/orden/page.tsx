@@ -1,4 +1,3 @@
-import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
@@ -7,6 +6,7 @@ import { db } from "@/lib/db";
 import { getService, PilotError } from "@/lib/pilot";
 import { Badge, chileDate } from "@/components/UI";
 import PrintButton from "@/components/PrintButton";
+import DocumentBrand from "@/components/DocumentBrand";
 import {companyName,serviceFolio} from "@/lib/companies";
 
 export default async function ServiceOrder({ params }: { params: Promise<{ id: string }> }) {
@@ -25,7 +25,7 @@ export default async function ServiceOrder({ params }: { params: Promise<{ id: s
     <div className="order-actions print-hide"><Link href={`/solicitudes/${id}`} className="back-link"><ArrowLeft size={16}/> Volver al servicio</Link>{service.operating_company&&<PrintButton/>}</div>
     {!service.operating_company&&<p role="alert" className="notice notice-error print-hide">Confirme primero la empresa operadora para imprimir la orden.</p>}
     <article className="order-sheet" data-company={service.operating_company??"unassigned"}>
-      <header className="order-header"><div>{service.operating_company==="rerchar"?<Image src="/rerchar-logo.png" alt="RERCHAR Economía Circular" width={892} height={311} className="order-logo"/>:service.operating_company==="e_y_j"?<div className="order-eyj-brand"><strong>E y J</strong><span>Servicios Integrales</span></div>:null}<div className="order-system">{companyName(service.operating_company)}</div></div><div className="order-number"><small>ORDEN DE SERVICIO</small><h1>{folio}</h1><Badge status={service.status}/></div></header>
+      <header className="order-header"><div><DocumentBrand company={service.operating_company}/><div className="order-system">{companyName(service.operating_company)}</div></div><div className="order-number"><small>ORDEN DE SERVICIO</small><h1>{folio}</h1><Badge status={service.status}/></div></header>
       <div className="order-section"><h2>Solicitud y cliente</h2><div className="order-grid"><div><small>Cliente</small><strong>{service.client_name}</strong></div><div><small>Centro o faena</small><strong>{service.site_name}</strong></div><div><small>Servicio</small><strong className="capitalize">{service.service_type}</strong></div><div><small>{rental?"Equipo o servicio":"Residuo o material"}</small><strong>{service.waste_type}</strong></div><div><small>{rental?"Entrega del equipo":"Origen"}</small><strong>{service.origin}</strong></div><div><small>{rental?"Lugar de uso":"Destino"}</small><strong>{service.destination}</strong></div>{rental?<div><small>Período</small><strong>{day(service.rental_from)} al {day(service.rental_to)}</strong></div>:<div><small>Cantidad estimada</small><strong>{service.estimated_kg ? `${Number(service.estimated_kg).toLocaleString("es-CL")} kg` : "Sin estimación"}</strong></div>}<div><small>Prioridad</small><strong className="capitalize">{service.priority}</strong></div></div></div>
       <div className="order-section"><h2>{rental?"Programación de arriendo":"Programación y despacho"}</h2><div className="order-grid"><div><small>{rental?"Inicio pactado":"Fecha y hora (Chile)"}</small><strong>{rental?day(service.rental_from):chileDate(service.scheduled_for)}</strong></div>{rental?<div><small>Equipo del inventario</small><strong>{service.asset_label??"Equipo descrito en la solicitud"}</strong></div>:<><div><small>Camión</small><strong>{service.asset_label ?? "Pendiente"}</strong></div><div><small>Rampla</small><strong>{service.ramp_label ?? "Sin rampla"}</strong></div><div><small>Conductor</small><strong>{service.driver_name ?? "Pendiente"}</strong></div>{service.external_driver_id&&<><div><small>RUT conductor tercero</small><strong>{service.external_driver_tax_id}</strong></div><div><small>Transportista</small><strong>{service.external_driver_company}</strong></div></>}{service.guide_number&&<div><small>Número de guía recibido</small><strong>{service.guide_number}</strong></div>}</>}</div></div>
       {service.notes && <div className="order-section"><h2>Observaciones</h2><p>{service.notes}</p></div>}

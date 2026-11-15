@@ -9,6 +9,7 @@ import {registerSupplierPaymentAction,addOperationFileAction,updateSupplierInvoi
 import {Notice} from "@/components/UI";
 import {SubmitButton} from "@/components/Transition";
 import PrintButton from "@/components/PrintButton";
+import DocumentBrand from "@/components/DocumentBrand";
 import {companyName,serviceFolio} from "@/lib/companies";
 import {moduleReady} from "@/lib/schema-readiness";
 import {invoiceSupplierTransfers} from "@/lib/supplier-transfers";
@@ -33,7 +34,7 @@ export default async function SupplierInvoiceDetail({params,searchParams}:{param
   const reserved=transfers.filter(t=>["solicitada","aprobada","ejecutada"].includes(t.status)).reduce((sum,t)=>sum+Number(t.amount_clp),0);
   const available=Math.max(0,Math.round((saldo-reserved)*100)/100);
   return <><div className="order-actions print-hide"><Link href="/facturas-recibidas" className="back-link">← Facturas recibidas</Link><PrintButton label="Imprimir ficha / guardar PDF"/></div><div className="print-hide"><Notice error={query.error} ok={query.ok}/></div>
-    <article className="order-sheet"><header className="order-header"><div><div className="order-system">{companyName(r.issuer)}</div><h1>Registro de factura recibida</h1></div><div className="order-number"><small>FACTURA</small><h1>{r.invoice_number}</h1></div></header><p className="order-muted">Esta ficha interna no sustituye al documento tributario del proveedor.</p>
+    <article className="order-sheet" data-company={r.issuer}><header className="order-header"><div><DocumentBrand company={r.issuer}/><div className="order-system">{companyName(r.issuer)}</div><h1>Registro de factura recibida</h1></div><div className="order-number"><small>FACTURA</small><h1>{r.invoice_number}</h1></div></header><p className="order-muted">Esta ficha interna no sustituye al documento tributario del proveedor.</p>
       <div className="order-section"><div className="order-grid">{([[
         "Proveedor",`${r.supplier_name} · ${r.supplier_tax_id}`],["Emisión",date(r.issued_on)],["Vencimiento",date(r.due_on)],
         ["Descripción",r.description],["Neto",money(r.net_clp)],["IVA",money(r.vat_clp)],["Total",money(r.total_clp)],

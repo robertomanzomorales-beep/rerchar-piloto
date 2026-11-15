@@ -232,6 +232,9 @@
 .order-sheet[data-company="e_y_j"] { --document-accent: #315f84; --document-ink: #214766; }
 .order-sheet[data-company] { border-top: 3px solid var(--document-accent); }
 .order-sheet[data-company] .order-header { border-bottom: 1px solid #d8e2e3; padding-top: 8px; }
+.order-sheet[data-company] .order-header > div:first-child { min-width: 0; }
+.order-sheet[data-company] .order-header > div:first-child h1 { margin: 10px 0 4px; color: var(--document-ink); font-size: 18px; font-weight: 640; line-height: 1.25; letter-spacing: -.025em; }
+.order-sheet[data-company] .order-logo { width: 184px; border-radius: 0; }
 .order-sheet[data-company] .order-number small,
 .order-sheet[data-company] .order-section h2 { color: var(--document-accent); }
 .order-sheet[data-company] .order-number h1 { color: var(--document-ink); font-variant-numeric: tabular-nums; }

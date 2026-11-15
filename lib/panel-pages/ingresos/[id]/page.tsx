@@ -8,6 +8,7 @@ import {updateMaterialGuideFollowupAction,addOperationFileAction} from "@/app/op
 import {Notice} from "@/components/UI";
 import {SubmitButton} from "@/components/Transition";
 import PrintButton from "@/components/PrintButton";
+import DocumentBrand from "@/components/DocumentBrand";
 import {listMaterialCatalog,receiptStockPosting} from "@/lib/material-stock";
 import {linkReceiptMaterialAction,postReceiptMaterialAction} from "@/app/material-stock-actions";
 import {moduleReady} from "@/lib/schema-readiness";
@@ -50,7 +51,7 @@ export default async function MaterialDetail({params,searchParams}:{params:Promi
     ["Referencia pago",r.payment_reference],["Aviso documental",date(r.closure_notified_on)],
     ["Destinatario del aviso",r.closure_recipient]];
   return <><div className="order-actions print-hide"><Link href="/ingresos" className="back-link">← Ingresos de material</Link><div className="order-actions"><Link href={`/ingresos/${id}/hoja`} className="button button-outline">Hoja de ingreso imprimible</Link><PrintButton label="Imprimir control / guardar PDF"/></div></div><div className="print-hide"><Notice error={query.error} ok={query.ok}/></div>
-    <article className="order-sheet material-control-sheet"><header className="order-header"><div><div className="order-system">RERCHAR CHILE SPA</div><h1>{r.kind==="excedente"?"Control de excedentes":"Control de ingreso de material"}</h1></div><div className="order-number"><small>REFERENCIA</small><h1>{r.weighing_ticket||r.transfer_guide||r.origin_guide||r.entry_sheet}</h1></div></header>
+    <article className="order-sheet material-control-sheet" data-company="rerchar"><header className="order-header"><div><DocumentBrand company="rerchar"/><div className="order-system">RERCHAR CHILE SPA</div><h1>{r.kind==="excedente"?"Control de excedentes":"Control de ingreso de material"}</h1></div><div className="order-number"><small>REFERENCIA</small><h1>{r.weighing_ticket||r.transfer_guide||r.origin_guide||r.entry_sheet}</h1></div></header>
       {r.service_id&&<p>Servicio: <Link href={`/solicitudes/${r.service_id}`}>RER-{String(r.service_folio).padStart(5,"0")}</Link></p>}
       <div className="order-section"><div className="order-grid">{facts.map(([label,value])=><div key={label}><small>{label}</small><strong>{value||"—"}</strong></div>)}</div></div>
       {r.notes&&<div className="order-section"><h2>Observaciones</h2><p>{r.notes}</p></div>}

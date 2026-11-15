@@ -12,6 +12,7 @@ import {getMaterialSaleInvoices} from "@/lib/material-sale-billing";
 import {SubmitButton} from "@/components/Transition";
 import {Notice} from "@/components/UI";
 import PrintButton from "@/components/PrintButton";
+import DocumentBrand from "@/components/DocumentBrand";
 import {moduleReady} from "@/lib/schema-readiness";
 import ModuleUnavailable from "@/components/ModuleUnavailable";
 
@@ -38,7 +39,7 @@ export default async function MaterialGuideDetail({params,searchParams}:{params:
   return <>
     <div className="order-actions print-hide"><Link href="/control-guias" className="back-link"><ArrowLeft size={16}/> Todas las guías</Link><PrintButton label="Imprimir control / guardar PDF"/></div>
     <div className="print-hide"><Notice error={query.error} ok={query.ok}/></div>
-    <article className="order-sheet"><header className="order-header"><div><div className="order-system">{company}</div><h1>Control de guía · {guide.movement_type}</h1></div><div className="order-number"><small>N° GUÍA</small><h1>{guide.guide_number}</h1></div></header>
+    <article className="order-sheet" data-company="rerchar"><header className="order-header"><div><DocumentBrand company="rerchar"/><div className="order-system">{company}</div><h1>Control de guía · {guide.movement_type}</h1></div><div className="order-number"><small>N° GUÍA</small><h1>{guide.guide_number}</h1></div></header>
       <div className="order-section"><div className="order-grid"><div><small>Fecha / detalle</small><strong>{day(guide.movement_on)} · {guide.movement_detail||guide.movement_type}</strong></div><div><small>Contraparte</small><strong>{guide.counterparty_name}</strong></div><div><small>Origen → destino</small><strong>{guide.origin} → {guide.destination}</strong></div><div><small>Conductor / patentes</small><strong>{guide.driver_name||"—"} · {guide.truck_plate||"—"} / {guide.trailer_plate||"—"}</strong></div></div></div>
       {items.map(i=>{const totals=materialGuideTotals(i),invoice=invoicesByItem.get(i.id);const alerts=[
         ...(guide.movement_type==="venta"&&i.arrival_kg==null?["Pendiente peso de llegada"]:[]),
