@@ -3,13 +3,14 @@
 ## Dirección visual confirmada por Roberto
 
 - Roberto rechazó el rediseño `d11643f`: colores demasiado sutiles, aspecto infantil por tarjetas redondeadas/iconos y pérdida del carácter profesional anterior.
-- Se recupera la base visual de `53ef494`: panel compacto, indicadores en una banda, gráficos de líneas y barras, encabezado con marca, tablas y bloques rectangulares.
+- Se recuperó la base visual de `53ef494`, publicada en `edad7c2`: panel compacto, indicadores en banda, líneas/barras y encabezado con marca. Roberto aclaró expresamente que recuperar esa base es el punto de partida: exige mejorarla profesionalmente, no dejarla igual ni limitarse a un rollback.
 - RERCHAR se identifica claramente en verde y E y J en azul. Reforzar esa separación en menú, selección activa, cabecera y datos principales; no volver a neutralizar ambos espacios ni introducir tarjetas decorativas.
 - Las mejoras funcionales se conservan: filtro Todos/Prioritarios, saldo administrativo resumido, filtros de acreditación por empresa y vigencia, y toda la paginación/Cobranza anterior.
+- Refinamiento sobre la base: resumen único de atención (prioridades + registros sin empresa), tabla de pendientes con columnas de registros/prioridad, actualización manual del panel y hora real de consulta, mejores jerarquías de tablas y accesos operativos. Se mantienen las identidades verde/azul; no se vuelve al lenguaje de tarjetas redondeadas/iconos decorativos.
 - El acceso real ya se completó mediante intervención de Roberto. Sesión administradora abierta en el navegador; filtro de prioridades comprobado (1 aviso prioritario frente a 5 totales de RERCHAR). No se modificaron documentos ni pagos reales.
 - Verificación visual: revisar la versión corregida en la sesión abierta después del despliegue, en ambos espacios. El espaciado de los gráficos vuelve a las reglas acotadas de la base anterior; las pruebas automatizadas no sustituyen esa comprobación.
 - El navegador sólo admite HTTP(S), no archivos locales. DevTools está bloqueado por la organización: no volver a intentar activarlo. Para revisar otras anchuras se puede usar el tamaño normal de la ventana, sin cambiar políticas.
-- Base publicada antes de esta corrección: `d11643f`; base funcional de Cobranza: `53ef494`. Verificar siempre el check **Vercel – rerchar-piloto** del nuevo commit.
+- Base publicada antes del refinamiento: `edad7c2` (recuperación del diseño anterior). `d11643f` es el rediseño rechazado y no debe usarse como patrón visual. Base funcional de Cobranza: `53ef494`. Verificar siempre el check **Vercel – rerchar-piloto** del nuevo commit.
 
 ## Proyecto y punto recuperado
 

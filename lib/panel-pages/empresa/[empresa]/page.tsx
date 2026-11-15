@@ -1,5 +1,6 @@
 import Link from "next/link";
 import DashboardAlerts from "@/components/DashboardAlerts";
+import DashboardRefresh from "@/components/DashboardRefresh";
 import Image from "next/image";
 import { notFound } from "next/navigation";
 import { ArrowRight, ArrowLeft, Plus, AlertTriangle } from "lucide-react";
@@ -109,7 +110,9 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
   const s=serviceStats[0],q=quoteStats[0];
   const openServices=value(s?.requested)+value(s?.scheduled)+value(s?.in_route)+value(s?.pending_review);
   const closedThisMonth=value(months.find(month=>month.period===today.slice(0,7))?.closed);
-  const todayLabel=new Intl.DateTimeFormat("es-CL",{timeZone:"America/Santiago",day:"numeric",month:"long",year:"numeric"}).format(new Date());
+  const consultedAt=new Date();
+  const timeLabel=new Intl.DateTimeFormat("es-CL",{timeZone:"America/Santiago",hour:"2-digit",minute:"2-digit",hour12:false}).format(consultedAt);
+  const todayLabel=new Intl.DateTimeFormat("es-CL",{timeZone:"America/Santiago",day:"numeric",month:"long",year:"numeric"}).format(consultedAt);
   const serviceBars:ServiceStatus[]=[
     {label:"Solicitadas",status:"solicitada",count:value(s?.requested)},
     {label:"Programadas",status:"programada",count:value(s?.scheduled)},
@@ -206,11 +209,13 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
         {selected==="rerchar"?<Image src="/rerchar-logo-transparente.png" alt="RERCHAR Economía Circular" width={892} height={311} loading="eager"/>:<span><strong>E y J</strong><small>SERVICIOS INTEGRALES</small></span>}
       </div>
       <div><div className="eyebrow">{company.name} · VISIÓN OPERATIVA</div><h1>{selected==="rerchar"?"Materiales y trazabilidad":"Servicios y contratos"}</h1><p className="page-intro">{selected==="rerchar"?"Compra, recepción, venta y salida de materiales":"Ejecución, estados de pago y cierre contractual"}</p></div></div>
-      {canManage(actor) && <Link href={`/cotizaciones/nueva?empresa=${selected}`} className="button button-primary"><Plus size={17}/> Nueva cotización</Link>}
+      <div className="company-dashboard-actions"><DashboardRefresh/>{canManage(actor) && <Link href={`/cotizaciones/nueva?empresa=${selected}`} className="button button-primary"><Plus size={17}/> Nueva cotización</Link>}</div>
     </div>
-    {value(unclassified[0]?.total)>0&&<p className="company-unclassified"><AlertTriangle size={17}/><span><strong>{value(unclassified[0]?.total)} servicios anteriores por clasificar.</strong> No se suman a ninguna empresa hasta confirmar sus documentos de origen.</span><Link href="/solicitudes?empresa=pendiente">Revisar <ArrowRight size={15}/></Link></p>}
-    {urgentAlerts>0&&<div className="company-priority-note" role="status"><AlertTriangle size={17}/><span><strong>{urgentAlerts} {urgentAlerts===1?"categoría prioritaria requiere":"categorías prioritarias requieren"} atención.</strong> Revise los vencimientos y servicios críticos en las alertas.</span><a href="#alertas">Revisar pendientes</a></div>}
-    <div className="company-section-caption"><span>RESUMEN OPERATIVO</span><p>{company.short} · datos registrados al {todayLabel}</p></div>
+    {(urgentAlerts>0||value(unclassified[0]?.total)>0)&&<section className="company-control-summary" aria-label="Pendientes de atención">
+      {urgentAlerts>0&&<div className="company-control-item company-control-item--priority" role="status"><AlertTriangle size={17} aria-hidden="true"/><div><span>Atención operativa</span><strong>{urgentAlerts} {urgentAlerts===1?"categoría prioritaria":"categorías prioritarias"}</strong></div><a href="#alertas">Revisar pendientes</a></div>}
+      {value(unclassified[0]?.total)>0&&<div className="company-control-item"><div><span>Registros anteriores · sin empresa confirmada</span><strong>{value(unclassified[0]?.total)} servicios por clasificar</strong></div><Link href="/solicitudes?empresa=pendiente">Clasificar servicios</Link></div>}
+    </section>}
+    <div className="company-section-caption"><span>RESUMEN OPERATIVO</span><p>{company.short} · consulta del {todayLabel}, {timeLabel}</p></div>
     <div className="company-metric-grid">
       {showQuotes&&<Link href={`/cotizaciones?empresa=${selected}&vista=gestion`} className="company-metric"><span>Cotizaciones en gestión</span><strong>{value(q?.draft)+value(q?.sent)}</strong><small>{value(q?.draft)} en borrador · {value(q?.sent)} enviadas</small></Link>}
       <Link href={`/solicitudes?empresa=${selected}&estado=abiertas`} className="company-metric"><span>Servicios abiertos</span><strong>{openServices}</strong><small>{value(s?.requested)+value(s?.scheduled)} por iniciar · {value(s?.in_route)} en ruta · {value(s?.pending_review)} en revisión</small></Link>
@@ -228,7 +233,7 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
       <StatusComposition items={serviceBars} company={selected}/>
     </div>
     <DashboardAlerts key={selected} alerts={activeAlerts}/>
-    <section className="company-workflow" aria-label="Procesos operativos"><div className="company-workflow-label"><span>RECORRIDOS DE {company.short.toUpperCase()}</span><strong>{selected==="rerchar"?"Compra y venta siguen recorridos distintos":"Ejecución y cierre contractual"}</strong></div><div className="company-workflow-groups">{processGroups.map(group=><div className="company-process-group" key={group.title}><div className="company-process-heading"><h2>{group.title}</h2><p>{group.detail}</p></div><ol>{group.links.map((item,index)=><li key={item.href}><Link href={item.href}><span className="workflow-index">{String(index+1).padStart(2,"0")}</span><span>{item.label}</span></Link></li>)}</ol></div>)}</div></section>
+    <section className="company-workflow" aria-label="Procesos operativos"><div className="company-workflow-label"><span>PROCESOS DE {company.short.toUpperCase()}</span><strong>Accesos de trabajo</strong></div><div className="company-workflow-groups">{processGroups.map(group=><div className="company-process-group" key={group.title}><div className="company-process-heading"><h2>{group.title}</h2><p>{group.detail}</p></div><ol>{group.links.map(item=><li key={item.href}><Link href={item.href}><span className="workflow-marker" aria-hidden="true"/><span>{item.label}</span></Link></li>)}</ol></div>)}</div></section>
     {showQuotes && <section className="section-card company-recent-section"><div className="section-heading"><div><div className="eyebrow">COMERCIAL · {company.short}</div><h2>Cotizaciones recientes</h2></div><Link href={`/cotizaciones?empresa=${selected}`} className="text-link">Ver todas <ArrowRight size={16}/></Link></div>{quotes.length ? <div className="table-wrap"><table className="data-table"><thead><tr><th>Folio</th><th>Cliente</th><th>Asunto</th><th>Estado</th><th>Fecha</th></tr></thead><tbody>{quotes.slice(0,5).map(item=><tr key={item.id}><td><Link className="table-main" href={`/cotizaciones/${item.id}`}>{quoteFolio(item)}</Link></td><td>{item.client_name}</td><td className="company-quote-title">{item.title}</td><td><span className={`company-quote-status company-quote-status--${item.status}`}>{quoteStatusLabels[item.status]??item.status}</span></td><td>{chileDate(item.created_at,false)}</td></tr>)}</tbody></table></div> : <div className="company-recent-empty"><strong>Sin cotizaciones registradas</strong><span>Las propuestas de {company.short} aparecerán aquí cuando se guarde la primera.</span>{canManage(actor)&&<Link href={`/cotizaciones/nueva?empresa=${selected}`}>Preparar cotización <ArrowRight size={15}/></Link>}</div>}</section>}
     <section className="section-card company-recent-section"><div className="section-heading"><div><div className="eyebrow">OPERACIÓN · {company.short}</div><h2>Solicitudes recientes</h2></div><Link href={`/solicitudes?empresa=${selected}`} className="text-link">Ver todas <ArrowRight size={16}/></Link></div>{services.length?<ServiceTable services={services.slice(0,8)}/>:<div className="company-recent-empty"><strong>Sin servicios registrados</strong><span>Las solicitudes de {company.short} se mostrarán aquí al comenzar la operación.</span><Link href={`/solicitudes?empresa=${selected}`}>Abrir solicitudes <ArrowRight size={15}/></Link></div>}</section>
   </div>;
