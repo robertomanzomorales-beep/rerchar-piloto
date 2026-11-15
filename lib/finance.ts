@@ -3,6 +3,7 @@ import type {Actor} from "./auth";
 import {db,transaction,type Db} from "./db";
 import type {Company} from "./companies";
 import {moduleReady} from "./schema-readiness";
+import {listEdpServiceInvoices} from "./edp-invoice-links";
 
 const uuid=z.uuid();
 const optionalId=z.union([uuid,z.literal("")]).default("");
@@ -87,7 +88,9 @@ export async function listFinance(actor:Actor,company="rerchar",clientOcOnly=fal
       JOIN clients cl ON cl.id=c.client_id WHERE c.operating_company=$1
       ORDER BY CASE n.status WHEN 'pendiente' THEN 0 ELSE 1 END,n.created_at DESC LIMIT 100`,[company]),
   ]);
-  return {services:serviceRows.slice(0,pageSize),hasMoreServices:serviceRows.length>pageSize,
+  const services=serviceRows.slice(0,pageSize);
+  const edpInvoices=await listEdpServiceInvoices(services.map(service=>service.id));
+  return {services,edpInvoices,hasMoreServices:serviceRows.length>pageSize,
     contracts,tariffs,clients,sites,notices};
 }
 
@@ -114,7 +117,7 @@ export async function getFinancialService(actor:Actor,id:string){
   if(!uuid.safeParse(id).success)reject("Folio inválido.");
   const [service]=await db.query<FinancialService>(`${serviceSelect} WHERE s.id=$1 AND s.deleted_at IS NULL`,[id]);
   if(!service)reject("Servicio no encontrado.");
-  const [tariffs,payments,costs,voidedInvoices]=await Promise.all([
+  const [tariffs,payments,costs,voidedInvoices,edpInvoices]=await Promise.all([
     db.query<Tariff>(`SELECT t.*,c.code AS contract_code,cl.name AS client_name,cs.name AS site_name FROM service_tariffs t
       JOIN client_contracts c ON c.id=t.contract_id JOIN clients cl ON cl.id=c.client_id LEFT JOIN client_sites cs ON cs.id=c.site_id
       WHERE t.active=true AND c.active=true AND c.client_id=$1 AND c.operating_company=$6 AND (c.site_id IS NULL OR c.site_id=$2)
@@ -132,8 +135,9 @@ export async function getFinancialService(actor:Actor,id:string){
       FROM service_costs x JOIN users u ON u.id=x.created_by WHERE x.service_id=$1 ORDER BY x.created_at DESC`,[id]),
     db.query<{invoice_number:string;created_at:Date}>(`SELECT f.invoice_number,f.created_at FROM service_invoices f
       JOIN service_valuations v ON v.id=f.valuation_id WHERE v.service_id=$1 AND f.status='anulada' ORDER BY f.created_at DESC`,[id]),
+    listEdpServiceInvoices([id]),
   ]);
-  return {service,tariffs,payments,costs,voidedInvoices};
+  return {service,tariffs,payments,costs,voidedInvoices,edpInvoices};
 }
 
 export async function createContract(actor:Actor,input:unknown){

@@ -11,6 +11,8 @@ test("E y J cotiza disposición, cliente responde y OC/respaldo siguen el mismo 
   const {db,transaction}=await import("../lib/db");
   const quotes=await import("../lib/quotes");
   const followup=await import("../lib/quote-followup");
+  const finance=await import("../lib/finance");
+  const edpLinks=await import("../lib/edp-invoice-links");
   for(const name of (await readdir(resolve(process.cwd(),"db"))).filter(file=>/^\d+.*\.sql$/.test(file)).sort()){
     const sql=await readFile(resolve(process.cwd(),`db/${name}`),"utf8");
     await transaction(async tx=>{for(const statement of sql.split(/;\s*(?:\n|$)/).map(value=>value.trim()).filter(Boolean))await tx.query(statement);});
@@ -76,11 +78,36 @@ test("E y J cotiza disposición, cliente responde y OC/respaldo siguen el mismo 
   assert.deepEqual(record.statements.map(item=>[item.service_id,item.id,item.invoice_id,item.invoice_number]),
     [[service,edp.id,externalInvoice.id,"EYJ-EDP-10"]],"el expediente sigue la factura externa del EDP sin atribuir su total a cada servicio");
   assert.equal((await followup.getQuoteFollowup(viewer,quoteId)).statements.length,1);
+  assert.deepEqual((await edpLinks.listEdpServiceInvoices([service])).map(i=>[i.service_id,i.statement_id,i.invoice_number]),
+    [[service,edp.id,"EYJ-EDP-10"]]);
+  assert.deepEqual((await edpLinks.listClientEdpInvoices(viewer,client.id)).map(i=>[i.id,i.invoice_number,i.statement_numbers]),
+    [[externalInvoice.id,"EYJ-EDP-10",["EDP-10"]]]);
+  assert.deepEqual(await edpLinks.listClientEdpInvoices(stranger,client.id),[],"un cliente no ve facturas de otro");
   await db.query("UPDATE payment_statements SET status='observado' WHERE id=$1",[edp.id]);
   assert.equal((await followup.getQuoteFollowup(viewer,quoteId)).statements.length,0,"el portal no expone EDP internos u observados");
+  assert.deepEqual(await edpLinks.listClientEdpInvoices(viewer,client.id),[],"el portal no expone folios de EDP observado");
   assert.equal((await followup.getQuoteFollowup(staff,quoteId)).statements.length,1);
   await db.query("UPDATE payment_statements SET status='aprobado' WHERE id=$1",[edp.id]);
   await pilot.scheduleRental(staff,service,{asset_id:""});
+  await db.query("UPDATE service_requests SET status='completada',closed_at=now() WHERE id=$1",[service]);
+  const financePage=await finance.listFinance(staff,"e_y_j");
+  assert.ok(financePage.edpInvoices.some(i=>i.service_id===service&&i.invoice_number==="EYJ-EDP-10"),
+    "Finanzas muestra la factura del EDP en el servicio cerrado");
+  assert.equal(financePage.services.find(i=>i.id===service)?.invoice_id,null,
+    "el folio consolidado no se atribuye como factura individual");
+  const [secondEdp]=await db.query<{id:string}>(`INSERT INTO payment_statements
+    (submission_key,client_id,number,period_on,statement_type,client_name,client_tax_id,client_address,client_contact,status,created_by)
+    VALUES ($1,$2,'EDP-11','2026-11-30','residuos','Cliente E y J','12.345.678-9','Calama','Contacto','aprobado',$3) RETURNING id`,
+    [randomUUID(),client.id,staff.id]);
+  await db.query(`INSERT INTO payment_statement_operations(statement_id,service_id,line_number,description,is_disposal,recorded_by)
+    VALUES ($1,$2,1,'Segunda línea del servicio',true,$3)`,[secondEdp.id,service,staff.id]);
+  const [secondInvoice]=await db.query<{id:string}>(`INSERT INTO extra_receivable_invoices
+    (issuer,client_id,invoice_number,issued_on,due_on,total_clp,created_by)
+    VALUES ('e_y_j',$1,'EYJ-EDP-11','2026-12-01','2026-12-30',200000,$2) RETURNING id`,[client.id,staff.id]);
+  await db.query("UPDATE payment_statements SET receivable_invoice_id=$2 WHERE id=$1",[secondEdp.id,secondInvoice.id]);
+  assert.deepEqual((await edpLinks.listEdpServiceInvoices([service])).map(i=>i.invoice_number).sort(),
+    ["EYJ-EDP-10","EYJ-EDP-11"],"Finanzas conserva ambos EDP sin duplicar el importe en cada servicio");
+  assert.equal((await finance.getFinancialService(staff,service)).edpInvoices.length,2);
   await assert.rejects(()=>followup.recordQuoteOrderException(staff,quoteId,"Acuerdo con cliente sin OC"),/Existe una OC adjunta/);
   const exceptionQuoteId=await quotes.createQuote(staff,{submission_key:randomUUID(),client_id:client.id,issuer:"e_y_j",title:"Arriendo puntual sin OC",
     issued_on:"2026-10-18",valid_until:"2026-10-28",line:{description:"Arriendo de equipo",principal:"arriendo",segment:"arriendo_equipo",
