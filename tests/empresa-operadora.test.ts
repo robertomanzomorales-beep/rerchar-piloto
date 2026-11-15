@@ -8,6 +8,7 @@ import {companyForPath} from "../lib/companies";
 
 test("las rutas propias no cambian de empresa por un parámetro ajeno",()=>{
   assert.equal(companyForPath("/control-guias","e_y_j"),"rerchar");
+  assert.equal(companyForPath("/certificados","e_y_j"),"rerchar");
   assert.equal(companyForPath("/estados-pago/calendario","rerchar"),"e_y_j");
   assert.equal(companyForPath("/cotizaciones","e_y_j"),"e_y_j");
   assert.equal(companyForPath("/",null),null);
