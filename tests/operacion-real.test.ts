@@ -95,4 +95,17 @@ test("cotización del cliente, PDF y guía de tres pesos respetan totales y perm
   assert.equal(lastPage.length,7,"las cotizaciones anteriores al límite histórico siguen accesibles");
   assert.equal(lastPage.some(item=>item.id===quoteId),true);
   assert.equal(lastPage.some(item=>item.id===legacyId),true);
+  assert.ok((await quotes.listQuotes(owner,"","rerchar","","",{view:"gestion"},51,250)).some(item=>item.id===quoteId),
+    "la vista de gestión conserva los folios antiguos en la paginación");
+  await db.query("UPDATE client_quotes SET valid_until=(now() AT TIME ZONE 'America/Santiago')::date - 1 WHERE id=$1",[quoteId]);
+  assert.deepEqual((await quotes.listQuotes(owner,"","rerchar","","",{view:"vencidas"})).map(item=>item.id),[quoteId]);
+  assert.deepEqual((await quotes.reportQuoteLines(owner,"rerchar","","","",{view:"vencidas"})).map(row=>row.description).sort(),
+    ["Material exento","Nuevo material"].sort(),"el CSV respeta la misma alerta de vigencia");
+  await db.query("UPDATE client_quotes SET status='aceptada' WHERE id=$1",[quoteId]);
+  assert.deepEqual((await quotes.listQuotes(owner,"","rerchar","","",{view:"sin_oc"})).map(item=>item.id),[quoteId]);
+  await db.query("UPDATE client_quotes SET client_order_exception='Aprobado sin OC por contrato vigente' WHERE id=$1",[quoteId]);
+  assert.deepEqual((await quotes.listQuotes(owner,"","rerchar","","",{view:"sin_servicio"})).map(item=>item.id),[quoteId]);
+  await db.query("UPDATE service_requests SET operating_company='rerchar',quote_id=$2 WHERE id=$1",[service.id,quoteId]);
+  assert.equal((await quotes.listQuotes(owner,"","rerchar","","",{view:"sin_servicio"})).length,0,
+    "la alerta se despeja al asociar la solicitud");
 });

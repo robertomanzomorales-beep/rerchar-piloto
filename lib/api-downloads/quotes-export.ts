@@ -18,7 +18,7 @@ export async function GET(request:Request){
   const params=new URL(request.url).searchParams;
   let rows;
   try{rows=await reportQuoteLines(actor,params.get("empresa")??"",params.get("principal")??"",params.get("segment")??"",params.get("cliente")??"",{
-    from:params.get("desde")??"",to:params.get("hasta")??"",creatorId:params.get("persona")??""});}
+    from:params.get("desde")??"",to:params.get("hasta")??"",creatorId:params.get("persona")??"",view:params.get("vista")??""});}
   catch(error){if(error instanceof QuoteError)return new Response(error.message,{status:400});throw error;}
   const header=["Folio","Empresa emisora","Cliente","Propuesta","Estado","Emisión","Principal","Segmentación","Residuo","Destino final","Detalle","Material ID","Observación del ítem","Tipo comercial","Revisión IVA","Cantidad","Unidad","Moneda","Unitario moneda original","Valor UF CLP","Fecha UF","Unitario CLP referencial","Neto línea CLP referencial","IVA línea CLP referencial","Total línea CLP referencial"];
   const lines=[header.map(csv).join(";")];

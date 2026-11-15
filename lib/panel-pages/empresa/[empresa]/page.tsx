@@ -122,9 +122,9 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
       {label:"Acreditaciones vencidas de conductores",count:credentialAlerts.filter(c=>c.days_left<0).length,href:"/personal#vencimientos",urgent:true},
       {label:"Acreditaciones próximas a vencer",count:credentialAlerts.filter(c=>c.days_left>=0).length,href:"/personal#vencimientos"},
     ]:[]),
-    ...(showQuotes?[{label:"Cotizaciones enviadas con vigencia vencida",count:value(q?.expired),href:`/cotizaciones?empresa=${selected}`,urgent:true}]:[]),
-    ...(canManage(actor)?[{label:"Cotizaciones aceptadas esperando OC o excepción",count:value(q?.awaiting_order),href:`/cotizaciones?empresa=${selected}`},
-      {label:"Cotizaciones con OC o excepción esperando solicitud",count:value(q?.awaiting_service),href:`/cotizaciones?empresa=${selected}`}]:[]),
+    ...(showQuotes?[{label:"Cotizaciones enviadas con vigencia vencida",count:value(q?.expired),href:`/cotizaciones?empresa=${selected}&vista=vencidas`,urgent:true}]:[]),
+    ...(canManage(actor)?[{label:"Cotizaciones aceptadas esperando OC o excepción",count:value(q?.awaiting_order),href:`/cotizaciones?empresa=${selected}&vista=sin_oc`},
+      {label:"Cotizaciones con OC o excepción esperando solicitud",count:value(q?.awaiting_service),href:`/cotizaciones?empresa=${selected}&vista=sin_servicio`}]:[]),
     {label:"Servicios críticos aún abiertos",count:value(s?.critical),href:`/solicitudes?empresa=${selected}`,urgent:true},
     ...(canManage(actor)?[{label:"Servicios con documentos por validar",count:value(s?.pending_review),href:`/solicitudes?empresa=${selected}&estado=pendiente_revision`}]:[]),
     ...(canManage(actor)?[{label:"Averías del checklist abiertas",count:value(checklistFaults[0]?.total),href:"/mantenimiento"}]:[]),
@@ -212,7 +212,7 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
     {urgentAlerts>0&&<div className="company-priority-note" role="status"><AlertTriangle size={17}/><span><strong>{urgentAlerts} {urgentAlerts===1?"categoría prioritaria requiere":"categorías prioritarias requieren"} atención.</strong> Revise los vencimientos y servicios críticos en las alertas.</span><a href="#alertas">Revisar pendientes</a></div>}
     <div className="company-section-caption"><span>RESUMEN OPERATIVO</span><p>{company.short} · datos registrados al {todayLabel}</p></div>
     <div className="company-metric-grid">
-      {showQuotes&&<Link href={`/cotizaciones?empresa=${selected}`} className="company-metric"><span>Cotizaciones en gestión</span><strong>{value(q?.draft)+value(q?.sent)}</strong><small>{value(q?.draft)} en borrador · {value(q?.sent)} enviadas</small></Link>}
+      {showQuotes&&<Link href={`/cotizaciones?empresa=${selected}&vista=gestion`} className="company-metric"><span>Cotizaciones en gestión</span><strong>{value(q?.draft)+value(q?.sent)}</strong><small>{value(q?.draft)} en borrador · {value(q?.sent)} enviadas</small></Link>}
       <Link href={`/solicitudes?empresa=${selected}&estado=abiertas`} className="company-metric"><span>Servicios abiertos</span><strong>{openServices}</strong><small>{value(s?.requested)+value(s?.scheduled)} por iniciar · {value(s?.in_route)} en ruta · {value(s?.pending_review)} en revisión</small></Link>
       {selected==="rerchar"&&canManage(actor)?<Link href="/control-guias" className="company-metric"><span>Ventas por cerrar</span><strong>{value(materials?.guides.pending)}</strong><small>{value(materials?.guides.total)} guías registradas</small></Link>:!canManage(actor)?<Link href={`/solicitudes?empresa=${selected}&estado=en_ruta`} className="company-metric"><span>En ruta</span><strong>{value(s?.in_route)}</strong><small>En ejecución</small></Link>:null}
       {selected==="e_y_j"&&canManage(actor)&&(payments?.ready?<Link href="/estados-pago" className="company-metric"><span>EDP por completar</span><strong>{value(payments.pending)}</strong><small>{value(payments.total)} estados registrados</small></Link>:<div className="company-metric"><span>Estados de pago</span><strong>—</strong><small>Sin datos de este módulo</small></div>)}

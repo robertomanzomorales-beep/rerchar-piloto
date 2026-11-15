@@ -173,12 +173,20 @@ export async function setQuoteUfRate(actor:Actor,quoteId:string,input:unknown){
   });
 }
 
-export type QuoteFilters={from?:string;to?:string;creatorId?:string};
+export type QuoteFilters={from?:string;to?:string;creatorId?:string;view?:string};
 function validateQuoteFilters(filters:QuoteFilters){
   if(filters.from&&!z.iso.date().safeParse(filters.from).success||filters.to&&!z.iso.date().safeParse(filters.to).success)reject("Revise el rango de fechas.");
   if(filters.from&&filters.to&&filters.to<filters.from)reject("La fecha final no puede ser anterior a la inicial.");
   if(filters.creatorId&&!uuid.safeParse(filters.creatorId).success)reject("Usuario inválido.");
+  if(filters.view&&!['gestion','vencidas','sin_oc','sin_servicio'].includes(filters.view))reject("Vista de cotizaciones inválida.");
 }
+const quoteViewSql=(parameter:number)=>`AND ($${parameter}::text='' OR
+      ($${parameter}='gestion' AND q.status IN ('borrador','enviada')) OR
+      ($${parameter}='vencidas' AND q.status='enviada' AND q.valid_until < (now() AT TIME ZONE 'America/Santiago')::date) OR
+      ($${parameter}='sin_oc' AND q.status='aceptada' AND q.client_order_reference IS NULL AND q.client_order_exception IS NULL) OR
+      ($${parameter}='sin_servicio' AND q.status='aceptada'
+        AND (q.client_order_reference IS NOT NULL OR q.client_order_exception IS NOT NULL)
+        AND NOT EXISTS (SELECT 1 FROM service_requests s WHERE s.quote_id=q.id AND s.deleted_at IS NULL)))`;
 export async function listQuotes(actor:Actor,clientId="",company="",principal="",segment="",filters:QuoteFilters={},limit=250,offset=0){
   if(actor.role==="conductor")reject("Sin acceso a cotizaciones.");
   if(clientId && !uuid.safeParse(clientId).success)reject("Cliente inválido.");
@@ -194,9 +202,10 @@ export async function listQuotes(actor:Actor,clientId="",company="",principal=""
     AND ($5::text='' OR EXISTS (SELECT 1 FROM client_quote_lines l WHERE l.quote_id=q.id AND l.principal=$5 AND ($6::text='' OR l.segment=$6)))
     AND ($7::text='' OR q.issued_on>=NULLIF($7,'')::date) AND ($8::text='' OR q.issued_on<=NULLIF($8,'')::date)
     AND ($9::text='' OR q.created_by=NULLIF($9,'')::uuid)
+    ${quoteViewSql(12)}
     ORDER BY q.created_at DESC,q.id DESC LIMIT $10 OFFSET $11`,
     [clientId,actor.role,actor.client_id,company,principal,segment,filters.from??"",filters.to??"",filters.creatorId??"",
-      Math.max(1,Math.min(250,Math.trunc(limit)||250)),Number.isSafeInteger(offset)?Math.max(0,Math.min(500_000,offset)):0]);
+      Math.max(1,Math.min(250,Math.trunc(limit)||250)),Number.isSafeInteger(offset)?Math.max(0,Math.min(500_000,offset)):0,filters.view??""]);
 }
 export type QuoteReportLine={folio:string;display_folio:string|null;issuer:keyof typeof issuers;client_name:string;title:string;
   status:string;issued_on:Date|string;principal:string|null;segment:string|null;description:string;quantity:string;
@@ -217,7 +226,8 @@ export async function reportQuoteLines(actor:Actor,company="",principal="",segme
     AND ($6::text='' OR q.client_id=NULLIF($6,'')::uuid)
     AND ($7::text='' OR q.issued_on>=NULLIF($7,'')::date) AND ($8::text='' OR q.issued_on<=NULLIF($8,'')::date)
     AND ($9::text='' OR q.created_by=NULLIF($9,'')::uuid)
-    ORDER BY q.created_at DESC,l.position LIMIT 1001`,[actor.role,actor.client_id,company,principal,segment,clientId,filters.from??"",filters.to??"",filters.creatorId??""]);
+    ${quoteViewSql(10)}
+    ORDER BY q.created_at DESC,l.position LIMIT 1001`,[actor.role,actor.client_id,company,principal,segment,clientId,filters.from??"",filters.to??"",filters.creatorId??"",filters.view??""]);
   if(rows.length>1000)reject("El reporte supera 1.000 conceptos. Acote los filtros antes de exportar.");
   return rows;
 }
