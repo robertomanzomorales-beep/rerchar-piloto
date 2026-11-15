@@ -13,6 +13,7 @@ import {GET as edpConsolidated} from "@/lib/api-downloads/edp-consolidated";
 import {GET as receivablesExport} from "@/lib/api-downloads/receivables-export";
 import {GET as quotesExport} from "@/lib/api-downloads/quotes-export";
 import {GET as materialsExport} from "@/lib/api-downloads/materials-export";
+import {GET as materialGuidesExport} from "@/lib/api-downloads/material-guides-export";
 import {GET as environmentReport} from "@/lib/api-downloads/environment-report";
 import {GET as auditReport} from "@/lib/api-downloads/audit-report";
 import {GET as servicesReport} from "@/lib/api-downloads/services-report";
@@ -37,6 +38,7 @@ const routes:{path:string[];handler:DownloadHandler}[]=[
   {path:["cobranzas","exportar"],handler:receivablesExport},
   {path:["cotizaciones","exportar"],handler:quotesExport},
   {path:["ingresos","exportar"],handler:materialsExport},
+  {path:["control-guias","exportar"],handler:materialGuidesExport},
   {path:["reportes","ambiental"],handler:environmentReport},
   {path:["reportes","auditoria"],handler:auditReport},
   {path:["reportes","servicios"],handler:servicesReport},

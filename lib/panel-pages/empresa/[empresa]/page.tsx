@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { notFound } from "next/navigation";
 import { ArrowRight, ArrowLeft, Plus, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { requireActor, canManage } from "@/lib/auth";
@@ -175,7 +176,11 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
   ];
   return <>
     <Link href="/" className="back-link"><ArrowLeft size={15}/> Empresas</Link>
-    <div className="page-title-row company-dashboard-heading"><div><div className="eyebrow">{company.name}</div><h1>{selected==="rerchar"?"RERCHAR":"E y J"}</h1><p className="page-intro">{selected==="rerchar"?"Materiales, valorización y trazabilidad":"Servicios industriales, contratos y estados de pago"} · panel operativo</p></div>
+    <div className="page-title-row company-dashboard-heading"><div className="company-dashboard-identity">
+      <div className={`company-dashboard-brand company-dashboard-brand--${selected}`}>
+        {selected==="rerchar"?<Image src="/rerchar-logo.png" alt="RERCHAR Economía Circular" width={892} height={311} priority/>:<span><strong>E y J</strong><small>SERVICIOS INTEGRALES</small></span>}
+      </div>
+      <div><div className="eyebrow">{company.name} · PANEL OPERATIVO</div><h1>{selected==="rerchar"?"Gestión de materiales":"Servicios industriales"}</h1><p className="page-intro">{selected==="rerchar"?"Valorización, movimientos y trazabilidad":"Contratos, servicios y estados de pago"}</p></div></div>
       {canManage(actor) && <Link href={`/cotizaciones/nueva?empresa=${selected}`} className="button button-primary"><Plus size={17}/> Nueva cotización</Link>}
     </div>
     {value(unclassified[0]?.total)>0&&<p className="company-unclassified"><AlertTriangle size={17}/><span><strong>{value(unclassified[0]?.total)} servicios anteriores por clasificar.</strong> No se suman a ninguna empresa hasta confirmar sus documentos de origen.</span><Link href="/solicitudes?empresa=pendiente">Revisar <ArrowRight size={15}/></Link></p>}

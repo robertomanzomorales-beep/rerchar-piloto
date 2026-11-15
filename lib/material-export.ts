@@ -6,7 +6,7 @@ export const entryHeaders=["FECHA","EMPRESA /FAENA","CONDUCTOR","RUT CONDUCTOR",
   "N° INFORME DE IMPUREZA","OBSERVACIÓN","GD CODELCO","GD TRASLADO","HOJA DE INGRESO",
   "GD E° VALORIZADA","N°FACTURA","ESTADO","CERTIFICACIÓN N°","NUMERO DE ACTA"];
 
-type Cell=string|number|Date|null;
+export type Cell=string|number|Date|null;
 const day=(value:Date|string)=>String(value instanceof Date?value.toISOString():value).slice(0,10);
 export function entryRow(r:MaterialReceipt):Cell[]{
   const amount=materialAmounts(r);
@@ -51,19 +51,21 @@ function zip(files:[string,string][]):Buffer{
   return Buffer.concat([...parts,...directory,end]);
 }
 
-export function buildEntryWorkbook(rows:MaterialReceipt[],month:string):Buffer{
+export function buildOperationalWorkbook(headers:string[],rows:Cell[][],month:string,title:string,startColumn=1):Buffer{
   const months=["ENERO","FEBRERO","MARZO","ABRIL","MAYO","JUNIO","JULIO","AGOSTO","SEPTIEMBRE","OCTUBRE","NOVIEMBRE","DICIEMBRE"];
   const sheetName=`${months[Number(month.slice(5))-1]} ${month.slice(0,4)}`;
-  const header=entryHeaders.map((name,i)=>cell(name,`${ref(i+2)}3`,1)).join("");
-  const body=rows.map((r,i)=>`<row r="${i+4}" ht="23">${entryRow(r).map((v,j)=>cell(v,`${ref(j+2)}${i+4}`)).join("")}</row>`).join("");
-  const widths=[15,31,23,17,17,17,18,30,14,14,22,21,45,18,18,18,22,18,17,19,18];
-  const cols=`<col min="1" max="1" width="3" customWidth="1"/>`+widths.map((w,i)=>`<col min="${i+2}" max="${i+2}" width="${w}" customWidth="1"/>`).join("");
+  const last=ref(startColumn+headers.length-1);
+  const header=headers.map((name,i)=>cell(name,`${ref(i+startColumn)}3`,1)).join("");
+  const body=rows.map((row,i)=>`<row r="${i+4}" ht="23">${row.map((v,j)=>cell(v,`${ref(j+startColumn)}${i+4}`)).join("")}</row>`).join("");
+  const widths=headers.map((name,i)=>Math.min(42,Math.max(i===0?15:13,name.length+3)));
+  const cols=(startColumn>1?`<col min="1" max="${startColumn-1}" width="3" customWidth="1"/>`:"")+
+    widths.map((w,i)=>`<col min="${i+startColumn}" max="${i+startColumn}" width="${w}" customWidth="1"/>`).join("");
   const worksheet=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-    <sheetViews><sheetView workbookViewId="0"><pane ySplit="3" topLeftCell="B4" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>
+    <sheetViews><sheetView workbookViewId="0"><pane ySplit="3" topLeftCell="${ref(startColumn)}4" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>
     <sheetFormatPr defaultRowHeight="20"/><cols>${cols}</cols><sheetData>
-    <row r="2" ht="34">${cell("ENTRADA DE MATERIAL RERCHAR","B2",4)}</row>
-    <row r="3" ht="43">${header}</row>${body}</sheetData><mergeCells count="1"><mergeCell ref="B2:V2"/></mergeCells>
-    <autoFilter ref="B3:V${Math.max(3,rows.length+3)}"/></worksheet>`;
+    <row r="2" ht="34">${cell(title,`${ref(startColumn)}2`,4)}</row>
+    <row r="3" ht="43">${header}</row>${body}</sheetData><mergeCells count="1"><mergeCell ref="${ref(startColumn)}2:${last}2"/></mergeCells>
+    <autoFilter ref="${ref(startColumn)}3:${last}${Math.max(3,rows.length+3)}"/></worksheet>`;
   const styles=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
     <numFmts count="2"><numFmt numFmtId="164" formatCode="dd-mm-yyyy"/><numFmt numFmtId="165" formatCode="#,##0.00"/></numFmts>
     <fonts count="2"><font><sz val="10"/><name val="Arial"/></font><font><b/><color rgb="FFFFFFFF"/><sz val="10"/><name val="Arial"/></font></fonts>
@@ -84,4 +86,8 @@ export function buildEntryWorkbook(rows:MaterialReceipt[],month:string):Buffer{
     ["xl/_rels/workbook.xml.rels",`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`],
     ["xl/styles.xml",styles],["xl/worksheets/sheet1.xml",worksheet],
   ]);
+}
+
+export function buildEntryWorkbook(rows:MaterialReceipt[],month:string):Buffer{
+  return buildOperationalWorkbook(entryHeaders,rows.map(entryRow),month,"ENTRADA DE MATERIAL RERCHAR",2);
 }

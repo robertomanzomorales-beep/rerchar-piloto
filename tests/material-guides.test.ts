@@ -118,6 +118,15 @@ test("Control de Guía registra una venta real con varios materiales y conserva 
   await assert.rejects(()=>guides.createMaterialGuide(actor,{...base,submission_key:randomUUID()}),guides.MaterialGuideError);
   await guides.saveMaterialGuideItem(actor,id,{line_number:"2",material_id:aluminum.id,stock_kg:"500",
     arrival_kg:"495",invoice_kg:"490"});
+  const {buildGuideWorkbook,guideExportRow}=await import("../lib/material-guide-export");
+  const exported=await db.query<{guide:import("../lib/material-guides").MaterialGuide;item:import("../lib/material-guides").MaterialGuideItem;counterparty_name:string}>(
+    `SELECT row_to_json(g) AS guide,row_to_json(i) AS item,c.name AS counterparty_name
+     FROM material_guides g JOIN material_guide_items i ON i.guide_id=g.id JOIN clients c ON c.id=g.counterparty_id
+     WHERE g.movement_on >= $1::date AND g.movement_on < $1::date + interval '1 month'
+     ORDER BY g.movement_on,g.guide_number,i.line_number`,["2026-09-01"]);
+  assert.equal(exported.length,2,"la planilla mensual contiene una fila por material");
+  assert.equal(guideExportRow(exported[0])[5],"Comprador de material");
+  assert.equal(buildGuideWorkbook(exported,"2026-09").subarray(0,2).toString(),"PK");
   const second=(await guides.getMaterialGuide(actor,id)).items[1];
   assert.equal(guides.materialGuideTotals(second).departure_kg,500,"una venta puede salir sólo desde stock");
   await assert.rejects(()=>guides.saveMaterialGuideItem(actor,id,{line_number:"3",material_id:aluminum.id,stock_kg:"800"}),stock.MaterialStockError);
