@@ -80,4 +80,17 @@ test("cotización del cliente, PDF y guía de tres pesos respetan totales y perm
   assert.equal(guide.return_weight_kg,"640.00");
   assert.deepEqual(guides.guideDifferences(guide),{departure_kg:26710,difference_kg:-480,invoice_difference_kg:10});
   await assert.rejects(()=>guides.listGuideControls(stranger,service.id),guides.GuideError);
+
+  await db.query(`WITH created AS (
+    INSERT INTO client_quotes(submission_key,client_id,issuer,client_name,title,issued_on,valid_until,created_by,created_at)
+    SELECT gen_random_uuid(),$1,'rerchar','Cliente A','Propuesta histórica '||n,'2026-09-25','2026-10-25',
+      $2,now()+interval '1 second' FROM generate_series(1,255) AS n RETURNING id
+  ) INSERT INTO client_quote_lines(quote_id,position,description,quantity,unit,unit_price_clp,taxable,principal,segment)
+    SELECT id,1,'Servicio de retiro',1,'servicio',5000,true,'retiro','retiro_chatarra' FROM created`,[clientA.id,owner.id]);
+  const firstPage=await quotes.listQuotes(owner,clientA.id,"rerchar","","",{},51,0);
+  const lastPage=await quotes.listQuotes(owner,clientA.id,"rerchar","","",{},51,250);
+  assert.equal(firstPage.length,51,"el listado puede detectar que sigue otra página");
+  assert.equal(lastPage.length,7,"las cotizaciones anteriores al límite histórico siguen accesibles");
+  assert.equal(lastPage.some(item=>item.id===quoteId),true);
+  assert.equal(lastPage.some(item=>item.id===legacyId),true);
 });
