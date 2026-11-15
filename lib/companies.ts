@@ -8,7 +8,7 @@ export type Company = keyof typeof companies;
 // Las rutas de una empresa conservan su identidad aunque llegue una consulta contradictoria.
 export function companyForPath(pathname:string,query:string|null):Company|null {
   const matches=(prefix:string)=>pathname===prefix||pathname.startsWith(`${prefix}/`);
-  if(["/empresa/rerchar","/ingresos","/control-guias","/materiales-stock","/seguimiento-guias"].some(matches))return "rerchar";
+  if(["/empresa/rerchar","/ingresos","/control-guias","/materiales-stock","/seguimiento-guias","/certificados"].some(matches))return "rerchar";
   if(["/empresa/e_y_j","/estados-pago"].some(matches))return "e_y_j";
   return query==="rerchar"||query==="e_y_j"?query:null;
 }
