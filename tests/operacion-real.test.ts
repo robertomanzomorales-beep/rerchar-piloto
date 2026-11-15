@@ -69,6 +69,8 @@ test("cotización del cliente, PDF y guía de tres pesos respetan totales y perm
   assert.equal((await quotes.getQuote(owner,legacyId)).lines[0].segment,null);
   assert.ok((await renderQuotePdf(old.quote,old.lines)).length>7000);
   assert.deepEqual((await quotes.listQuotes(owner,"","rerchar","compra","compra_metal")).map(q=>q.id),[quoteId]);
+  assert.deepEqual((await quotes.listQuotes(owner,clientA.id,"rerchar","","",{from:"2026-09-25",to:"2026-09-25"})).map(q=>q.id).sort(),[quoteId,legacyId].sort(),"el filtro usa la emisión y no el momento de creación");
+  assert.equal((await quotes.listQuotes(owner,clientA.id,"rerchar","","",{from:"2026-09-26"})).length,0);
   await assert.rejects(()=>db.query("UPDATE client_quote_lines SET principal='transporte',segment='compra_metal' WHERE id=$1",[legacyLine.id]),"la base de datos bloquea pares incompatibles");
 
   const [service]=await db.query<{id:string}>(`INSERT INTO service_requests(submission_key,client_id,site_id,service_type,waste_type,origin,destination,created_by)

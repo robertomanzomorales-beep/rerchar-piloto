@@ -10,6 +10,11 @@ export function chileDate(value: Date | string | null, withTime = true) {
     ...(withTime ? { hour: "2-digit", minute: "2-digit", hour12: false } : {}),
   }).format(new Date(value));
 }
+export function chileCalendarDate(value: Date | string | null) {
+  if (!value) return "Sin fecha";
+  const day = value instanceof Date ? value.toISOString().slice(0, 10) : String(value).slice(0, 10);
+  return chileDate(`${day}T12:00:00Z`, false);
+}
 export function Badge({ status }: { status: string }) {
   return <span className={`badge badge-${status}`}>{statusName[status] ?? status}</span>;
 }
