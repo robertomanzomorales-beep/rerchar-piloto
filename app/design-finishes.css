@@ -1,0 +1,66 @@
+/* Final interface details shared by RERCHAR and E y J. */
+@media screen {
+  .app-shell .page-title-row h1 {
+    font-size: clamp(24px, 2.2vw, 30px);
+    font-weight: 650;
+    letter-spacing: -.035em;
+    line-height: 1.18;
+  }
+  .app-shell .page-title-row .page-intro { max-width: 76ch; line-height: 1.55; }
+  .app-shell .section-card,
+  .app-shell .stat-card,
+  .app-shell .form-card { border-radius: 4px; box-shadow: none; }
+  .app-shell .button { border-radius: 4px; font-weight: 620; box-shadow: none; }
+  .app-shell .button-primary { background: var(--company-accent); border-color: var(--company-accent); }
+  .app-shell .button-primary:hover { background: var(--company-strong); border-color: var(--company-strong); }
+  .app-shell :is(.button,.text-link,.nav-link,.company-switch):focus-visible {
+    outline: 2px solid var(--company-accent); outline-offset: 2px;
+  }
+  .app-shell .data-table th {
+    padding-block: 11px; border-bottom: 1px solid var(--company-border);
+    background: #f6f8f8; color: #52666a;
+    font-size: 10px; font-weight: 680; letter-spacing: .045em; text-transform: uppercase;
+  }
+  .app-shell .data-table td { padding-block: 12px; border-bottom-color: #e9eeee; }
+  .app-shell .data-table tbody tr:last-child td { border-bottom: 0; }
+  .app-shell .badge { letter-spacing: .012em; }
+  .app-shell .sidebar .nav-link { border-radius: 3px; font-weight: 540; }
+  .app-shell .sidebar .nav-link.active { font-weight: 660; }
+  .app-shell .sidebar .nav-group-toggle { border-radius: 3px; font-weight: 640; }
+  .app-shell .company-selector { max-width: 1080px; gap: 16px; }
+  .app-shell .company-choice, .app-shell .company-choice:last-child {
+    grid-template-rows: 103px minmax(118px,auto) 43px;
+    border-radius: 4px; background: #fff; box-shadow: none;
+  }
+  .app-shell .company-choice--eyj { border-color: #d5e1e8; }
+  .app-shell .company-choice:hover, .app-shell .company-choice:focus-visible {
+    background: #fff; box-shadow: 0 8px 20px #203b3314;
+  }
+  .app-shell .company-choice--eyj:hover, .app-shell .company-choice--eyj:focus-visible { background: #fff; box-shadow: 0 8px 20px #20395014; }
+  .app-shell .company-choice-identity { padding: 17px 23px; border-top: 3px solid var(--choice-accent); }
+  .app-shell .company-choice-details { gap: 6px; padding: 16px 23px; border-top: 1px solid #e1e9e4; background: #fff; }
+  .app-shell .company-choice--eyj .company-choice-details { border-top-color: #dbe6ed; background: #fff; }
+  .app-shell .company-choice-details strong { font-size: 17px; font-weight: 640; }
+  .app-shell .company-choice-action { padding-inline: 23px; background: #edf5ef; }
+  .app-shell .company-choice--eyj .company-choice-action { background: #ecf3f8; }
+  .app-shell .company-choice:hover .company-choice-action { background: #e2efe5; }
+  .app-shell .company-choice--eyj:hover .company-choice-action { background: #e1eef7; }
+  .app-shell .company-dashboard-page .company-chart-card,
+  .app-shell .company-dashboard-page .company-alerts,
+  .app-shell .company-dashboard-page .company-process-group { box-shadow: none; }
+  .app-shell .company-dashboard-page .company-chart-empty { min-height: 185px; }
+  .app-shell .company-dashboard-page .company-metric:hover:last-child { border-right: 0; }
+  .app-shell .company-dashboard-page .company-metric-grid:has(> :nth-child(3):last-child) { grid-template-columns: repeat(3,minmax(0,1fr)); }
+}
+@media screen and (max-width: 860px) {
+  .app-shell .company-dashboard-page .company-metric-grid:has(> :nth-child(3):last-child) { grid-template-columns: repeat(2,minmax(0,1fr)); }
+}
+@media screen and (max-width: 650px) {
+  .app-shell .company-choice, .app-shell .company-choice:last-child { grid-template-rows: auto auto 43px; }
+  .app-shell .company-choice-identity, .app-shell .company-choice-details { padding-inline: 19px; }
+  .app-shell .company-choice-action { padding-inline: 19px; }
+  .app-shell .company-dashboard-page .company-dashboard-heading h1 { font-size: 20px; }
+}
+@media screen and (prefers-reduced-motion: reduce) {
+  .app-shell .company-choice { transition: none; }
+}
