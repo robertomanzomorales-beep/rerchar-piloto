@@ -62,6 +62,8 @@ test("EDP copia respaldos de servicios E y J sin duplicar cliente, categoría ni
   assert.equal(await finance.pendingIndividualInvoices(actor,"e_y_j"),1,
     "el panel no pide factura individual para un servicio incluido en EDP");
   assert.deepEqual((await finance.listFinance(actor,"e_y_j",false,true)).services.map(s=>s.id),[individual]);
+  assert.equal((await finance.getFinancialService(actor,source)).service.payment_statement_id,statement);
+  assert.equal((await finance.getFinancialService(actor,individual)).service.payment_statement_id,null);
   await assert.rejects(()=>finance.registerInvoice(actor,source,{invoice_number:"EYJ-EDP",issued_on:"2026-06-23",
     due_on:"2026-07-23",total_clp:"119000"}),/respalda un estado de pago/);
   await finance.registerInvoice(actor,individual,{invoice_number:"EYJ-INDIVIDUAL",issued_on:"2026-06-23",

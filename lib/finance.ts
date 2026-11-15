@@ -33,7 +33,8 @@ export type FinancialService={id:string;folio:string;client_id:string;site_id:st
   operating_company:Company|null;
   gross_kg:string|null;tare_kg:string|null;status:string;closed_at:Date|null;valuation_id:string|null;quantity:string|null;unit_price_clp:string|null;
   total_clp:string|null;tariff_id:string|null;tariff_unit:string|null;client_order_reference:string|null;
-  requires_client_oc:boolean;client_oc_reference:string|null;in_payment_statement:boolean;invoice_id:string|null;invoice_number:string|null;
+  requires_client_oc:boolean;client_oc_reference:string|null;in_payment_statement:boolean;payment_statement_id:string|null;
+  invoice_id:string|null;invoice_number:string|null;
   invoice_status:string|null;invoice_total:string|null;invoice_total_verified:boolean|null;paid_clp:string;manual_cost_clp:string;fuel_cost_clp:string};
 export type InvoicePayment={id:string;amount_clp:string;paid_on:Date|string;method:string;reference:string;created_at:Date;actor_name:string};
 export type ServiceCost={id:string;category:string;amount_clp:string;description:string;created_at:Date;actor_name:string};
@@ -43,6 +44,7 @@ const serviceSelect=`SELECT s.id,s.folio,s.client_id,s.site_id,s.operating_compa
  (COALESCE(cp.requires_oc,false) AND q.client_order_exception IS NULL) AS requires_client_oc,
  COALESCE(NULLIF(btrim(v.client_order_reference),''),NULLIF(btrim(cd.order_reference),''),NULLIF(btrim(q.client_order_reference),'')) AS client_oc_reference,
  EXISTS (SELECT 1 FROM payment_statement_operations po WHERE po.service_id=s.id) AS in_payment_statement,
+ (SELECT po.statement_id FROM payment_statement_operations po WHERE po.service_id=s.id LIMIT 1) AS payment_statement_id,
  f.id AS invoice_id,f.invoice_number,f.status AS invoice_status,f.total_clp AS invoice_total,f.total_verified AS invoice_total_verified,
  COALESCE((SELECT sum(p.amount_clp) FROM invoice_payments p WHERE p.invoice_id=f.id),0)::text AS paid_clp,
  COALESCE((SELECT sum(x.amount_clp) FROM service_costs x WHERE x.service_id=s.id),0)::text AS manual_cost_clp,
