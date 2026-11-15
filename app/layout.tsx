@@ -5,7 +5,7 @@ import "./enterprise-forms.css";
 import "./brand-presence.css";
 
 export const metadata: Metadata = {
-  title: { default: "Software de operación industrial · RERCHAR y E y J", template: "%s · RERCHAR y E y J" },
+  title: { default: "RERCHAR y E y J · Operaciones", template: "%s · RERCHAR y E y J" },
   description: "Software de operación industrial para RERCHAR y E y J.",
   robots: { index: false, follow: false },
 };

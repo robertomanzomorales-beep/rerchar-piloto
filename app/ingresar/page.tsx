@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import Image from "next/image";
 import { ArrowRight } from "lucide-react";
 import { getActor } from "@/lib/auth";
 import { loginAction } from "@/app/actions";
@@ -9,9 +10,9 @@ export default async function Login({ searchParams }: { searchParams: Promise<{ 
   if (await getActor()) redirect("/");
   const { error } = await searchParams;
   return <main className="login-page">
-    <section className="login-intro" aria-label="Plataforma operativa"><div className="login-intro-label">PLATAFORMA OPERATIVA</div><h2>Control de la operación industrial.</h2><p>Procesos, documentos y seguimiento en un solo lugar para cada empresa.</p><div className="login-company-list"><span className="login-company-rerchar"><strong>RERCHAR</strong><small>Gestión de materiales</small></span><span className="login-company-eyj"><strong>E y J</strong><small>Servicios industriales</small></span></div></section>
+    <section className="login-intro" aria-label="Empresas de la plataforma"><div className="login-intro-label">PLATAFORMA OPERATIVA</div><h2>La operación de cada empresa, en orden.</h2><p>Acceda a sus procesos, documentos y seguimiento desde un espacio de trabajo propio.</p><div className="login-company-list"><div className="login-company-rerchar"><Image src="/rerchar-logo.png" alt="RERCHAR" width={892} height={311} priority/><span>Materiales y economía circular</span></div><div className="login-company-eyj"><strong>E y J</strong><span>Servicios industriales</span></div></div></section>
     <div className="login-card">
-      <div className="login-form-heading"><div className="login-form-mark"><span>RERCHAR</span><i/> <span>E y J</span></div><h1>Iniciar sesión</h1><p>Ingrese con su cuenta de la plataforma operativa.</p></div>
+      <div className="login-form-heading"><div className="login-form-mark"><span>RERCHAR</span><i/> <span>E y J</span></div><h1>Iniciar sesión</h1><p>Ingrese con su cuenta de operaciones.</p></div>
       {error && <div className="notice notice-error" role="alert">Correo o contraseña incorrectos. Revise sus datos e intente nuevamente.</div>}
       <form action={loginAction} className="form-stack">
         <label>Correo electrónico<input name="email" type="email" autoComplete="username" required placeholder="nombre@empresa.cl" /></label>

@@ -97,7 +97,10 @@
   }
   .app-shell .eyj-brand strong { color: var(--sidebar-ink); font-size: 28px; line-height: 1; }
   .app-shell .eyj-brand small { color: #56758e; font-size: 8px; letter-spacing: .11em; }
-  .app-shell .platform-brand { color: var(--sidebar-ink); font-size: 23px; }
+  .app-shell .platform-brand { display: flex; align-items: center; gap: 9px; color: #294866; }
+  .app-shell .platform-brand img { width: 114px; height: auto; object-fit: contain; }
+  .app-shell .platform-brand i { width: 1px; height: 27px; background: #c5d6d6; }
+  .app-shell .platform-brand strong { font-size: 19px; font-weight: 660; letter-spacing: -.055em; white-space: nowrap; }
   .app-shell .sidebar-section-label { color: var(--sidebar-muted); letter-spacing: .105em; }
   .app-shell .sidebar-search-trigger { background: #ffffffa8; border-color: var(--sidebar-border); color: var(--sidebar-muted); }
   .app-shell .sidebar-search-trigger:hover { background: #fff; border-color: var(--company-accent); color: var(--sidebar-ink); }
@@ -164,11 +167,11 @@
   .app-shell .chart-observation-tip rect { fill: var(--brand-deep); }
   .app-shell .company-chart-empty {
     display: flex; flex-direction: column; justify-content: center; align-items: flex-start;
-    min-height: 222px; gap: 8px; padding: 24px; border: 1px solid var(--company-border);
-    background: var(--company-soft);
+    min-height: 222px; gap: 8px; padding: 24px 4px; border-top: 1px solid var(--company-border);
+    border-bottom: 1px solid var(--company-border); background: transparent;
   }
   .app-shell .company-chart-empty strong { color: var(--company-strong); font-size: 14px; font-weight: 650; }
-  .app-shell .company-chart-empty span { max-width: 300px; color: #576c71; font-size: 11px; line-height: 1.5; }
+  .app-shell .company-chart-empty span { max-width: 330px; color: #576c71; font-size: 11px; line-height: 1.5; }
   .app-shell .company-chart-empty a { margin-top: 7px; color: var(--company-accent); font-size: 11px; font-weight: 680; text-decoration: underline; text-underline-offset: 3px; }
 }
 @media screen and (min-width: 861px) {
@@ -176,6 +179,11 @@
   .app-shell .brand-sidebar .brand-art { max-width: 184px; }
 }
 @media screen and (max-width: 860px) {
+  .app-shell .mobile-brand-combined { display: inline-flex; align-items: center; gap: 6px; color: #294866; white-space: nowrap; }
+  .app-shell .mobile-brand-combined img { width: 75px; height: auto; }
+  .app-shell .mobile-brand-combined i { width: 1px; height: 20px; background: #c5d6d6; }
+  .app-shell .mobile-brand-combined strong { font-size: 16px; font-weight: 660; letter-spacing: -.055em; }
+  .app-shell[data-company="selector"] .mobile-brand-copy { display: none; }
   .app-shell .mobile-brand-logo { width: 87px; height: 32px; object-fit: contain; object-position: left center; }
   .app-shell .mobile-brand-eyj { color: var(--brand-deep); font-size: 19px; font-weight: 680; letter-spacing: -.06em; white-space: nowrap; }
   .app-shell .mobile-brand-copy strong { color: var(--brand-deep); }
