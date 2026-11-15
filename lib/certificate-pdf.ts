@@ -44,7 +44,7 @@ export async function renderCertificatePdf(certificate:PrintableCertificate,veri
   }
   page.drawRectangle({x:0,y:0,width:595.28,height:841.89,color:white});
   page.drawRectangle({x:0,y:824,width:595.28,height:18,color:green});
-  const logo=await doc.embedPng(await readFile(resolve(process.cwd(),"public/rerchar-logo.png")));
+  const logo=await doc.embedPng(await readFile(resolve(process.cwd(),"public/rerchar-logo-transparente.png")));
   page.drawImage(logo,{x:45,y:736,width:178,height:62});
   write("INDUSTRIAL WASTE MANAGEMENT SYSTEM",45,722,8,bold,muted,410);
   write(finalDisposal?"CERTIFICADO DE":"CERTIFICADO OPERACIONAL",45,680,22,bold,ink,500);

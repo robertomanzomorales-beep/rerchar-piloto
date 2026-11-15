@@ -166,25 +166,42 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
   const activeAlerts=alerts.filter(a=>a.count>0).sort((a,b)=>Number(Boolean(b.urgent))-Number(Boolean(a.urgent)));
   const urgentAlerts=activeAlerts.filter(a=>a.urgent).length;
   const alertItem=(alert:DashboardAlert)=><Link href={alert.href} key={alert.label} className={`company-alert ${alert.urgent?"company-alert--urgent":""}`}><strong>{alert.count}</strong><span>{alert.label}</span>{alert.urgent&&<small>Prioritaria</small>}</Link>;
-  const processLinks=[
-    ...(showQuotes?[{label:"Cotizaciones",href:`/cotizaciones?empresa=${selected}`}]:[]),
-    {label:selected==="rerchar"?"Solicitudes y planificación":"Solicitudes y despacho",href:`/solicitudes?empresa=${selected}`},
-    ...(selected==="rerchar"&&canManage(actor)?[{label:"Ingreso de material",href:"/ingresos"}]:[]),
-    ...(selected==="rerchar"&&canManage(actor)?[{label:"Guías valorizadas de recepción",href:"/seguimiento-guias"},{label:"Control de Guía y salida",href:"/control-guias"}]:[]),
-    ...(selected==="e_y_j"&&canManage(actor)?[{label:"Calendario de cortes y envíos",href:"/estados-pago/calendario"},{label:"Estados de pago de servicios y arriendos",href:"/estados-pago"}]:[]),
-    ...(actor.role==="admin"?[{label:"Facturas emitidas y cobros",href:`/finanzas?empresa=${selected}`}]:[]),
+  const processGroups=selected==="rerchar"?[
+    {title:"Compra y recepción",detail:"Del acuerdo comercial al ingreso físico y la guía valorizada",links:[
+      ...(showQuotes?[{label:"Cotizar compra",href:`/cotizaciones/nueva?empresa=rerchar&tipo=compra`}]:[]),
+      {label:"Solicitudes de compra",href:"/solicitudes?empresa=rerchar&tipo=compra"},
+      ...(canManage(actor)?[{label:"Ingreso de material",href:"/ingresos"},{label:"Guía valorizada",href:"/seguimiento-guias"},{label:"Existencias",href:"/materiales-stock"}]:[]),
+    ]},
+    {title:"Venta y salida",detail:"Solicitud de venta, despacho y control de guía",links:[
+      ...(showQuotes?[{label:"Cotizar venta o servicio",href:"/cotizaciones/nueva?empresa=rerchar"}]:[]),
+      {label:"Solicitudes de venta",href:"/solicitudes?empresa=rerchar&tipo=venta"},
+      ...(canManage(actor)?[{label:"Control de Guía",href:"/control-guias"}]:[]),
+      ...(actor.role==="admin"?[{label:"Facturación y cobro",href:"/finanzas?empresa=rerchar"}]:[]),
+    ]},
+  ]:[
+    {title:"Servicios y arriendos",detail:"Cotización, programación, ejecución y cierre del servicio",links:[
+      ...(showQuotes?[{label:"Cotizar servicio",href:"/cotizaciones/nueva?empresa=e_y_j"}]:[]),
+      {label:"Solicitudes de traslado",href:"/solicitudes?empresa=e_y_j&tipo=traslado"},
+      {label:"Solicitudes de arriendo",href:"/solicitudes?empresa=e_y_j&tipo=arriendo"},
+      {label:"Agenda operativa",href:"/agenda?empresa=e_y_j"},
+    ]},
+    ...(canManage(actor)?[{title:"Cierre contractual",detail:"Cortes por cliente, estado de pago y facturación",links:[
+      {label:"Calendario de cortes",href:"/estados-pago/calendario"},
+      {label:"Estados de pago",href:"/estados-pago"},
+      ...(actor.role==="admin"?[{label:"Facturación y cobro",href:"/finanzas?empresa=e_y_j"}]:[]),
+    ]}]:[]),
   ];
   return <>
     <Link href="/" className="back-link"><ArrowLeft size={15}/> Empresas</Link>
     <div className="page-title-row company-dashboard-heading"><div className="company-dashboard-identity">
       <div className={`company-dashboard-brand company-dashboard-brand--${selected}`}>
-        {selected==="rerchar"?<Image src="/rerchar-logo.png" alt="RERCHAR Economía Circular" width={892} height={311} priority/>:<span><strong>E y J</strong><small>SERVICIOS INTEGRALES</small></span>}
+        {selected==="rerchar"?<Image src="/rerchar-logo-transparente.png" alt="RERCHAR Economía Circular" width={892} height={311} priority/>:<span><strong>E y J</strong><small>SERVICIOS INTEGRALES</small></span>}
       </div>
       <div><div className="eyebrow">{company.name} · PANEL OPERATIVO</div><h1>{selected==="rerchar"?"Gestión de materiales":"Servicios industriales"}</h1><p className="page-intro">{selected==="rerchar"?"Valorización, movimientos y trazabilidad":"Contratos, servicios y estados de pago"}</p></div></div>
       {canManage(actor) && <Link href={`/cotizaciones/nueva?empresa=${selected}`} className="button button-primary"><Plus size={17}/> Nueva cotización</Link>}
     </div>
     {value(unclassified[0]?.total)>0&&<p className="company-unclassified"><AlertTriangle size={17}/><span><strong>{value(unclassified[0]?.total)} servicios anteriores por clasificar.</strong> No se suman a ninguna empresa hasta confirmar sus documentos de origen.</span><Link href="/solicitudes?empresa=pendiente">Revisar <ArrowRight size={15}/></Link></p>}
-    <section className="company-workflow" aria-label="Recorrido operativo"><div className="company-workflow-label"><span>RECORRIDO OPERATIVO</span><strong>{selected==="rerchar"?"Materiales y trazabilidad":"Servicios y contratos"}</strong></div><ol>{processLinks.map((item,index)=><li key={item.href}><Link href={item.href}><span className="workflow-index">{String(index+1).padStart(2,"0")}</span><span>{item.label}</span></Link></li>)}</ol></section>
+    <section className="company-workflow" aria-label="Procesos operativos"><div className="company-workflow-label"><span>PROCESOS DE {company.short.toUpperCase()}</span><strong>{selected==="rerchar"?"Compra y venta siguen recorridos distintos":"Ejecución y cierre contractual"}</strong></div><div className="company-workflow-groups">{processGroups.map(group=><div className="company-process-group" key={group.title}><div className="company-process-heading"><h2>{group.title}</h2><p>{group.detail}</p></div><ol>{group.links.map((item,index)=><li key={item.href}><Link href={item.href}><span className="workflow-index">{String(index+1).padStart(2,"0")}</span><span>{item.label}</span><ArrowRight size={14} aria-hidden="true"/></Link></li>)}</ol></div>)}</div></section>
     <div className="company-metric-grid">
       {showQuotes&&<Link href={`/cotizaciones?empresa=${selected}`} className="company-metric"><span>Cotizaciones</span><strong>{value(q?.total)}</strong><small>{value(q?.accepted)} aceptadas</small></Link>}
       <Link href={`/solicitudes?empresa=${selected}`} className="company-metric"><span>Servicios registrados</span><strong>{value(s?.total)}</strong><small>{value(s?.requested)} por planificar</small></Link>
