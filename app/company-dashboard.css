@@ -84,6 +84,15 @@
   .app-shell .company-dashboard-page .activity-observation:hover :is(.activity-observation-guide,.activity-observation-tip) { opacity: 1; }
   .app-shell .company-dashboard-page .activity-observation:hover .activity-point { stroke-width: 3; }
   .app-shell .company-dashboard-page .company-chart-figure figcaption { margin: -1px 0 0 7%; color: #829297; font-size: 10px; }
+  .app-shell .company-dashboard-page .chart-mobile-hint { display: none; }
+  .app-shell .company-dashboard-page .company-chart-data { margin-top: 7px; border-top: 1px solid var(--dashboard-rule); padding-top: 9px; }
+  .app-shell .company-dashboard-page .company-chart-data summary { width: max-content; color: var(--company-strong); cursor: pointer; font-size: 11px; font-weight: 650; }
+  .app-shell .company-dashboard-page .company-chart-data summary:focus-visible { outline: 2px solid var(--company-accent); outline-offset: 3px; }
+  .app-shell .company-dashboard-page .company-chart-data-table { max-height: 240px; margin-top: 10px; overflow: auto; }
+  .app-shell .company-dashboard-page .company-chart-data table { width: 100%; border-collapse: collapse; color: var(--dashboard-ink); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .app-shell .company-dashboard-page .company-chart-data :is(th,td) { padding: 7px 5px; border-bottom: 1px solid var(--dashboard-rule); text-align: right; }
+  .app-shell .company-dashboard-page .company-chart-data :is(th,td):first-child { text-align: left; }
+  .app-shell .company-dashboard-page .company-chart-data thead th { color: var(--dashboard-muted); font-weight: 600; }
   .app-shell .company-dashboard-page .company-composition { display: flex; width: 100%; height: 9px; margin: 29px 0 9px; overflow: hidden; border-radius: 2px; background: #e9efef; }
   .app-shell .company-dashboard-page .company-composition-segment { display: block; height: 100%; border-right: 2px solid #fff; }
   .app-shell .company-dashboard-page .company-composition-segment:last-child { border-right: 0; }
@@ -178,6 +187,7 @@
   .app-shell .company-dashboard-page .company-chart-card { padding: 17px 15px 15px; }
   .app-shell .company-dashboard-page .company-chart-figure { overflow-x: auto; scrollbar-width: thin; }
   .app-shell .company-dashboard-page .company-activity-svg { min-width: 520px; }
+  .app-shell .company-dashboard-page .chart-mobile-hint { display: inline; }
   .app-shell .company-dashboard-page .company-alert-list { grid-template-columns: 1fr; }
   .app-shell .company-dashboard-page .company-workflow-groups { grid-template-columns: 1fr; }
   .app-shell .company-dashboard-page .company-recent-section { padding: 17px 15px; }

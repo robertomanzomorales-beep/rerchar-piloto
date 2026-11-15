@@ -23,7 +23,7 @@ export default function Shell({ actor, children }: { actor: Actor; children: Rea
   const mobileToggle=useRef<HTMLButtonElement>(null);
   const mobileClose=useRef<HTMLButtonElement>(null);
   const mobileDrawer=useRef<HTMLElement>(null);
-  const [expanded,setExpanded]=useState<Record<string,boolean>>({"Comercial":true});
+  const [expanded,setExpanded]=useState<{path:string;groups:Record<string,boolean>}>({path:"",groups:{"Comercial":true}});
   useEffect(()=>{const onKey=(event:KeyboardEvent)=>{if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==="k"){
     event.preventDefault();setSearchOpen(true);
   }};window.addEventListener("keydown",onKey);return()=>window.removeEventListener("keydown",onKey);},[]);
@@ -102,10 +102,16 @@ export default function Shell({ actor, children }: { actor: Actor; children: Rea
     ...(activeCompany?links.filter(link=>link.visible).map(link=>({href:companyHref(link.href),text:link.text,group:link.group})):[])];
   const activeHref=links.filter(link=>link.visible&&(pathname===link.href||pathname.startsWith(`${link.href}/`)))
     .sort((a,b)=>b.href.length-a.href.length)[0]?.href;
+  const navKey=`${pathname}:${activeCompany??"selector"}`;
   const nav = (mobile=false) => <nav className="nav-items" aria-label={mobile?"Navegación móvil":"Navegación principal"}><Link href={activeCompany?`/empresa/${activeCompany}`:"/"} onClick={()=>mobile&&setMobileOpen(false)} className={`nav-link ${pathname==="/"||pathname.startsWith("/empresa/")?"active":""}`}><LayoutDashboard size={18}/> Panel de {selectedName??"empresas"} <NavPendingHint/></Link>{["Comercial","Operación","Cierre y control","Abastecimiento","Recursos compartidos","Configuración"].map(group=>{
     const groupLinks=activeCompany?links.filter(link=>link.group===group&&link.visible):[];
-    const isOpen=expanded[group]??groupLinks.some(link=>pathname===link.href||pathname.startsWith(`${link.href}/`));
-    return groupLinks.length?<div className={`nav-group ${isOpen?"expanded":""}`} key={group}><button type="button" className="nav-group-toggle" aria-expanded={isOpen} onClick={()=>setExpanded(old=>({...old,[group]:!isOpen}))}><span>{group}</span><ChevronDown size={16}/></button><div className="nav-group-panel" inert={!isOpen}><div className="nav-group-inner">{groupLinks.map(link=><Link key={link.href} href={companyHref(link.href)} onClick={()=>mobile&&setMobileOpen(false)} className={`nav-link ${activeHref===link.href?"active":""}`}><link.icon size={18} strokeWidth={1.9}/>{link.text}<NavPendingHint/></Link>)}</div></div></div>:null;
+    const active=groupLinks.some(link=>pathname===link.href||pathname.startsWith(`${link.href}/`));
+    const groupState=expanded.path===navKey?expanded.groups:{"Comercial":true};
+    const isOpen=groupState[group]??active;
+    return groupLinks.length?<div className={`nav-group ${isOpen?"expanded":""}`} key={group}><button type="button" className="nav-group-toggle" aria-expanded={isOpen} onClick={()=>setExpanded(old=>{
+      const groups=old.path===navKey?old.groups:{"Comercial":true};
+      return {path:navKey,groups:{...groups,[group]:!(groups[group]??active)}};
+    })}><span>{group}</span><ChevronDown size={16}/></button><div className="nav-group-panel" inert={!isOpen}><div className="nav-group-inner">{groupLinks.map(link=><Link key={link.href} href={companyHref(link.href)} onClick={()=>mobile&&setMobileOpen(false)} className={`nav-link ${activeHref===link.href?"active":""}`}><link.icon size={18} strokeWidth={1.9}/>{link.text}<NavPendingHint/></Link>)}</div></div></div>:null;
   })}</nav>;
   return <div className="app-shell" data-company={activeCompany??"selector"}>
     <aside className="sidebar">
