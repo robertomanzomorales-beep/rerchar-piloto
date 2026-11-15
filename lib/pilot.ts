@@ -10,6 +10,7 @@ import { findMissingExternalRequirements, findMissingRequirements } from "./pers
 import type { Company } from "./companies";
 import {catalogName} from "./material-stock";
 import {requestTypesFromQuote} from "./request-kind";
+import {currentOrderDocumentSql} from "./quote-order";
 
 const uuid = z.uuid();
 const required = (max = 180) => z.string().trim().min(2).max(max);
@@ -386,8 +387,10 @@ async function requireQuoteOrderForScheduling(tx:Db,service:{quote_id:string|nul
   if(quote?.status==="aceptada"&&quote.client_order_exception)return;
   if(quote?.status!=="aceptada"||!quote.client_order_reference||!quote.client_order_on)
     reject("Antes de programar el servicio puntual, registre la OC o una excepción justificada en la cotización aceptada.");
-  const [document]=await tx.query("SELECT id FROM client_quote_documents WHERE quote_id=$1 AND kind='orden_compra' LIMIT 1",[service.quote_id]);
-  if(!document)reject("Adjunte el respaldo de la OC en la cotización antes de programar este servicio.");
+  const [document]=await tx.query(`SELECT d.id FROM client_quote_documents d
+    JOIN client_quotes q ON q.id=d.quote_id
+    WHERE q.id=$1 AND d.kind='orden_compra' AND ${currentOrderDocumentSql} LIMIT 1`,[service.quote_id]);
+  if(!document)reject("Adjunte el respaldo de la OC vigente en la cotización antes de programar este servicio.");
 }
 
 // Los arriendos se programan con sus fechas pactadas. No son una ruta de camión

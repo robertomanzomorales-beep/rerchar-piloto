@@ -11,6 +11,7 @@ test("compra de Carol conserva materiales, observaciones e IVA confirmado hasta 
   const {db,transaction}=await import("../lib/db");
   const quotes=await import("../lib/quotes");
   const pilot=await import("../lib/pilot");
+  const followup=await import("../lib/quote-followup");
   const materials=await import("../lib/materials");
   const {moduleReady}=await import("../lib/schema-readiness");
   const {renderQuotePdf}=await import("../lib/quote-pdf");
@@ -109,11 +110,21 @@ test("compra de Carol conserva materiales, observaciones e IVA confirmado hasta 
   await assert.rejects(()=>quotes.updateQuotePresentation(actor,quoteId,{company_intro:"Presentación corregida",
     proposal_objective:"Nuevo objetivo de la cotización"}),/sólo puede corregirse mientras/);
   await quotes.recordQuoteDecision(actor,quoteId,"aceptada");
+  assert.ok(!(await quotes.listQuotes(actor,"","rerchar","","",{view:"sin_oc"})).some(item=>item.id===quoteId),
+    "la compra aceptada no exige OC del cliente");
+  assert.ok((await quotes.listQuotes(actor,"","rerchar","","",{view:"sin_servicio"})).some(item=>item.id===quoteId),
+    "la compra aceptada queda lista para crear solicitud");
+  assert.ok((await quotes.reportQuoteLines(actor,"rerchar","","","",{view:"sin_servicio"}))
+    .some(item=>item.folio===detail.quote.folio),"la exportación respeta el mismo seguimiento de compras");
+  await assert.rejects(()=>followup.recordQuoteClientOrder(actor,quoteId,{reference:"OC-INVALIDA",received_on:"2026-10-15"}),
+    /compra de material continúa/);
   const serviceInput={submission_key:randomUUID(),client_id:client.id,site_id:site.id,quote_id:quoteId,operating_company:"rerchar",
     request_category:"compra",service_type:"compra",waste_type:"Ajustado manualmente",estimated_kg:"",origin:"Faena norte",destination:"Patio RERCHAR",
     priority:"normal",notes:"Retiro programado"};
   await assert.rejects(()=>pilot.createService(viewer,{...serviceInput,operating_company:"e_y_j"}),pilot.PilotError);
   const serviceId=await pilot.createService(actor,serviceInput);
+  assert.ok(!(await quotes.listQuotes(actor,"","rerchar","","",{view:"sin_servicio"})).some(item=>item.id===quoteId),
+    "la compra deja de figurar como pendiente al registrar la solicitud");
   assert.equal(await pilot.createService(actor,serviceInput),serviceId);
   await assert.rejects(()=>pilot.createService(actor,{...serviceInput,submission_key:randomUUID()}),pilot.PilotError,"una propuesta no duplica la solicitud");
   const rows=await db.query<{material_id:string;material_name:string;quantity_kg:string;unit_price_clp:string;line_note:string|null}>(

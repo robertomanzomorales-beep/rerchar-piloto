@@ -44,6 +44,10 @@ test("E y J cotiza disposición, cliente responde y OC/respaldo siguen el mismo 
   await assert.rejects(()=>quotes.recordQuoteDecision(stranger,quoteId,"aceptada"),quotes.QuoteError);
   await quotes.recordQuoteDecision(viewer,quoteId,"aceptada");
   await followup.recordQuoteClientOrder(staff,quoteId,{reference:"OC-325",received_on:"2026-10-19"});
+  assert.ok((await quotes.listQuotes(staff,"","e_y_j","","",{view:"sin_oc"})).some(item=>item.id===quoteId),
+    "el número de OC sin archivo aún deja pendiente el respaldo");
+  assert.ok(!(await quotes.listQuotes(staff,"","e_y_j","","",{view:"sin_servicio"})).some(item=>item.id===quoteId),
+    "el servicio no aparece listo sin respaldo de OC");
   await assert.rejects(()=>followup.recordQuoteClientOrder(viewer,quoteId,{reference:"OC-326",received_on:"2026-10-19"}),followup.QuoteFollowupError);
   const [site]=await db.query<{id:string}>("INSERT INTO client_sites(client_id,name) VALUES($1,'Faena piloto') RETURNING id",[client.id]);
   const pilot=await import("../lib/pilot");
@@ -59,6 +63,8 @@ test("E y J cotiza disposición, cliente responde y OC/respaldo siguen el mismo 
   await assert.rejects(()=>pilot.scheduleRental(staff,service,{asset_id:""}),/Adjunte el respaldo de la OC/);
   const bytes=Buffer.from("%PDF-1.4\n1 0 obj\n<<>>\nendobj\n%%EOF");
   const docId=await followup.uploadQuoteDocument(staff,quoteId,"orden_compra",new File([bytes],"oc-cliente.pdf",{type:"application/pdf"}));
+  assert.ok(!(await quotes.listQuotes(staff,"","e_y_j","","",{view:"sin_oc"})).some(item=>item.id===quoteId),
+    "el respaldo de OC resuelve el pendiente de programación");
   assert.equal((await followup.getQuoteDocument(viewer,docId))?.filename,"oc-cliente.pdf");
   assert.equal(await followup.getQuoteDocument(stranger,docId),null);
   const [edp]=await db.query<{id:string}>(`INSERT INTO payment_statements
@@ -88,6 +94,13 @@ test("E y J cotiza disposición, cliente responde y OC/respaldo siguen el mismo 
   assert.deepEqual(await edpLinks.listClientEdpInvoices(viewer,client.id),[],"el portal no expone folios de EDP observado");
   assert.equal((await followup.getQuoteFollowup(staff,quoteId)).statements.length,1);
   await db.query("UPDATE payment_statements SET status='aprobado' WHERE id=$1",[edp.id]);
+  await followup.recordQuoteClientOrder(staff,quoteId,{reference:"OC-326",received_on:"2026-10-20"});
+  assert.ok((await quotes.listQuotes(staff,"","e_y_j","","",{view:"sin_oc"})).some(item=>item.id===quoteId),
+    "corregir la OC invalida el respaldo anterior hasta adjuntar el nuevo");
+  assert.equal((await followup.getQuoteFollowup(staff,quoteId)).documents.find(item=>item.id===docId)?.is_current,false);
+  await assert.rejects(()=>pilot.scheduleRental(staff,service,{asset_id:""}),/respaldo de la OC vigente/);
+  await followup.uploadQuoteDocument(staff,quoteId,"orden_compra",new File([bytes],"oc-corregida.pdf",{type:"application/pdf"}));
+  assert.ok(!(await quotes.listQuotes(staff,"","e_y_j","","",{view:"sin_oc"})).some(item=>item.id===quoteId));
   await pilot.scheduleRental(staff,service,{asset_id:""});
   await db.query("UPDATE service_requests SET status='completada',closed_at=now() WHERE id=$1",[service]);
   const financePage=await finance.listFinance(staff,"e_y_j");

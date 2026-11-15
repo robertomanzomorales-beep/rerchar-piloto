@@ -11,6 +11,8 @@ import {wasteCategories,segmentWasteCategory,destinationNeeded,categoryName} fro
 import {calculateQuoteCost,type QuoteCosting} from "./quote-planning";
 import {catalogName,MaterialStockError} from "./material-stock";
 import {normalizeQuoteText} from "./quote-text";
+export {quoteOrderReadySql,quoteReadyForSchedulingSql} from "./quote-order";
+import {quoteOrderReadySql,quoteReadyForSchedulingSql} from "./quote-order";
 export {quoteFolio} from "./companies";
 
 const uuid=z.uuid();
@@ -183,9 +185,10 @@ function validateQuoteFilters(filters:QuoteFilters){
 const quoteViewSql=(parameter:number)=>`AND ($${parameter}::text='' OR
       ($${parameter}='gestion' AND q.status IN ('borrador','enviada')) OR
       ($${parameter}='vencidas' AND q.status='enviada' AND q.valid_until < (now() AT TIME ZONE 'America/Santiago')::date) OR
-      ($${parameter}='sin_oc' AND q.status='aceptada' AND q.client_order_reference IS NULL AND q.client_order_exception IS NULL) OR
+      ($${parameter}='sin_oc' AND q.status='aceptada' AND q.commercial_kind<>'compra_material'
+        AND NOT ${quoteOrderReadySql}) OR
       ($${parameter}='sin_servicio' AND q.status='aceptada'
-        AND (q.client_order_reference IS NOT NULL OR q.client_order_exception IS NOT NULL)
+        AND ${quoteReadyForSchedulingSql}
         AND NOT EXISTS (SELECT 1 FROM service_requests s WHERE s.quote_id=q.id AND s.deleted_at IS NULL)))`;
 export async function listQuotes(actor:Actor,clientId="",company="",principal="",segment="",filters:QuoteFilters={},limit=250,offset=0){
   if(actor.role==="conductor")reject("Sin acceso a cotizaciones.");
