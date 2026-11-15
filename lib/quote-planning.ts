@@ -104,7 +104,8 @@ export async function listPlanningAssets(actor:Actor){
   return db.query<{id:string;code:string;label:string;kind:string}>("SELECT id,code,label,kind FROM assets WHERE deleted_at IS NULL ORDER BY code");
 }
 async function draft(tx:Db,id:string){
-  const [quote]=await tx.query<{status:string;vat_rate:string}>("SELECT status,vat_rate FROM client_quotes WHERE id=$1 FOR UPDATE",[id]);
+  const [quote]=await tx.query<{status:string;vat_rate:string;planning_review_after:Date|string|null}>(
+    "SELECT status,vat_rate,planning_review_after FROM client_quotes WHERE id=$1 FOR UPDATE",[id]);
   if(quote?.status!=="borrador")reject("Sólo se puede planificar una cotización en borrador.");
   return quote;
 }
@@ -171,10 +172,17 @@ export async function applySuggestedQuotePrice(actor:Actor,quoteId:string){
   staff(actor);const id=uuid.parse(quoteId);
   return transaction(async tx=>{
     const quote=await draft(tx,id);
-    const [route]=await tx.query<{total_km:string;reviewed_for_truck:boolean}>("SELECT total_km,reviewed_for_truck FROM client_quote_routes WHERE quote_id=$1",[id]);
-    if(!route?.reviewed_for_truck)reject("Revise y confirme la ruta antes de aplicar el precio.");
-    const [cost]=await tx.query<QuoteCosting>("SELECT * FROM client_quote_costings WHERE quote_id=$1",[id]);
+    const [route]=await tx.query<{total_km:string;reviewed_for_truck:boolean;current_revision:boolean}>(
+      "SELECT total_km,reviewed_for_truck,($2::timestamptz IS NULL OR updated_at>$2::timestamptz) AS current_revision FROM client_quote_routes WHERE quote_id=$1",
+      [id,quote.planning_review_after]);
+    if(!route?.reviewed_for_truck||!route.current_revision)reject("Revise y confirme la ruta después del último cambio de conceptos.");
+    const [cost]=await tx.query<QuoteCosting & {current_revision:boolean;follows_route:boolean}>(
+      `SELECT *,($2::timestamptz IS NULL OR updated_at>$2::timestamptz) AS current_revision,
+       (updated_at>=(SELECT updated_at FROM client_quote_routes WHERE quote_id=$1)) AS follows_route
+       FROM client_quote_costings WHERE quote_id=$1`,[id,quote.planning_review_after]);
     if(!cost)reject("Guarde primero el cálculo interno.");
+    if(!cost.current_revision||quote.planning_review_after&&!cost.follows_route)
+      reject("Actualice el cálculo interno después de revisar la ruta y los conceptos.");
     const lines=await tx.query<{id:string;quantity:string;taxable:boolean;currency:string}>("SELECT id,quantity,taxable,currency FROM client_quote_lines WHERE quote_id=$1 ORDER BY position",[id]);
     if(lines.length!==1||Number(lines[0].quantity)!==1||!lines[0].taxable)
       reject("El precio sugerido se aplica sólo a una cotización de un concepto, cantidad 1 y afecto a IVA. En otras cotizaciones ajuste los conceptos manualmente.");

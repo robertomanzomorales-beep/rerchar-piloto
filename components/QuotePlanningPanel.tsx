@@ -23,6 +23,10 @@ export function QuotePlanningPanel({quote,lines,destinations,assets,route,cost,r
   const destination=route?.destination??address(first);
   const back=route?.return_to??origin;
   const rate=rates?.values_json;
+  const revisionTime=quote.planning_review_after?new Date(quote.planning_review_after).getTime():null;
+  const routeFresh=Boolean(route?.reviewed_for_truck&&(revisionTime===null||new Date(route.updated_at).getTime()>revisionTime));
+  const costFresh=Boolean(cost&&(revisionTime===null||new Date(cost.updated_at).getTime()>revisionTime&&
+    Boolean(route)&&new Date(cost.updated_at).getTime()>=new Date(route!.updated_at).getTime()));
   let calculated:ReturnType<typeof calculateQuoteCost>|null=null,calculationError="";
   if(cost){try{calculated=calculateQuoteCost(cost,Number(route?.total_km??0),Number(quote.vat_rate));}
     catch(error){calculationError=error instanceof Error?error.message:"Revise el cálculo interno.";}}
@@ -32,7 +36,7 @@ export function QuotePlanningPanel({quote,lines,destinations,assets,route,cost,r
       {route?<><div className="facts-grid"><div className="fact"><span>Planta → retiro</span><strong>{km(route.pickup_km)}</strong></div><div className="fact"><span>Retiro → destino</span><strong>{km(route.destination_km)}</strong></div><div className="fact"><span>Destino → planta</span><strong>{km(route.return_km)}</strong></div><div className="fact"><span>Circuito total</span><strong>{km(route.total_km)}</strong></div></div>
         <p className="helper-text">{route.origin} → {route.pickup} → {route.destination} → {route.return_to} · {route.source==="mapa"?"Referencia vial por mapas":"Registro manual"} · {new Date(route.calculated_at).toLocaleString("es-CL",{timeZone:"America/Santiago"})}</p>
         <p><a href={route.route_url} target="_blank" rel="noopener noreferrer">Abrir recorrido en Google Maps ↗</a></p>
-        <p className={route.reviewed_for_truck?"helper-text":"notice notice-error"}>{route.reviewed_for_truck?`Ruta revisada para el vehículo. ${route.correction_reason??""}`:"Pendiente de revisión de restricciones para el camión. Google Maps puede proponer vías no aptas."}</p>
+        <p className={routeFresh?"helper-text":"notice notice-error"}>{routeFresh?`Ruta revisada para el vehículo. ${route.correction_reason??""}`:"Revise nuevamente la ruta y las restricciones para el camión después del cambio de conceptos."}</p>
       </>:<p className="helper-text">Aún no se ha registrado el circuito ni sus kilómetros.</p>}
       {editable&&<><details className="quote-line-editor" open={!route}><summary><span>Registrar o corregir tramos</span><strong>Ruta manual</strong></summary>
         <form action={saveQuoteRouteAction} className="form-grid"><input name="quote_id" type="hidden" value={quote.id}/>
@@ -62,6 +66,7 @@ export function QuotePlanningPanel({quote,lines,destinations,assets,route,cost,r
     </section>
     <section className="section-card"><h2>Cálculo interno de costos y precio</h2><p className="helper-text">Sólo administración y operaciones. Cada costo se ingresa por viaje; combustible considera kilómetros totales × viajes. El margen es porcentaje del precio neto de venta.</p>
       {calculationError&&<p className="notice notice-error">{calculationError}</p>}
+      {cost&&quote.route_required&&!costFresh&&<p className="notice notice-error">El cálculo mostrado corresponde a conceptos o ruta anteriores. Guárdelo nuevamente después de revisar la ruta, antes de entregar la nueva versión.</p>}
       {calculated&&<><div className="facts-grid"><div className="fact"><span>Combustible · {cost?.trips} viaje(s)</span><strong>{money(calculated.fuel)}</strong></div><div className="fact"><span>Costo directo</span><strong>{money(calculated.direct)}</strong></div><div className="fact"><span>Contingencia</span><strong>{money(calculated.contingency)}</strong></div><div className="fact"><span>Costo total</span><strong>{money(calculated.cost)}</strong></div><div className="fact"><span>Venta neta sugerida</span><strong>{money(calculated.net)}</strong></div><div className="fact"><span>IVA sugerido</span><strong>{money(calculated.vat)}</strong></div><div className="fact"><span>Total sugerido</span><strong>{money(calculated.total)}</strong></div><div className="fact"><span>Neto ofertado − sugerido</span><strong>{money(quotedNet-calculated.net)}</strong></div></div>
         {quotedNet<calculated.net&&<p className="notice notice-error">El neto actual de la cotización está por debajo del precio sugerido. Revise los conceptos antes de emitir.</p>}
       </>}
@@ -105,7 +110,7 @@ export function QuotePlanningPanel({quote,lines,destinations,assets,route,cost,r
             <Numeric name="contingency_pct" label="Contingencia %" value={rate?.contingency_pct??"0"}/><Numeric name="margin_pct" label="Margen %" value={rate?.margin_pct??"0"}/>
             <div className="field-full form-footer"><SubmitButton className="button button-outline">Guardar valores para la empresa</SubmitButton></div>
           </form></details>}
-        {calculated&&lines.length===1&&Number(lines[0].quantity)===1&&lines[0].taxable&&lines[0].currency!=="UF"&&route?.reviewed_for_truck&&<form action={applySuggestedPriceAction} className="form-footer"><input name="quote_id" type="hidden" value={quote.id}/><SubmitButton className="button button-outline">Aplicar neto sugerido al único concepto</SubmitButton></form>}
+        {calculated&&lines.length===1&&Number(lines[0].quantity)===1&&lines[0].taxable&&lines[0].currency!=="UF"&&routeFresh&&costFresh&&<form action={applySuggestedPriceAction} className="form-footer"><input name="quote_id" type="hidden" value={quote.id}/><SubmitButton className="button button-outline">Aplicar neto sugerido al único concepto</SubmitButton></form>}
         <p className="helper-text">Si hay varios conceptos o cantidades, ajuste sus precios unitarios arriba según el alcance. El cálculo interno no se adjunta ni se exporta al cliente.</p>
       </>}
     </section>

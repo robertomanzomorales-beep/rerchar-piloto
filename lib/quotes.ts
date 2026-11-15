@@ -38,7 +38,7 @@ export type Quote={id:string;folio:string;display_folio:string|null;submission_k
   client_email:string|null;client_address:string|null;title:string;company_intro:string|null;proposal_objective:string|null;
   notes:string|null;issued_on:Date|string;valid_until:Date|string;vat_rate:string;status:string;sent_at:Date|null;created_at:Date;
   uf_rate_clp:string|null;uf_rate_on:Date|string|null;client_order_reference:string|null;client_order_on:Date|string|null;
-  route_required:boolean;commercial_kind:"general"|"compra_material";tax_review_status:"no_aplica"|"pendiente"|"sin_iva"|"con_iva";tax_review_note:string|null;issued_version:number;segments?:string[]};
+  route_required:boolean;planning_review_after:Date|string|null;commercial_kind:"general"|"compra_material";tax_review_status:"no_aplica"|"pendiente"|"sin_iva"|"con_iva";tax_review_note:string|null;issued_version:number;segments?:string[]};
 export type QuoteLine={id:string;position:number;description:string;quantity:string;unit:string;unit_price_clp:string;taxable:boolean;
   currency:"CLP"|"UF";unit_price_uf:string|null;
   principal:string|null;segment:string|null;waste_category:string|null;destination_id:string|null;destination_name:string|null;destination_required:boolean;
@@ -92,7 +92,7 @@ async function purchaseLine(tx:Db,data:z.infer<typeof item>,kind:"general"|"comp
 }
 type DestinationValidity={id:string;name:string;status:string;accepted_categories:string[];
   authorization_valid_until:Date|string|null;authorization_document_name:string|null;disposal_unit:string|null;disposal_price_clp:string|null};
-export async function quoteDeliveryIssues(quote:Pick<Quote,"valid_until"> & Partial<Pick<Quote,"id"|"route_required"|"vat_rate"|"commercial_kind"|"tax_review_status"|"uf_rate_clp"|"company_intro"|"proposal_objective">>,lines:QuoteLine[],source:Db=db){
+export async function quoteDeliveryIssues(quote:Pick<Quote,"valid_until"> & Partial<Pick<Quote,"id"|"route_required"|"planning_review_after"|"vat_rate"|"commercial_kind"|"tax_review_status"|"uf_rate_clp"|"company_intro"|"proposal_objective">>,lines:QuoteLine[],source:Db=db){
   const ids=[...new Set(lines.map(line=>line.destination_id).filter((id):id is string=>Boolean(id)))];
   const destinations=ids.length?await source.query<DestinationValidity>(`SELECT id,name,status,accepted_categories,
     authorization_valid_until,authorization_document_name,disposal_unit,disposal_price_clp FROM quote_destinations WHERE id=ANY($1::uuid[])`,[ids]):[];
@@ -128,12 +128,21 @@ export async function quoteDeliveryIssues(quote:Pick<Quote,"valid_until"> & Part
   if(quote.route_required&&quote.id){
     if(new Set(lines.map(line=>line.destination_id).filter(Boolean)).size>1)
       issues.push("Esta cotización incluye varios destinos finales. Separe los circuitos en cotizaciones distintas.");
-    const [route]=await source.query<{reviewed_for_truck:boolean;total_km:string}>("SELECT reviewed_for_truck,total_km FROM client_quote_routes WHERE quote_id=$1",[quote.id]);
-    const [cost]=await source.query<QuoteCosting>("SELECT * FROM client_quote_costings WHERE quote_id=$1",[quote.id]);
+    const [route]=await source.query<{reviewed_for_truck:boolean;total_km:string;current_revision:boolean;updated_at:Date|string}>(
+      "SELECT reviewed_for_truck,total_km,updated_at,($2::timestamptz IS NULL OR updated_at>$2::timestamptz) AS current_revision FROM client_quote_routes WHERE quote_id=$1",
+      [quote.id,quote.planning_review_after??null]);
+    const [cost]=await source.query<QuoteCosting & {current_revision:boolean;follows_route:boolean}>(
+      `SELECT *,($2::timestamptz IS NULL OR updated_at>$2::timestamptz) AS current_revision,
+      (updated_at>=(SELECT updated_at FROM client_quote_routes WHERE quote_id=$1)) AS follows_route
+      FROM client_quote_costings WHERE quote_id=$1`,
+      [quote.id,quote.planning_review_after??null]);
     if(!route)issues.push("Defina planta, retiro, destino, retorno y kilómetros del circuito.");
     else if(!route.reviewed_for_truck)issues.push("Revise y confirme que el circuito es apto para el camión.");
+    else if(!route.current_revision)issues.push("Revise nuevamente la ruta después de cambiar los conceptos.");
     if(!cost)issues.push("Guarde el cálculo interno de costos y precio de venta.");
     else if(route){
+      if(!cost.current_revision||quote.planning_review_after&&!cost.follows_route)
+        issues.push("Actualice los costos después de revisar los conceptos y la ruta.");
       try{if(calculateQuoteCost(cost,Number(route.total_km),Number(quote.vat_rate??"0.19")).cost<=0)
         issues.push("El cálculo interno no registra costos de la operación.");}
       catch{issues.push("Revise rendimiento y montos del cálculo interno después de cambiar la ruta.");}
@@ -239,7 +248,8 @@ export async function reopenQuoteRevision(actor:Actor,quoteId:string,reason:unkn
     if(!archive)reject("No existe un PDF entregado que pueda conservarse como versión anterior.");
     await tx.query("DELETE FROM client_quote_pdf_snapshots WHERE quote_id=$1",[id]);
     await tx.query("DELETE FROM quote_response_tokens WHERE quote_id=$1",[id]);
-    await tx.query("UPDATE client_quotes SET status='borrador',sent_at=NULL WHERE id=$1",[id]);
+    await tx.query("UPDATE client_quotes SET status='borrador',sent_at=NULL,planning_review_after=CASE WHEN route_required THEN clock_timestamp() ELSE NULL END WHERE id=$1",[id]);
+    await tx.query("UPDATE client_quote_routes SET reviewed_for_truck=false WHERE quote_id=$1",[id]);
     await tx.query(`INSERT INTO audit_events(actor_id,action,entity_type,entity_id,previous_value,next_value)
       VALUES($1,'reopen_revision','client_quote',$2,$3,$4)`,[actor.id,id,
       JSON.stringify({status:quote.status,version:quote.issued_version,sha256:archive.sha256}),
@@ -276,7 +286,7 @@ export async function createQuote(actor:Actor,input:unknown){
        normalizeQuoteText(data.company_intro),normalizeQuoteText(data.proposal_objective),normalizeQuoteText(data.notes),
        data.issued_on,data.valid_until,kind==="compra_material"?"0":data.vat_rate,actor.id,kind,kind==="compra_material"?"pendiente":"no_aplica"]);
     const displayFolio=`COT-${data.issuer==="rerchar"?"RER":"EYJ"}-${String(quote.folio).padStart(5,"0")}`;
-    await tx.query("UPDATE client_quotes SET display_folio=$2,route_required=$3 WHERE id=$1",
+    await tx.query("UPDATE client_quotes SET display_folio=$2,route_required=$3,planning_review_after=CASE WHEN $3 THEN clock_timestamp() ELSE NULL END WHERE id=$1",
       [quote.id,displayFolio,Boolean(data.line&&["retiro","transporte","instalacion"].includes(data.line.principal))]);
     if(data.line&&line&&price){
       const destinationName=await destinationSnapshot(tx,data.line.destination_id);
@@ -328,8 +338,10 @@ export async function addQuoteLine(actor:Actor,quoteId:string,input:unknown){
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NULLIF($10,''),NULLIF($11,'')::uuid,$12,true,$13,NULLIF($14,''),$15,$16) RETURNING id`,
       [id,position.next,purchase.name,data.quantity,data.unit,price.clp,purchase.taxable,data.principal,data.segment,
        data.waste_category,data.destination_id,destinationName,purchase.materialId,data.line_note,price.currency,price.uf]);
-    if(["retiro","transporte","instalacion"].includes(data.principal))
-      await tx.query("UPDATE client_quotes SET route_required=true WHERE id=$1",[id]);
+    await tx.query(`UPDATE client_quotes SET route_required=route_required OR $2,
+      planning_review_after=CASE WHEN route_required OR $2 THEN clock_timestamp() ELSE NULL END WHERE id=$1`,
+      [id,["retiro","transporte","instalacion"].includes(data.principal)]);
+    await tx.query("UPDATE client_quote_routes SET reviewed_for_truck=false WHERE quote_id=$1 AND EXISTS (SELECT 1 FROM client_quotes WHERE id=$1 AND route_required)",[id]);
     await tx.query("INSERT INTO audit_events(actor_id,action,entity_type,entity_id,next_value) VALUES ($1,'add_line','client_quote',$2,$3)",
       [actor.id,id,JSON.stringify({line_id:line.id,description:data.description})]);
     return line.id;
@@ -355,7 +367,10 @@ export async function updateQuoteLine(actor:Actor,quoteId:string,lineId:string,i
       [line,id,purchase.name,data.quantity,data.unit,price.clp,purchase.taxable,data.principal,data.segment,
        data.waste_category,data.destination_id,destinationName,purchase.materialId,data.line_note,price.currency,price.uf]);
     await tx.query(`UPDATE client_quotes SET route_required=EXISTS
-      (SELECT 1 FROM client_quote_lines WHERE quote_id=$1 AND principal IN ('retiro','transporte','instalacion')) WHERE id=$1`,[id]);
+      (SELECT 1 FROM client_quote_lines WHERE quote_id=$1 AND principal IN ('retiro','transporte','instalacion')),
+      planning_review_after=CASE WHEN EXISTS (SELECT 1 FROM client_quote_lines WHERE quote_id=$1 AND principal IN ('retiro','transporte','instalacion'))
+        THEN clock_timestamp() ELSE NULL END WHERE id=$1`,[id]);
+    await tx.query("UPDATE client_quote_routes SET reviewed_for_truck=false WHERE quote_id=$1",[id]);
     await tx.query("INSERT INTO audit_events(actor_id,action,entity_type,entity_id,previous_value,next_value) VALUES ($1,'update_line','client_quote',$2,$3,$4)",
       [actor.id,id,JSON.stringify(previous),JSON.stringify({line_id:line,...data})]);
   });
@@ -371,7 +386,10 @@ export async function removeQuoteLine(actor:Actor,quoteId:string,lineId:string){
     if(Number(count.count)<=1)reject("La cotización debe conservar al menos un concepto.");
     await tx.query("DELETE FROM client_quote_lines WHERE id=$1 AND quote_id=$2",[line,id]);
     await tx.query(`UPDATE client_quotes SET route_required=EXISTS
-      (SELECT 1 FROM client_quote_lines WHERE quote_id=$1 AND principal IN ('retiro','transporte','instalacion')) WHERE id=$1`,[id]);
+      (SELECT 1 FROM client_quote_lines WHERE quote_id=$1 AND principal IN ('retiro','transporte','instalacion')),
+      planning_review_after=CASE WHEN EXISTS (SELECT 1 FROM client_quote_lines WHERE quote_id=$1 AND principal IN ('retiro','transporte','instalacion'))
+        THEN clock_timestamp() ELSE NULL END WHERE id=$1`,[id]);
+    await tx.query("UPDATE client_quote_routes SET reviewed_for_truck=false WHERE quote_id=$1",[id]);
     await tx.query("INSERT INTO audit_events(actor_id,action,entity_type,entity_id,previous_value) VALUES ($1,'remove_line','client_quote',$2,$3)",
       [actor.id,id,JSON.stringify(previous)]);
   });

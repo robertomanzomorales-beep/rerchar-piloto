@@ -57,4 +57,39 @@ test("una propuesta entregada se corrige conservando folio, PDFs originales y ac
   await quotes.recordQuoteDecision(viewer,quoteId,"aceptada");
   await assert.rejects(()=>quotes.reopenQuoteRevision(staff,quoteId,"Una nueva corrección tras aceptación"),quotes.QuoteError);
   assert.equal((await db.query("SELECT version FROM client_quote_issued_versions WHERE quote_id=$1",[quoteId])).length,1);
+
+  const planning=await import("../lib/quote-planning");
+  const routeId=await quotes.createQuote(staff,{submission_key:randomUUID(),client_id:client.id,issuer:"rerchar",
+    title:"Transporte de material industrial",issued_on:"2026-11-15",valid_until:"2026-12-15",vat_rate:"0.19",
+    company_intro:"RERCHAR desarrolla soluciones para la gestión industrial.",
+    proposal_objective:"Transportar el material industrial entre los puntos indicados.",
+    line:{description:"Viaje de camión",principal:"transporte",segment:"transporte_batea",quantity:"2",unit:"viaje",unit_price_clp:"150000",taxable:true}});
+  const places={origin:"Planta RERCHAR Calama",pickup:"Faena del cliente Calama",destination:"Patio de destino Calama",return_to:"Planta RERCHAR Calama"};
+  const routeInput={...places,pickup_km:"10",destination_km:"15",return_km:"10",reviewed_for_truck:true,
+    correction_reason:"Ruta confirmada con operaciones"};
+  const costing={trips:"2",asset_id:"",equipment:"Camión batea",capacity:"10",capacity_unit:"tonelada",km_per_liter:"2",
+    fuel_price_clp:"1000",equipment_cost_clp:"10000",tolls_clp:"2000",driver_hours:"3",driver_hour_clp:"5000",
+    support_hours:"2",support_hour_clp:"2000",per_diem_clp:"3000",loading_clp:"1000",disposal_quantity:"0",
+    disposal_unit:"tonelada",disposal_unit_clp:"0",stay_clp:"500",other_clp:"500",contingency_pct:"10",margin_pct:"20"};
+  await planning.saveQuoteRoute(staff,routeId,routeInput);
+  await planning.saveQuoteCosting(staff,routeId,costing);
+  let routed=await quotes.getQuote(staff,routeId);
+  assert.deepEqual(await quotes.quoteDeliveryIssues(routed.quote,routed.lines),[]);
+  await quotes.recordManualQuoteDelivery(staff,routeId,{channel:"presencial",recipient:"",reference:"Entrega firmada al cliente"});
+  await quotes.reopenQuoteRevision(staff,routeId,"Cambiar cantidad y revisar recorrido");
+  routed=await quotes.getQuote(staff,routeId);
+  await quotes.updateQuoteLine(staff,routeId,routed.lines[0].id,{description:"Viajes de camión corregidos",principal:"transporte",
+    segment:"transporte_batea",quantity:"3",unit:"viaje",unit_price_clp:"150000",taxable:true});
+  routed=await quotes.getQuote(staff,routeId);
+  assert.ok((await quotes.quoteDeliveryIssues(routed.quote,routed.lines)).some(issue=>issue.includes("circuito")));
+  await assert.rejects(()=>quotes.recordManualQuoteDelivery(staff,routeId,{channel:"presencial",recipient:"",reference:"Entrega prematura"}),quotes.QuoteError);
+  await planning.saveQuoteRoute(staff,routeId,{...routeInput,destination_km:"18"});
+  routed=await quotes.getQuote(staff,routeId);
+  assert.ok((await quotes.quoteDeliveryIssues(routed.quote,routed.lines)).some(issue=>issue.includes("costos")));
+  await assert.rejects(()=>planning.applySuggestedQuotePrice(staff,routeId),planning.QuotePlanningError);
+  await planning.saveQuoteCosting(staff,routeId,{...costing,trips:"3"});
+  routed=await quotes.getQuote(staff,routeId);
+  assert.deepEqual(await quotes.quoteDeliveryIssues(routed.quote,routed.lines),[]);
+  await quotes.recordManualQuoteDelivery(staff,routeId,{channel:"presencial",recipient:"",reference:"Versión revisada entregada"});
+  assert.equal((await quotes.getQuote(staff,routeId)).quote.issued_version,2);
 });
