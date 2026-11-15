@@ -95,4 +95,16 @@ test("flete falso y sobreestadía siguen parte, decisión y empresa sin alterar 
   assert.equal(firstPage.length,101,"la consulta permite detectar la página siguiente");
   assert.equal(secondPage.length,1);
   assert.equal(firstPage[100].id,secondPage[0].id);
+  const [legacy]=await db.query<{id:string}>(`INSERT INTO service_extra_charges(submission_key,service_id,service_day,kind,reason,
+    source_outcome,source_observation,amount_clp,status,decision_note,invoice_number,invoiced_on,
+    created_by,decided_by,decided_at)
+    VALUES(gen_random_uuid(),$1,'2026-10-12','sobrestadia','Espera anterior por conciliar',
+      'incompleto','Cliente suspendió carguío por clima',1000,'facturado','Acordado con cliente','LEG-01',
+      '2026-10-13',$2,$3,now()) RETURNING id`,[rerchar,ops.id,admin.id]);
+  const pendingLegacy=await receivables.listLegacyReconciliation(admin,"rerchar");
+  assert.equal((await receivables.receivablesOverview(admin,"rerchar")).legacy,"1");
+  assert.equal(pendingLegacy.length,1);
+  assert.equal(pendingLegacy[0].id,legacy.id);
+  assert.equal(pendingLegacy[0].source,"cargo");
+  assert.equal((await receivables.listLegacyReconciliation(admin,"e_y_j")).length,0);
 });

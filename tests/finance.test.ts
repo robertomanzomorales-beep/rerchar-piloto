@@ -115,9 +115,12 @@ test("tarifa vigente, valorización, reemisión, pagos y margen conservan saldos
   await db.query("UPDATE service_invoices SET total_verified=false,total_clp=42000 WHERE id=$1",[activeInvoice]);
   assert.equal((await receivables.listReceivables(owner,"rerchar")).length,0,"factura previa sin total confirmado no es cuenta por cobrar");
   assert.equal((await receivables.receivablesOverview(owner,"rerchar","2026-10-14")).legacy,"1");
+  assert.equal((await receivables.listLegacyReconciliation(owner,"rerchar"))[0].source,"servicio");
+  assert.equal((await receivables.listLegacyReconciliation(owner,"e_y_j")).length,0);
   await assert.rejects(()=>finance.registerPayment(owner,activeInvoice,{...payment,submission_key:randomUUID(),amount_clp:"100",reference:"Sin confirmar"}),/Confirme/);
   await assert.rejects(()=>finance.confirmServiceInvoiceTotal(owner,activeInvoice,{total_clp:"48000",reason:"Revisado contra DTE"}),/menor/);
   await finance.confirmServiceInvoiceTotal(owner,activeInvoice,{total_clp:"50000",reason:"Revisado contra DTE"});
+  assert.equal((await receivables.listLegacyReconciliation(owner,"rerchar")).length,0);
   await db.query(`INSERT INTO service_day_reports(service_id,day,asset_id,outcome,observation,recorded_by)
     VALUES($1,'2026-09-24',$2,'completado','Servicio con cargo adicional',$3)`,[service.id,asset.id,owner.id]);
   const extra=await charges.proposeExtraCharge(owner,service.id,{submission_key:randomUUID(),service_day:"2026-09-24",kind:"sobrestadia",

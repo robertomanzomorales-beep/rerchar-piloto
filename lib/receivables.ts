@@ -50,6 +50,25 @@ export async function listUnverifiedServiceInvoices(actor:Actor,company:Company)
     ORDER BY f.issued_on DESC LIMIT 100`,[company]);
 }
 
+export type LegacyReconciliation={id:string;source:"servicio"|"cargo";service_id:string;invoice_number:string;
+  client_name:string;issued_on:Date|string;service_day:Date|string|null;reason:string|null};
+export async function listLegacyReconciliation(actor:Actor,company:Company,limit=101,offset=0){
+  admin(actor);validCompany(company);
+  return db.query<LegacyReconciliation>(`SELECT * FROM (
+    SELECT f.id,'servicio'::text AS source,v.service_id,f.invoice_number,c.name AS client_name,
+      f.issued_on,NULL::date AS service_day,NULL::text AS reason
+    FROM service_invoices f JOIN service_valuations v ON v.id=f.valuation_id
+    JOIN service_requests s ON s.id=v.service_id JOIN clients c ON c.id=s.client_id
+    WHERE s.operating_company=$1 AND s.deleted_at IS NULL AND f.status='emitida' AND f.total_verified=false
+    UNION ALL
+    SELECT x.id,'cargo'::text AS source,x.service_id,x.invoice_number,c.name AS client_name,
+      x.invoiced_on AS issued_on,x.service_day,x.reason
+    FROM service_extra_charges x JOIN service_requests s ON s.id=x.service_id JOIN clients c ON c.id=s.client_id
+    WHERE s.operating_company=$1 AND s.deleted_at IS NULL AND x.status='facturado'
+      AND x.receivable_invoice_id IS NULL AND x.linked_service_invoice_id IS NULL
+  ) pending ORDER BY issued_on DESC,id DESC LIMIT $2 OFFSET $3`,[company,Math.max(1,Math.min(101,limit)),Math.max(0,offset)]);
+}
+
 export async function receivablesOverview(actor:Actor,company:Company,on=todayChile()){
   admin(actor);validCompany(company);
   if(!/^\d{4}-\d{2}-\d{2}$/.test(on))throw new ReceivableError("Fecha inválida.");

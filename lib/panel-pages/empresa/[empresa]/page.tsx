@@ -132,7 +132,7 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
     ...(canManage(actor)?[{label:"Cargos extraordinarios por decidir",count:extraChargePending,href:`/cobros-extraordinarios?empresa=${selected}&estado=propuestos#cargos-parte`}]:[]),
     ...(receivables?[{label:"Facturas de clientes vencidas con saldo",count:Number(receivables.overdue),href:`/cobranzas?empresa=${selected}&estado=vencidas`,urgent:true},
       {label:"Facturas de clientes que vencen en 7 días",count:Number(receivables.upcoming),href:`/cobranzas?empresa=${selected}&estado=proximas`},
-      {label:"Facturas anteriores por conciliar",count:Number(receivables.legacy),href:`/cobranzas?empresa=${selected}`}]:[]),
+      {label:"Facturas anteriores por conciliar",count:Number(receivables.legacy),href:`/cobranzas?empresa=${selected}&estado=conciliar#conciliacion`}]:[]),
     ...(actor.role==="admin"?[{label:"Servicios valorizados pendientes de factura individual",count:unbilledServices,href:`/finanzas?empresa=${selected}&facturacion=pendiente`}]:[]),
     ...(actor.role==="admin"?[{label:"Servicios cerrados con OC del cliente requerida y pendiente",count:clientOrdersPending,href:`/finanzas?empresa=${selected}&oc=pendiente`}]:[]),
     ...(actor.role==="admin"?[{label:"Cambios de tarifa por comunicar al cliente",count:value(tariffNotices[0]?.total),href:`/finanzas?empresa=${selected}&avisos=pendientes#avisos-tarifa`}]:[]),
