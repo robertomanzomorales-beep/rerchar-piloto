@@ -323,6 +323,8 @@ export async function listStatementServices(actor:Actor,statementId:string){
       AND s.status='completada' AND (($2::text='arriendo' AND s.service_type='arriendo') OR
       ($2::text='residuos' AND s.service_type IN ('retiro','traslado','otro')))
       AND NOT EXISTS(SELECT 1 FROM payment_statement_operations o WHERE o.service_id=s.id AND o.statement_id<>$3)
+      AND NOT EXISTS(SELECT 1 FROM service_valuations v JOIN service_invoices f ON f.valuation_id=v.id
+        WHERE v.service_id=s.id AND f.status='emitida')
       ORDER BY s.folio DESC LIMIT 300) source ORDER BY source.folio::bigint DESC`,
     [statement.client_id,statement.statement_type,statementId]);
   return services.filter(s=>!s.transport_used||(statement.statement_type==="residuos"&&!s.disposal_used));
@@ -345,6 +347,9 @@ async function addStatementServiceTx(tx:Db,actor:Actor,statementId:string,
     // Serializa las importaciones del mismo servicio entre EDP concurrentes.
     const [lock]=await tx.query<{id:string}>("SELECT id FROM service_requests WHERE id=$1 FOR UPDATE",[data.service_id]);
     if(!lock)reject("Servicio no encontrado.");
+    const [invoice]=await tx.query<{id:string}>(`SELECT f.id FROM service_valuations v JOIN service_invoices f ON f.valuation_id=v.id
+      WHERE v.service_id=$1 AND f.status='emitida' LIMIT 1`,[data.service_id]);
+    if(invoice)reject("El servicio ya tiene una factura individual. No lo incorpore a otro estado de pago.");
     const [service]=await tx.query<StatementService>(`${serviceSelect} WHERE s.id=$1 AND s.client_id=$2
       AND s.operating_company='e_y_j' AND s.deleted_at IS NULL AND s.status='completada'`,
       [data.service_id,scope.client_id]);

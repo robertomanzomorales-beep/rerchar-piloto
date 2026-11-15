@@ -24,6 +24,13 @@
   }
   .app-shell .data-table td { padding-block: 12px; border-bottom-color: #e9eeee; }
   .app-shell .data-table tbody tr:last-child td { border-bottom: 0; }
+  .app-shell .finance-pagination {
+    display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px;
+    padding-top: 16px; border-top: 1px solid var(--company-border);
+    color: #596b71; font-size: 12px;
+  }
+  .app-shell .finance-pagination > :last-child { justify-self: end; }
+  .app-shell .finance-pagination .button { min-height: 34px; padding: 7px 12px; }
   .app-shell .badge { letter-spacing: .012em; }
   .app-shell .quote-identity-grid {
     grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2,minmax(0,1fr));
@@ -76,6 +83,8 @@
   .app-shell .quote-identity-grid:has(> label:not(.field-full):nth-of-type(3)) { grid-template-columns: 1fr; }
 }
 @media screen and (max-width: 650px) {
+  .app-shell .finance-pagination { grid-template-columns: 1fr 1fr; }
+  .app-shell .finance-pagination > :nth-child(2) { grid-column: 1 / -1; grid-row: 1; text-align: center; }
   .app-shell .company-choice, .app-shell .company-choice:last-child { grid-template-rows: auto auto 43px; }
   .app-shell .company-choice-identity, .app-shell .company-choice-details { padding-inline: 19px; }
   .app-shell .company-choice-action { padding-inline: 19px; }

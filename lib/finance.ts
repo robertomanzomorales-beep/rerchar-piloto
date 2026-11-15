@@ -54,14 +54,18 @@ const serviceSelect=`SELECT s.id,s.folio,s.client_id,s.site_id,s.operating_compa
  LEFT JOIN service_valuations v ON v.service_id=s.id LEFT JOIN service_tariffs t ON t.id=v.tariff_id
  LEFT JOIN service_invoices f ON f.valuation_id=v.id AND f.status='emitida'`;
 
-export async function listFinance(actor:Actor,company="rerchar",clientOcOnly=false){
+export async function listFinance(actor:Actor,company="rerchar",clientOcOnly=false,pendingIndividualOnly=false,page=1){
   admin(actor);
   if(!["rerchar","e_y_j","pendiente"].includes(company))reject("Empresa inválida.");
-  const [services,contracts,tariffs,clients,sites,notices]=await Promise.all([
+  const pageNumber=Number.isSafeInteger(page)&&page>0&&page<=10_000?page:1;
+  const pageSize=100;
+  const [serviceRows,contracts,tariffs,clients,sites,notices]=await Promise.all([
     db.query<FinancialService>(`SELECT * FROM (${serviceSelect} WHERE s.deleted_at IS NULL AND s.status='completada'
       AND ($1='pendiente' AND s.operating_company IS NULL OR s.operating_company=$1)) AS service
       WHERE ($2::boolean=false OR (requires_client_oc AND client_oc_reference IS NULL AND invoice_id IS NULL AND NOT in_payment_statement))
-      ORDER BY closed_at DESC LIMIT 200`,[company,clientOcOnly]),
+        AND ($3::boolean=false OR (valuation_id IS NOT NULL AND invoice_id IS NULL AND NOT in_payment_statement))
+      ORDER BY closed_at DESC,id DESC LIMIT $4 OFFSET $5`,
+    [company,clientOcOnly,pendingIndividualOnly,pageSize+1,(pageNumber-1)*pageSize]),
     db.query<Contract>(`SELECT c.id,c.client_id,c.site_id,c.code,c.operating_company,c.starts_on,c.ends_on,c.notes,c.active,cl.name AS client_name,cs.name AS site_name
       FROM client_contracts c JOIN clients cl ON cl.id=c.client_id LEFT JOIN client_sites cs ON cs.id=c.site_id
       WHERE ($1='pendiente' AND c.operating_company IS NULL OR c.operating_company=$1)
@@ -81,7 +85,8 @@ export async function listFinance(actor:Actor,company="rerchar",clientOcOnly=fal
       JOIN clients cl ON cl.id=c.client_id WHERE c.operating_company=$1
       ORDER BY CASE n.status WHEN 'pendiente' THEN 0 ELSE 1 END,n.created_at DESC LIMIT 100`,[company]),
   ]);
-  return {services,contracts,tariffs,clients,sites,notices};
+  return {services:serviceRows.slice(0,pageSize),hasMoreServices:serviceRows.length>pageSize,
+    contracts,tariffs,clients,sites,notices};
 }
 
 export async function pendingClientOrders(actor:Actor,company:Company){
@@ -89,6 +94,16 @@ export async function pendingClientOrders(actor:Actor,company:Company){
   const [row]=await db.query<{total:string}>(`SELECT count(*)::text AS total FROM (${serviceSelect}
     WHERE s.operating_company=$1 AND s.deleted_at IS NULL AND s.status='completada') AS service
     WHERE requires_client_oc AND client_oc_reference IS NULL AND invoice_id IS NULL AND NOT in_payment_statement`,[company]);
+  return Number(row?.total??0);
+}
+
+export async function pendingIndividualInvoices(actor:Actor,company:Company){
+  admin(actor);
+  const [row]=await db.query<{total:string}>(`SELECT count(*)::text AS total FROM service_requests s
+    JOIN service_valuations v ON v.service_id=s.id
+    WHERE s.operating_company=$1 AND s.status='completada' AND s.deleted_at IS NULL
+      AND NOT EXISTS (SELECT 1 FROM service_invoices f WHERE f.valuation_id=v.id AND f.status='emitida')
+      AND NOT EXISTS (SELECT 1 FROM payment_statement_operations po WHERE po.service_id=s.id)`,[company]);
   return Number(row?.total??0);
 }
 
@@ -285,6 +300,13 @@ export async function registerInvoice(actor:Actor,serviceId:string,input:unknown
   const data=z.object({invoice_number:z.string().trim().min(2).max(80),issued_on:z.iso.date(),due_on:z.iso.date(),total_clp:positiveMoney}).parse(input);
   if(data.due_on<data.issued_on)reject("El vencimiento de la factura no puede ser anterior a su emisión.");
   return transaction(async(tx)=>{
+    // Comparte el bloqueo del servicio con la importación a EDP para impedir
+    // que dos rutas de facturación se abran simultáneamente.
+    const [service]=await tx.query<{id:string}>("SELECT id FROM service_requests WHERE id=$1 FOR UPDATE",[id]);
+    if(!service)reject("Servicio no encontrado.");
+    const [edp]=await tx.query<{id:string}>(
+      "SELECT id FROM payment_statement_operations WHERE service_id=$1 LIMIT 1",[id]);
+    if(edp)reject("Este servicio respalda un estado de pago. Asocie la factura desde Estados de pago.");
     const [valuation]=await tx.query<{id:string;total_clp:string;operating_company:Company|null}>(`SELECT v.id,v.total_clp,s.operating_company
       FROM service_valuations v JOIN service_requests s ON s.id=v.service_id WHERE v.service_id=$1 FOR UPDATE OF v`,[id]);
     if(!valuation)reject("Valorice el servicio antes de asociar una factura.");

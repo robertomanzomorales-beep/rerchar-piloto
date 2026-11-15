@@ -50,6 +50,27 @@ test("EDP copia respaldos de servicios E y J sin duplicar cliente, categoría ni
   await assert.rejects(()=>edp.addStatementService(viewer,statement,{service_id:source,line_number:1,is_disposal:"0"}),edp.PaymentStatementError);
   await assert.rejects(()=>edp.addStatementService(actor,statement,{service_id:pending,line_number:1,is_disposal:"0"}),edp.PaymentStatementError);
   await edp.addStatementService(actor,statement,{service_id:source,line_number:1,is_disposal:"0"});
+  const finance=await import("../lib/finance");
+  const individual=await service("e_y_j");
+  const [contract]=await db.query<{id:string}>(`INSERT INTO client_contracts(client_id,code,starts_on,created_by,operating_company)
+    VALUES($1,'CT-EDP-IMPORT','2026-01-01',$2,'e_y_j') RETURNING id`,[client.id,user.id]);
+  const [tariff]=await db.query<{id:string}>(`INSERT INTO service_tariffs(contract_id,service_type,unit,unit_price_clp,valid_from,created_by)
+    VALUES($1,'traslado','servicio',100000,'2026-01-01',$2) RETURNING id`,[contract.id,user.id]);
+  for(const id of [source,individual])await db.query(`INSERT INTO service_valuations
+    (service_id,tariff_id,quantity,unit_price_clp,total_clp,created_by)
+    VALUES($1,$2,1,100000,100000,$3)`,[id,tariff.id,user.id]);
+  assert.equal(await finance.pendingIndividualInvoices(actor,"e_y_j"),1,
+    "el panel no pide factura individual para un servicio incluido en EDP");
+  assert.deepEqual((await finance.listFinance(actor,"e_y_j",false,true)).services.map(s=>s.id),[individual]);
+  await assert.rejects(()=>finance.registerInvoice(actor,source,{invoice_number:"EYJ-EDP",issued_on:"2026-06-23",
+    due_on:"2026-07-23",total_clp:"119000"}),/respalda un estado de pago/);
+  await finance.registerInvoice(actor,individual,{invoice_number:"EYJ-INDIVIDUAL",issued_on:"2026-06-23",
+    due_on:"2026-07-23",total_clp:"119000"});
+  assert.equal(await finance.pendingIndividualInvoices(actor,"e_y_j"),0);
+  assert.equal((await finance.listFinance(actor,"e_y_j",false,true)).services.length,0);
+  await assert.rejects(()=>edp.addStatementService(actor,second,{service_id:individual,line_number:1,is_disposal:"0"}),
+    /ya tiene una factura individual/);
+  assert.equal((await edp.listStatementServices(actor,second)).some(s=>s.id===individual),false);
   const first=(await edp.getPaymentStatement(actor,statement)).operations[0];
   assert.equal(first.service_id,source);assert.equal(first.weight_kg,"13710.00");
   assert.equal(first.weighing_ticket,"17819");assert.equal(first.service_sheet,"2949");
@@ -130,4 +151,22 @@ test("EDP copia respaldos de servicios E y J sin duplicar cliente, categoría ni
   await assert.rejects(()=>edp.addBillingCycleServices(actor,rentalCycle,[{service_id:partial,is_disposal:"0"}]),
     /prorrateo/);
   assert.equal((await edp.getPaymentStatement(actor,julyEdp)).operations.length,0);
+
+  // Un volumen real de servicios no debe ocultar los pendientes más antiguos.
+  await db.query(`WITH batch AS (
+    INSERT INTO service_requests(submission_key,client_id,site_id,operating_company,service_type,waste_type,
+      origin,destination,status,closed_at,gross_kg,tare_kg,created_by)
+    SELECT gen_random_uuid(),$1,$2,'e_y_j','traslado','Residuo Industrial','Faena','Planta',
+      'completada','2026-06-22T15:00:00Z',14500,790,$3 FROM generate_series(1,102)
+    RETURNING id
+  ) INSERT INTO service_valuations(service_id,tariff_id,quantity,unit_price_clp,total_clp,created_by)
+    SELECT id,$4,1,100000,100000,$3 FROM batch`,[client.id,site.id,user.id,tariff.id]);
+  const firstPage=await finance.listFinance(actor,"e_y_j",false,true,1);
+  const secondPage=await finance.listFinance(actor,"e_y_j",false,true,2);
+  assert.equal(await finance.pendingIndividualInvoices(actor,"e_y_j"),102);
+  assert.equal(firstPage.services.length,100);
+  assert.equal(firstPage.hasMoreServices,true);
+  assert.equal(secondPage.services.length,2);
+  assert.equal(secondPage.hasMoreServices,false);
+  assert.equal(new Set([...firstPage.services,...secondPage.services].map(s=>s.id)).size,102);
 });

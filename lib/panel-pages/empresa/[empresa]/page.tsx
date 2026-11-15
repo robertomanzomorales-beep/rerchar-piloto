@@ -15,7 +15,7 @@ import {receivablesOverview} from "@/lib/receivables";
 import {supplierInvoiceOverview} from "@/lib/supplier-invoices";
 import {supplierTransferOverview} from "@/lib/supplier-transfers";
 import {moduleReady} from "@/lib/schema-readiness";
-import {pendingClientOrders} from "@/lib/finance";
+import {pendingClientOrders,pendingIndividualInvoices} from "@/lib/finance";
 import {listCredentialAlerts} from "@/lib/personnel";
 import {guideFollowupOverview} from "@/lib/service-ledger";
 import {ActivityChart,StatusComposition,type MonthActivity,type ServiceStatus} from "@/components/CompanyDashboardCharts";
@@ -98,10 +98,7 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
     actor.role==="admin"?receivablesOverview(actor,selected,today):Promise.resolve(null),
     selected==="e_y_j"&&actor.role==="admin"?eyjEdpInvoiceDashboard():Promise.resolve(null),
     actor.role==="admin"?moduleReady("supplier_transfers").then(ready=>ready?supplierTransferOverview(actor,selected):null):Promise.resolve(null),
-    actor.role==="admin"?db.query<{total:string}>(`SELECT count(*)::text AS total FROM service_requests s
-      JOIN service_valuations v ON v.service_id=s.id
-      WHERE s.operating_company=$1 AND s.status='completada' AND s.deleted_at IS NULL
-        AND NOT EXISTS (SELECT 1 FROM service_invoices f WHERE f.valuation_id=v.id AND f.status='emitida')`,[selected]):Promise.resolve([]),
+    actor.role==="admin"?pendingIndividualInvoices(actor,selected):Promise.resolve(0),
     actor.role==="admin"?pendingClientOrders(actor,selected):Promise.resolve(0),
     canManage(actor)?listCredentialAlerts(actor,selected):Promise.resolve([]),
     actor.role==="admin"?db.query<{total:string}>(`SELECT count(*)::text AS total FROM tariff_change_notices n
@@ -136,7 +133,7 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
     ...(receivables?[{label:"Facturas de clientes vencidas con saldo",count:Number(receivables.overdue),href:`/cobranzas?empresa=${selected}&estado=vencidas`,urgent:true},
       {label:"Facturas de clientes que vencen en 7 días",count:Number(receivables.upcoming),href:`/cobranzas?empresa=${selected}&estado=proximas`},
       {label:"Facturas anteriores por conciliar",count:Number(receivables.legacy),href:`/cobranzas?empresa=${selected}`}]:[]),
-    ...(actor.role==="admin"?[{label:"Servicios valorizados sin factura individual · revisar EDP si corresponde",count:value(unbilledServices[0]?.total),href:`/finanzas?empresa=${selected}&facturacion=pendiente`}]:[]),
+    ...(actor.role==="admin"?[{label:"Servicios valorizados pendientes de factura individual",count:unbilledServices,href:`/finanzas?empresa=${selected}&facturacion=pendiente`}]:[]),
     ...(actor.role==="admin"?[{label:"Servicios cerrados con OC del cliente requerida y pendiente",count:clientOrdersPending,href:`/finanzas?empresa=${selected}&oc=pendiente`}]:[]),
     ...(actor.role==="admin"?[{label:"Cambios de tarifa por comunicar al cliente",count:value(tariffNotices[0]?.total),href:`/finanzas?empresa=${selected}`}]:[]),
     ...(selected==="rerchar"&&canManage(actor)?[
