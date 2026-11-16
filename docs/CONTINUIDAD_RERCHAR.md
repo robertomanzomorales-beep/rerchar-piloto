@@ -1,4 +1,16 @@
-# Continuidad RERCHAR — 15 de noviembre de 2026
+# Continuidad RERCHAR — 16 de noviembre de 2026
+
+## Reanudación y revisión de la beta del 18 de noviembre
+
+- Se recuperó `main` en `339513c` y se contrastó con el despliegue principal de Vercel, que figura `READY` para ese mismo commit. Las pruebas de Cobranza y venta de material que aparecen abiertas en las capturas de «Revisar Excel operativos» ya estaban cerradas y guardadas; no hay que repetir su implementación.
+- El 16/11 se repitió la suite completa con base aislada: **41 pruebas aprobadas, 0 fallidas**. También pasaron TypeScript y la compilación de producción.
+- Se aplicaron las **68 migraciones** actuales en una base local independiente y se completaron **135 comprobaciones HTTP**: accesos de administración para ambas empresas, fichas de servicio y cotización, carpeta del cliente, EDP/calendario, PDF, Excel y CSV; además, restricciones de operaciones, conductor, cliente y visitantes sin sesión. Los casos usan dos clientes ficticios y cinco cuentas locales; no se insertaron registros ni se enviaron correos en producción.
+- Las comprobaciones de cliente/conductor no mostraron el cliente ajeno en paneles ni reportes. Las descargas ajenas devuelven 404, las descargas sin sesión 401 y las administrativas con perfil insuficiente 403. Las páginas con `notFound()` después de iniciar el streaming pueden conservar HTTP 200 e incluir el marcador 404 de Next; se comprobó el contenido de rechazo, no sólo el estado HTTP.
+- Se corrigió el título accesible de cada punto del gráfico para entregarlo como un texto único a React. El recorrido posterior ya no registra la advertencia. El diseño, los colores verde/azul y los datos del panel se conservan.
+- La configuración del proyecto principal no contiene variables `SMTP_*`: correo y acuse reales siguen pendientes. No se dispone de un SICEP vigente propio de RERCHAR. No marcar estas dos observaciones como cerradas.
+- La matriz vigente conserva **84 observaciones: 75 disponibles para prueba, 2 parciales y 7 ampliaciones a evaluar**. No se modificaron sus estados por haber pasado las pruebas técnicas. Los responsables todavía deben probar sus casos reales.
+- Ver `docs/REVISION_BETA_18-11-2026.md` para el recorrido y las dependencias de entrega. Este lote no agrega migraciones.
+- Roberto autorizó expresamente el 16/11 publicar este lote de código y documentos de continuidad en el repositorio GitHub de RERCHAR y desplegarlo en Vercel. La autorización comprende la corrección del gráfico y ambos registros de revisión/continuidad. Comprobar el despliegue principal antes de dar la publicación por completada.
 
 ## Dirección visual confirmada por Roberto
 

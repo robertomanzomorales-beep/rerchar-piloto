@@ -39,7 +39,7 @@ export function ActivityChart({months,company,currentPeriod}:{months:MonthActivi
           <text x="9" y="33">Solicitudes <tspan x="102" textAnchor="end">{number(month.opened)}</tspan></text>
           <text x="9" y="48">Cierres <tspan x="102" textAnchor="end">{number(month.closed)}</tspan></text>
         </g>
-        <title>{monthName(month.period)}: {number(month.opened)} solicitudes creadas y {number(month.closed)} servicios cerrados</title>
+        <title>{`${monthName(month.period)}: ${number(month.opened)} solicitudes creadas y ${number(month.closed)} servicios cerrados`}</title>
       </g>)}
     </svg><figcaption>Mes en curso destacado · fechas de Chile continental <span className="chart-mobile-hint">· deslice para recorrer los meses</span></figcaption></figure>:<div className="company-chart-empty"><strong>Sin actividad en el período</strong><span>Las cifras aparecerán cuando se registren solicitudes de esta empresa.</span><Link href={`/solicitudes?empresa=${company}`}>Abrir solicitudes</Link></div>}
     {entered+closed>0&&<details className="company-chart-data"><summary>Ver cifras por mes</summary><div className="company-chart-data-table"><table><thead><tr><th>Mes</th><th>Solicitudes</th><th>Cierres</th></tr></thead><tbody>{months.map(month=><tr key={month.period}><th scope="row">{monthName(month.period)} {month.period.slice(0,4)}</th><td>{number(month.opened)}</td><td>{number(month.closed)}</td></tr>)}</tbody></table></div></details>}
