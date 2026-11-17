@@ -557,7 +557,7 @@ export async function sendQuote(actor:Actor,quoteId:string,ccInput=""){
   const token=randomBytes(32).toString("hex");
   try{
     await db.query(`INSERT INTO quote_response_tokens(quote_id,token_hash,recipient,issued_by,expires_at)
-      VALUES($1,$2,$3,$4,LEAST(($5::date+1)::timestamptz,now()+interval '14 days'))
+      VALUES($1,$2,$3,$4,LEAST((($5::date+1)::timestamp AT TIME ZONE 'America/Santiago'),now()+interval '14 days'))
       ON CONFLICT(quote_id) DO UPDATE SET token_hash=EXCLUDED.token_hash,recipient=EXCLUDED.recipient,
         issued_by=EXCLUDED.issued_by,expires_at=EXCLUDED.expires_at,used_at=NULL,created_at=now()`,
       [id,responseTokenHash(token),recipient,actor.id,quote.valid_until]);

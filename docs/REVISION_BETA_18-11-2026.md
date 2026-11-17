@@ -27,13 +27,15 @@ Registrar las diferencias por escrito en la matriz con empresa operadora, módul
 | Observación | Falta para cerrarla | Operación disponible mientras se completa |
 | --- | --- | --- |
 | 1. Formato de cotización / SICEP | Certificado vigente emitido a RERCHAR. El respaldo de LOA RENTAL no permite acreditar a RERCHAR. | PDF con la marca RERCHAR y los respaldos propios incorporados, sin atribuirle SICEP ajeno. |
-| 76. Respuesta por enlace y acuse de correo | Configurar remitente SMTP del dominio y probar envío, recepción, respuesta y acuse con destinatarios acordados. El proyecto publicado todavía no tiene `SMTP_*`. | Descargar el PDF y registrar entrega manual, destinatario y constancia. La decisión también se registra desde el portal autenticado. |
+| 76. Respuesta por enlace y acuse de correo | SMTP configurado y correo de prueba recibido en Gmail con SPF/DKIM correctos. Completar el recorrido público con una cotización de revisión acordada: PDF, enlace, respuesta y recepción del acuse. | Envío SMTP habilitado. También puede descargar el PDF y registrar entrega manual, destinatario y constancia; la decisión está disponible desde el portal autenticado. |
 
 Los siete procesos clasificados como ampliación conservan su evaluación separada, entre ellos el circuito integral de compras del local y sus automatizaciones.
 
 ## Evidencia técnica del 16/11
 
-- 41 pruebas automáticas aprobadas y ninguna fallida, incluida Cobranza con 502 facturas, CSV, venta de material, EDP, cotizaciones, inventario y transferencias.
+- Se agregó un recorrido SMTP aislado para ambas empresas: verifica el PDF adjunto contra su respaldo, la copia, la decisión única y el acuse. Se corrigió el vencimiento del enlace para incluir todo el último día en horario de Chile, conservando el máximo de catorce días.
+- El correo genérico enviado desde la casilla corporativa se recibió en Recibidos de Gmail. La prueba temporal fue desactivada; los recorridos automatizados usan destinatarios ficticios y un servidor local.
+- 42 pruebas automáticas aprobadas y ninguna fallida, incluida Cobranza con 502 facturas, CSV, venta de material, EDP, cotizaciones por SMTP, inventario y transferencias.
 - TypeScript y compilación de producción correctos.
 - 68 migraciones aplicadas en la base aislada de revisión.
 - 135 comprobaciones HTTP completadas con administración, operaciones, conductor, cliente y visitante sin sesión. Incluyen pantallas principales de ambas empresas, fichas, PDF, Excel, CSV, filtros inválidos y restricciones de acceso sobre dos clientes ficticios.
