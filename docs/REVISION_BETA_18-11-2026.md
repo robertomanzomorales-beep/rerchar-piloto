@@ -6,7 +6,7 @@ Preparación técnica verificada el 16/11/2026. Acceso: https://rerchar-piloto.v
 
 La última versión conserva el panel profesional de RERCHAR en verde y E y J en azul. Cobranza filtra en la base de datos, pagina todos los casos y exporta el filtro completo por lotes. Los abonos y anulaciones conservan empresa, filtro y página. La venta de material comparte facturas sin duplicar saldos y conserva las guías al anular.
 
-La matriz vigente registra 84 observaciones: 75 disponibles para probar, 2 parciales y 7 ampliaciones a evaluar. Este control técnico no modifica los vistos buenos de los responsables.
+La matriz vigente registra 84 observaciones: 76 disponibles para probar, 1 parcial y 7 ampliaciones a evaluar. El formato N.º 1 incorpora los logos RERCHAR y SICEP, junto con la franja de certificaciones aportada por Roberto el 17/11. Este control técnico no modifica los vistos buenos de los responsables.
 
 ## Recorrido por responsable
 
@@ -22,12 +22,11 @@ La matriz vigente registra 84 observaciones: 75 disponibles para probar, 2 parci
 
 Registrar las diferencias por escrito en la matriz con empresa operadora, módulo, folio, paso realizado, resultado esperado/obtenido y captura. Mantener las reuniones como excepción después de esa revisión escrita.
 
-## Dos dependencias abiertas
+## Punto pendiente de prueba real
 
 | Observación | Falta para cerrarla | Operación disponible mientras se completa |
 | --- | --- | --- |
-| 1. Formato de cotización / SICEP | Certificado vigente emitido a RERCHAR. El respaldo de LOA RENTAL no permite acreditar a RERCHAR. | PDF con la marca RERCHAR y los respaldos propios incorporados, sin atribuirle SICEP ajeno. |
-| 76. Respuesta por enlace y acuse de correo | SMTP configurado y correo de prueba recibido en Gmail con SPF/DKIM correctos. Completar el recorrido público con una cotización de revisión acordada: PDF, enlace, respuesta y recepción del acuse. | Envío SMTP habilitado. También puede descargar el PDF y registrar entrega manual, destinatario y constancia; la decisión está disponible desde el portal autenticado. |
+| 76. Respuesta por enlace y acuse de correo | Completar el recorrido público con una cotización de revisión acordada: recepción del PDF, apertura del enlace, respuesta y recepción del acuse. | SMTP configurado y correo genérico comprobado en Gmail con SPF/DKIM correctos. También puede descargar el PDF y registrar entrega manual, destinatario y constancia; la decisión está disponible desde el portal autenticado. |
 
 Los siete procesos clasificados como ampliación conservan su evaluación separada, entre ellos el circuito integral de compras del local y sus automatizaciones.
 
@@ -44,6 +43,7 @@ Los siete procesos clasificados como ampliación conservan su evaluación separa
 
 ## Verificación adicional del 17/11
 
+- Se incorporaron los originales `sicep.png` y `CERT-PIE-Rerchar(1).png` al formato RERCHAR, conservando transparencia y proporciones. Se revisó el PDF de una página y su continuación. La observación N.º 1 pasa a disponible para revisión. Su alcance es incorporar los logos; se retira el requisito adicional de un certificado y la referencia ajena de la matriz.
 - Se corrigió una confirmación que dependía de parámetros del enlace y podía aparecer sin respuesta registrada. La confirmación y el resultado del acuse ahora proceden de la base y de su auditoría, incluso al volver a abrir la página.
 - El recorrido `npm run test:quote-response-http` verificó ambas empresas mediante seis cotizaciones ficticias. Incluye aceptación y rechazo, dos respuestas simultáneas con una sola decisión, enlace vencido o reemplazado, respuesta repetida y acuse rechazado por el servidor SMTP local. Los nueve mensajes de prueba permanecieron en memoria.
 - Las 48 pruebas del proyecto, TypeScript y la compilación de producción pasaron. La prueba de revisión confirma que un acuse anterior no se atribuye a la nueva versión de una propuesta.
