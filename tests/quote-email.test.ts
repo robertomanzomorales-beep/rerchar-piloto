@@ -70,11 +70,23 @@ test("cotización por SMTP conserva PDF, vigencia chilena, decisión única y ac
       assert.equal(expiry.local_end,nextDay.toISOString().slice(0,10)+" 00:00:00","la vigencia incluye todo el último día de Chile, aunque PostgreSQL use UTC");
       const decision=issuer==="rerchar"?"aceptada":"rechazada";
       assert.equal((await quotes.respondToQuoteEmail(token,decision)).ackSent,true);
+      assert.equal((await quotes.getEmailQuoteResponse(token))?.ack_sent,true,"el acuse confirmado queda asociado al enlace utilizado");
       assert.equal(messages.length,before+2);
       assert.match(messages[before+1].replace(/=\r?\n/g,""),new RegExp(decision));
       assert.equal((await quotes.getQuote(actor,id)).quote.status,decision);
       await assert.rejects(()=>quotes.respondToQuoteEmail(token,decision),/ya se utilizó/);
       assert.equal(messages.length,before+2,"un enlace usado no vuelve a enviar el acuse");
+      if(issuer==="e_y_j"){
+        await quotes.reopenQuoteRevision(actor,id,"Corregir propuesta rechazada para nueva revisión");
+        await quotes.sendQuote(actor,id);
+        const newToken=messages.at(-1)!.replace(/=\r?\n/g,"").match(/cotizaciones\/responder\/([a-f0-9]{64})/)?.[1];
+        assert.ok(newToken);assert.notEqual(newToken,token);
+        assert.equal(await quotes.getEmailQuoteResponse(token),null,"la versión anterior invalida su enlace");
+        assert.equal((await quotes.getEmailQuoteResponse(newToken))?.ack_sent,false,"el acuse anterior no confirma el correo de una nueva respuesta");
+        await quotes.respondToQuoteEmail(newToken,"aceptada");
+        assert.equal((await quotes.getEmailQuoteResponse(newToken))?.ack_sent,true);
+        assert.equal(messages.length,before+4);
+      }
     }
   }finally{
     for(const socket of sockets)socket.destroy();

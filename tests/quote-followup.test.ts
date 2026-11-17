@@ -154,6 +154,7 @@ test("E y J cotiza disposición, cliente responde y OC/respaldo siguen el mismo 
     VALUES($1,$2,'cliente@example.cl',$3,now()+interval '1 day')`,[anotherQuote.id,createHash("sha256").update(token).digest("hex"),staff.id]);
   assert.equal((await quotes.getEmailQuoteResponse(token))?.quote_id,quoteId);
   assert.equal((await quotes.respondToQuoteEmail(token,"rechazada")).ackSent,false);
+  assert.equal((await quotes.getEmailQuoteResponse(token))?.ack_sent,false,"sin SMTP no se acredita un acuse enviado");
   await assert.rejects(()=>quotes.respondToQuoteEmail(token,"aceptada"),/ya se utilizó/);
   assert.deepEqual(quotes.quoteCcAddresses("jefe@example.cl; jefe@example.cl, cliente@example.cl"),["jefe@example.cl","cliente@example.cl"]);
   assert.throws(()=>quotes.quoteCcAddresses("malo\r\nBcc:otro@example.cl"),quotes.QuoteError);

@@ -42,4 +42,11 @@ Los siete procesos clasificados como ampliación conservan su evaluación separa
 - La revisión HTTP comprueba respuesta de servidor, contenido y descargas. No sustituye la comprobación visual móvil ya registrada el 15/11 ni la revisión de casos reales por los responsables.
 - Se corrigió una advertencia de React en el título accesible del gráfico sin alterar su diseño ni cálculos. No se agregaron migraciones ni se usaron registros reales para las pruebas locales.
 
+## Verificación adicional del 17/11
+
+- Se corrigió una confirmación que dependía de parámetros del enlace y podía aparecer sin respuesta registrada. La confirmación y el resultado del acuse ahora proceden de la base y de su auditoría, incluso al volver a abrir la página.
+- El recorrido `npm run test:quote-response-http` verificó ambas empresas mediante seis cotizaciones ficticias. Incluye aceptación y rechazo, dos respuestas simultáneas con una sola decisión, enlace vencido o reemplazado, respuesta repetida y acuse rechazado por el servidor SMTP local. Los nueve mensajes de prueba permanecieron en memoria.
+- Las 48 pruebas del proyecto, TypeScript y la compilación de producción pasaron. La prueba de revisión confirma que un acuse anterior no se atribuye a la nueva versión de una propuesta.
+- Estos resultados completan evidencia técnica de N.º 76. Sigue pendiente el recorrido publicado con un caso de revisión acordado y la recepción del acuse por el destinatario. Los estados y aprobaciones de la matriz se conservan.
+
 Para continuidad del desarrollo, consultar `docs/CONTINUIDAD_RERCHAR.md` y verificar el check **Vercel – rerchar-piloto** del commit publicado. El proyecto duplicado `rerchar-piloto-pjlu` es independiente del despliegue principal.

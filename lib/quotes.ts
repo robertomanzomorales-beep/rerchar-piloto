@@ -489,15 +489,19 @@ function quoteResponseBaseUrl(){
 export async function getEmailQuoteResponse(token:string){
   if(!/^[a-f0-9]{64}$/.test(token))return null;
   const [row]=await db.query<{quote_id:string;recipient:string;expires_at:Date|string;used_at:Date|string|null;status:string;
-    client_name:string;title:string;issuer:Quote["issuer"];folio:string;display_folio:string|null}>(`SELECT t.quote_id,t.recipient,t.expires_at,t.used_at,q.status,q.client_name,q.title,q.issuer,q.folio,q.display_folio
+    client_name:string;title:string;issuer:Quote["issuer"];folio:string;display_folio:string|null;ack_sent:boolean}>(`SELECT t.quote_id,t.recipient,t.expires_at,t.used_at,q.status,q.client_name,q.title,q.issuer,q.folio,q.display_folio,
+      EXISTS(SELECT 1 FROM audit_events e WHERE e.entity_type='client_quote' AND e.entity_id=q.id
+        AND e.action='quote_response_ack' AND e.next_value->>'response_token_hash'=t.token_hash
+        AND e.next_value->>'delivery'='sent') AS ack_sent
     FROM quote_response_tokens t JOIN client_quotes q ON q.id=t.quote_id WHERE t.token_hash=$1`,[responseTokenHash(token)]);
   return row??null;
 }
 export async function respondToQuoteEmail(token:string,decision:"aceptada"|"rechazada"){
   if(!/^[a-f0-9]{64}$/.test(token)||!["aceptada","rechazada"].includes(decision))reject("Enlace o respuesta inválida.");
+  const tokenHash=responseTokenHash(token);
   const result=await transaction(async tx=>{
     const [link]=await tx.query<{quote_id:string;recipient:string;issued_by:string;expires_at:Date|string;used_at:Date|string|null}>(
-      "SELECT quote_id,recipient,issued_by,expires_at,used_at FROM quote_response_tokens WHERE token_hash=$1 FOR UPDATE",[responseTokenHash(token)]);
+      "SELECT quote_id,recipient,issued_by,expires_at,used_at FROM quote_response_tokens WHERE token_hash=$1 FOR UPDATE",[tokenHash]);
     if(!link||link.used_at||new Date(link.expires_at).getTime()<=Date.now())reject("El enlace ya se utilizó o venció. Contacte al emisor.");
     const [quote]=await tx.query<{status:string;issuer:Quote["issuer"];folio:string;display_folio:string|null}>(
       "SELECT status,issuer,folio,display_folio FROM client_quotes WHERE id=$1 FOR UPDATE",[link.quote_id]);
@@ -506,19 +510,26 @@ export async function respondToQuoteEmail(token:string,decision:"aceptada"|"rech
     await tx.query("UPDATE quote_response_tokens SET used_at=now() WHERE quote_id=$1",[link.quote_id]);
     await tx.query("INSERT INTO audit_events(actor_id,action,entity_type,entity_id,next_value) VALUES($1,$2,'client_quote',$3,$4)",
       [link.issued_by,decision,link.quote_id,JSON.stringify({status:decision,source:"enlace_correo",recipient:link.recipient,
-        identity:"posesion_enlace",issued_by:link.issued_by})]);
-    return {recipient:link.recipient,folio:quoteFolio(quote),issuer:quote.issuer};
+        identity:"posesion_enlace",issued_by:link.issued_by,response_token_hash:tokenHash})]);
+    return {quoteId:link.quote_id,issuedBy:link.issued_by,recipient:link.recipient,folio:quoteFolio(quote),issuer:quote.issuer};
   });
-  if(!quoteMailConfigured())return {ackSent:false};
-  try{
+  let ackSent=false;
+  if(quoteMailConfigured())try{
     const port=Number(process.env.SMTP_PORT);
     const transport=nodemailer.createTransport({host:process.env.SMTP_HOST,port,secure:port===465,
       auth:{user:process.env.SMTP_USER,pass:process.env.SMTP_PASSWORD}});
     await transport.sendMail({from:process.env.SMTP_FROM,to:result.recipient,
       subject:`Respuesta registrada · Cotización ${result.folio}`,
       text:`Su respuesta (${decision}) a la cotización ${result.folio} de ${issuers[result.issuer].name} quedó registrada. Si necesita corregirla, comuníquese con la empresa emisora.`});
-    return {ackSent:true};
-  }catch(error){console.error("Acuse de cotización pendiente",error);return {ackSent:false};}
+    ackSent=true;
+  }catch(error){console.error("Acuse de cotización pendiente",error);}
+  try{
+    // Evento separado: el resultado del correo no cambia ni repite la decisión del cliente.
+    await db.query("INSERT INTO audit_events(actor_id,action,entity_type,entity_id,next_value) VALUES($1,'quote_response_ack','client_quote',$2,$3)",
+      [result.issuedBy,result.quoteId,JSON.stringify({response_token_hash:tokenHash,recipient:result.recipient,
+        delivery:ackSent?"sent":"pending"})]);
+  }catch(error){console.error("No se pudo guardar la constancia del acuse de cotización",error);}
+  return {ackSent};
 }
 export function quoteDefaultCc(issuer:Quote["issuer"]){
   return issuer==="e_y_j"?process.env.QUOTE_CC_E_Y_J??"":process.env.QUOTE_CC_RERCHAR??"";

@@ -10,6 +10,7 @@
     "db:seed": "node --import tsx scripts/seed.ts",
     "review:admin": "node scripts/activar-revision.mjs",
     "test": "node --import tsx --test tests/*.test.ts",
+    "test:quote-response-http": "node --import tsx scripts/verify-quote-response.ts",
     "typecheck": "tsc --noEmit",
     "predev": "node scripts/prepare-document-reader.mjs",
     "prebuild": "node scripts/prepare-document-reader.mjs"

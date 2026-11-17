@@ -1,4 +1,15 @@
-# Continuidad RERCHAR — 16 de noviembre de 2026
+# Continuidad RERCHAR — 17 de noviembre de 2026
+
+## Cierre técnico de la respuesta de cotizaciones — 17/11
+
+- **Publicación autorizada:** Roberto autorizó explícitamente el 17/11 publicar estas correcciones en `main` de `robertomanzomorales-beep/rerchar-piloto` y desplegarlas en Vercel. Esta autorización resuelve el bloqueo previo de la revisión automática. El lote incluye la corrección de respuestas y acuses, sus pruebas y los registros de continuidad. Verificar el despliegue principal del nuevo commit antes de dar la publicación por terminada. La matriz se guardó como versión 4, con la evidencia nueva y los estados originales.
+- Se retomó la versión `79fc8ef`, incluyendo los refinamientos visuales posteriores. Este lote no modifica el diseño del panel ni la identidad verde de RERCHAR y azul de E y J.
+- Se reprodujo por HTTP un fallo del enlace público: añadir `confirmada=1` mostraba una respuesta registrada y un acuse enviado aunque la cotización siguiera pendiente. La pantalla ahora consulta la decisión guardada y la constancia del acuse. Los parámetros de la URL ya no determinan esos mensajes.
+- El resultado del acuse se agrega a la auditoría como `quote_response_ack`, asociado al hash del enlace utilizado. Un fallo SMTP conserva la decisión y muestra el acuse pendiente, también al recargar. El acuse de una versión anterior no confirma una nueva respuesta. No se agregan migraciones.
+- `npm run test:quote-response-http` reproduce el recorrido con Next.js real, formularios y redirecciones, base temporal y SMTP exclusivamente en loopback. Comprueba seis cotizaciones de ambas empresas: aceptación, rechazo, respuesta repetida y simultánea, enlace vencido/desconocido/reemplazado, confirmación persistente, fallo del acuse y auditoría. Los nueve mensajes quedan en memoria y los destinatarios son ficticios.
+- Verificación: **48 pruebas automáticas aprobadas**, TypeScript y compilación de producción correctos. También pasó la regresión de nueva versión, invalidación del enlace anterior y constancia de un acuse independiente para la nueva respuesta.
+- La observación 76 sigue parcial: falta una cotización de revisión acordada, recibida por correo real, apertura del enlace publicado, respuesta y recepción del acuse. El SICEP vigente propio de RERCHAR sigue pendiente. No se modifica ningún VB ni se declara aprobada la matriz: **75 disponibles, 2 parciales y 7 ampliaciones**.
+- La evidencia de N.º 76 se actualiza en la matriz vigente, conservando su identidad y los estados de todas las observaciones. Antes de afirmar la publicación, verificar el check **Vercel – rerchar-piloto** del commit de este lote.
 
 ## Correo y vigencia de la respuesta del cliente
 
