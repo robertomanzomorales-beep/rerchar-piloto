@@ -11,3 +11,4 @@ coverage/
 *.zip
 *.log
 *.tsbuildinfo
+public/document-reader/

@@ -1,0 +1,16 @@
+import {mkdir,copyFile,readdir,cp} from 'node:fs/promises';
+import {createRequire} from 'node:module';
+import {dirname,join} from 'node:path';
+const require=createRequire(import.meta.url);
+const destination=join(process.cwd(),'public/document-reader/v1');
+await mkdir(join(destination,'core'),{recursive:true});
+const packageDir=name=>dirname(require.resolve(`${name}/package.json`));
+const core=packageDir('tesseract.js-core');
+for(const name of await readdir(core))if(/\.wasm(?:\.js)?$/.test(name))await copyFile(join(core,name),join(destination,'core',name));
+await copyFile(join(packageDir('tesseract.js'),'dist/worker.min.js'),join(destination,'worker.min.js'));
+await copyFile(join(packageDir('@tesseract.js-data/spa'),'4.0.0_best_int/spa.traineddata.gz'),join(destination,'spa.traineddata.gz'));
+await copyFile(join(packageDir('pdfjs-dist'),'build/pdf.worker.min.mjs'),join(destination,'pdf.worker.min.mjs'));
+for(const name of ['wasm','standard_fonts','cmaps'])await cp(join(packageDir('pdfjs-dist'),name),join(destination,name),{recursive:true});
+await copyFile(join(core,'LICENSE'),join(destination,'TESSERACT-LICENSE'));
+await copyFile(join(packageDir('pdfjs-dist'),'LICENSE'),join(destination,'PDFJS-LICENSE'));
+console.log('Document reader assets ready (same-origin worker, OCR core, Spanish model and PDF worker).');

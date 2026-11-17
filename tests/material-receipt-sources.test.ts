@@ -29,11 +29,14 @@ test("ingresos propone referencias del servicio RERCHAR y distingue tickets de o
     VALUES ($1,'GT-77',1,'2026-11-10','compra','OR-1','DEST-1',100,98,$2),
            ($1,'GT-77',2,'2026-11-10','compra','OR-1','DEST-1',50,49,$2),
            ($1,'GT-78',1,'2026-11-11','compra','OR-2','DEST-2',80,78,$2)`,[rerchar.id,user.id]);
+  const [file]=await db.query<{id:string}>(`INSERT INTO service_evidence(service_id,description,document_kind,storage_key,original_filename,created_by)
+    VALUES($1,'Ticket de prueba','ticket_pesaje','00000000-0000-4000-8000-000000000001.pdf','ticket.pdf',$2) RETURNING id`,[rerchar.id,user.id]);
   const rows=await listReceiptSourceServices(owner);
   assert.equal(rows.length,1,"no se mezclan referencias de E y J");
   assert.equal(rows[0].service_guide,"GT-77");
   assert.deepEqual(rows[0].control_guides,["GT-77","GT-78"]);
   assert.deepEqual(rows[0].origin_tickets,["OR-1","OR-2"]);
   assert.deepEqual(rows[0].destination_tickets,["DEST-1","DEST-2"]);
+  assert.deepEqual(rows[0].documents,[{id:file.id,name:"ticket.pdf"}]);
   await assert.rejects(()=>listReceiptSourceServices({...owner,role:"cliente",client_id:client.id}),/Sin acceso/);
 });
