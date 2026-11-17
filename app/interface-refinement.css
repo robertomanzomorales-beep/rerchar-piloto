@@ -1,0 +1,194 @@
+/* Surface, depth and brand details. Operational layout and print output stay independent. */
+@media screen {
+  .app-shell {
+    --surface-line: #dfe7e8;
+    --surface-shadow: 0 2px 4px #203b3603, 0 8px 24px #203b3606;
+    --detail-fresh: #668fa3;
+    --detail-soft: #edf4f6;
+    --brand-signature: linear-gradient(90deg,#315f84,#7aafcc);
+    background: #f5f8f9;
+  }
+  .app-shell[data-company="rerchar"] {
+    --surface-line: #dce8e1;
+    --detail-fresh: #00a878;
+    --detail-soft: #eef8f1;
+    --brand-signature: linear-gradient(90deg,#00a878 0% 46%,#abd17e 46% 59%,#fac900 59% 69%,#0066aa 69% 79%,#00aeeb 79% 87%,#fa5d00 87% 94%,#f50920 94% 100%);
+    background: linear-gradient(180deg,#f0f7f3,#f6f8f9 420px);
+  }
+  .app-shell[data-company="e_y_j"] {
+    --surface-line: #dce5ee;
+    --detail-fresh: #477fa8;
+    --detail-soft: #eef5fb;
+    --brand-signature: linear-gradient(90deg,#315f84 0% 64%,#79afd0 64% 100%);
+    background: linear-gradient(180deg,#f0f5fb,#f6f8fb 420px);
+  }
+
+  /* The same navigation, with a clearer selected state and a lighter surface. */
+  .app-shell .sidebar {
+    background: linear-gradient(180deg,#fff,var(--sidebar-surface) 70%);
+    border-right-color: var(--surface-line);
+    box-shadow: 3px 0 18px #263c4003;
+  }
+  .app-shell[data-company="rerchar"] .sidebar,
+  .app-shell[data-company="e_y_j"] .sidebar {
+    background: linear-gradient(180deg,#fff,var(--sidebar-surface) 70%);
+  }
+  .app-shell .brand-sidebar { position: relative; border-bottom-color: var(--surface-line); }
+  .app-shell .brand-sidebar::after {
+    content: ""; position: absolute; bottom: -1px; left: 10px;
+    width: 96px; height: 3px; border-radius: 3px; background: var(--brand-signature);
+  }
+  .app-shell .sidebar-search-trigger,
+  .app-shell .company-picker-trigger { border-radius: 9px; box-shadow: 0 2px 5px #243c3404; }
+  .app-shell .company-picker-trigger { background: #fff; border-left-color: var(--detail-fresh); }
+  .app-shell .sidebar .nav-link,
+  .app-shell .sidebar .nav-group-toggle,
+  .app-shell .mobile-nav-drawer .nav-link { border-radius: 7px; }
+  .app-shell .sidebar .nav-link.active,
+  .app-shell .sidebar .nav-link.active:hover,
+  .app-shell .mobile-nav-drawer .nav-link.active {
+    background: linear-gradient(105deg,var(--company-strong),var(--company-accent)); color: #fff;
+    box-shadow: inset 3px 0 var(--detail-fresh), 0 3px 8px #243c3410;
+  }
+  .app-shell .sidebar .nav-link.active svg { color: #fff; }
+  .app-shell .profile-avatar {
+    border-radius: 10px; background: var(--company-soft); border: 1px solid var(--company-border);
+    color: var(--company-strong);
+  }
+  .app-shell .topbar {
+    border-top-color: var(--company-accent); border-bottom-color: var(--surface-line);
+    background: #ffffffed; box-shadow: 0 3px 12px #263c4004;
+  }
+  .app-shell .topbar-search-trigger { border-radius: 8px; background: #f7f9fa; }
+
+  /* Shared records, forms and actions. */
+  .app-shell :is(.section-card,.stat-card,.form-card) {
+    border-color: var(--surface-line); border-radius: 12px; background: #fff; box-shadow: var(--surface-shadow);
+  }
+  .app-shell .stat-card:hover { border-color: var(--company-border); background: #fff; box-shadow: var(--surface-shadow); }
+  .app-shell .section-heading h2 { font-weight: 665; }
+  .app-shell .section-heading h2 svg { color: var(--company-accent); }
+  .app-shell .title-icon {
+    border: 1px solid var(--company-border); border-radius: 12px;
+    background: linear-gradient(145deg,#fff,var(--company-soft)); color: var(--company-accent);
+    box-shadow: 0 3px 9px #203b3605;
+  }
+  .app-shell .button {
+    border-radius: 8px; transition: background-color .18s, border-color .18s, box-shadow .18s;
+  }
+  .app-shell .button-primary {
+    background: linear-gradient(180deg,color-mix(in srgb,var(--company-accent) 89%,white),var(--company-accent));
+    border-color: var(--company-accent); box-shadow: inset 0 1px 0 #ffffff29,0 3px 8px color-mix(in srgb,var(--company-accent) 14%,transparent);
+  }
+  .app-shell .button-primary:hover:not(:disabled) {
+    background: var(--company-strong); border-color: var(--company-strong);
+    box-shadow: inset 0 1px 0 #ffffff1a,0 4px 10px color-mix(in srgb,var(--company-accent) 20%,transparent);
+  }
+  .app-shell .button-outline {
+    background: #fff; border-color: var(--company-border); box-shadow: 0 1px 3px #243c3404;
+  }
+  .app-shell .button-outline:hover:not(:disabled) { background: var(--detail-soft); border-color: var(--company-accent); }
+  .app-shell .button:disabled { box-shadow: none; }
+  .app-shell .count-pill {
+    border-radius: 7px; background: var(--detail-soft); border-color: var(--company-border);
+    color: var(--company-strong); font-weight: 620;
+  }
+  .app-shell :is(.badge,.priority,.company-quote-status) { border-radius: 6px; }
+  .app-shell :is(.notice,.service-guidance,.quote-preflight,.document-guidance) { border-radius: 9px; }
+  .app-shell .form-grid .form-section-title {
+    padding: 9px 12px; border: 0; border-left: 3px solid var(--detail-fresh); border-radius: 0 7px 7px 0;
+    background: var(--detail-soft); color: var(--company-strong);
+  }
+  .app-shell :is(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),select,textarea) {
+    border-radius: 8px; border-color: #cedbdd;
+    box-shadow: inset 0 1px 2px #203b3603; background-color: #fff;
+  }
+  .app-shell :is(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),select,textarea):focus-visible {
+    border-color: var(--company-accent); box-shadow: 0 0 0 3px var(--company-soft);
+  }
+  .app-shell :is(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),select,textarea):is(:disabled,[readonly]) {
+    color: #708189; background-color: #f5f7f7; border-color: #d7e0e2; box-shadow: none;
+  }
+  .app-shell .search-field { border-radius: 8px; background: #fff; }
+  .app-shell input[type="file"] { border-radius: 8px; background: #f9fbfb; }
+  .app-shell input[type="file"]::file-selector-button { border-radius: 6px; border-color: var(--company-border); color: var(--company-strong); }
+  .app-shell .form-grid .check-row,.app-shell .form-stack .check-row { border-radius: 8px; }
+  .app-shell .check-row:has(input:checked) { border-color: var(--company-border); background: var(--company-soft); }
+  .app-shell :is(.document-card,.document-reader) { border-radius: 10px; border-color: var(--surface-line); }
+  .app-shell .table-wrap { border-radius: 9px; }
+  .app-shell .data-table th {
+    background: linear-gradient(180deg,#f7fafa,#f1f5f5); color: #435d63;
+    border-bottom-color: var(--surface-line); letter-spacing: .055em;
+  }
+  .app-shell .data-table tbody tr:nth-child(even) { background: #fafcfc; }
+  .app-shell .data-table tbody tr:hover,.app-shell .data-table tbody tr:focus-within { background: var(--detail-soft); }
+  .app-shell .data-table .table-main { color: var(--company-strong); font-weight: 665; }
+  .app-shell .table-arrow { color: var(--company-accent); }
+
+  /* Preserve the dashboard's information and grid; refine the surfaces. */
+  .app-shell .company-dashboard-page .company-dashboard-heading {
+    border-color: var(--company-border); border-left-width: 1px; border-radius: 13px;
+    background: linear-gradient(115deg,#fff 45%,var(--detail-soft)); box-shadow: var(--surface-shadow);
+  }
+  .app-shell .company-dashboard-page .company-dashboard-heading::before { display: block; width: 4px; background: var(--detail-fresh); }
+  .app-shell .company-dashboard-page .company-dashboard-heading::after {
+    display: block; content: ""; position: absolute; inset: auto 24px 0 auto;
+    width: 112px; height: 3px; border: 0; background: var(--brand-signature); pointer-events: none;
+  }
+  .app-shell .company-dashboard-page .company-dashboard-heading h1 { color: var(--company-strong); font-weight: 665; }
+  .app-shell .company-dashboard-page .company-metric-grid {
+    gap: 12px; overflow: visible; border: 0; border-radius: 0; background: transparent;
+  }
+  .app-shell .company-dashboard-page .company-metric,
+  .app-shell .company-dashboard-page .company-metric:last-child {
+    position: relative; border: 1px solid var(--surface-line); border-top: 3px solid var(--detail-fresh);
+    border-radius: 11px; background: #fff; box-shadow: var(--surface-shadow);
+    transition: border-color .18s,box-shadow .18s;
+  }
+  .app-shell .company-dashboard-page .company-metric:hover,
+  .app-shell .company-dashboard-page .company-metric:hover:last-child {
+    border: 1px solid var(--company-border); border-top: 3px solid var(--detail-fresh);
+    background: #fff; box-shadow: 0 4px 16px #203b3610;
+  }
+  .app-shell .company-dashboard-page .company-metric strong { color: var(--company-strong); }
+  .app-shell .company-dashboard-page :is(.company-chart-card,.company-alerts,.company-process-group,.company-recent-section) {
+    border-color: var(--surface-line); border-radius: 12px; background: #fff; box-shadow: var(--surface-shadow);
+  }
+  .app-shell .company-dashboard-page > .section-card:not(.company-alerts) { border-radius: 12px; box-shadow: var(--surface-shadow); }
+  .app-shell .company-dashboard-page .company-chart-card { border-top: 3px solid var(--company-accent); }
+  .app-shell .company-dashboard-page .company-chart-head h2 { font-weight: 680; }
+  .app-shell .company-dashboard-page .company-chart-total strong { color: var(--company-strong); }
+  .app-shell .company-dashboard-page .company-control-summary {
+    border-color: var(--surface-line); border-radius: 11px; background: #fff; box-shadow: var(--surface-shadow);
+  }
+  .app-shell .company-dashboard-page .company-control-item > svg { color: var(--company-accent); }
+  .app-shell .company-dashboard-page .company-financial-overview {
+    border-color: var(--company-border); border-radius: 11px;
+    background: linear-gradient(115deg,var(--company-soft),#fff); box-shadow: var(--surface-shadow);
+  }
+  .app-shell .company-dashboard-page .company-alerts .count-pill {
+    border-radius: 7px; background: var(--detail-soft); color: var(--company-strong); border-color: var(--company-border);
+  }
+  .app-shell .company-dashboard-page .company-process-heading {
+    border-radius: 11px 11px 0 0; border-bottom-color: var(--surface-line);
+    background: linear-gradient(120deg,var(--detail-soft),#fff);
+  }
+  .app-shell .company-dashboard-page .company-process-heading h2 { color: var(--company-strong); }
+  .app-shell .company-dashboard-page .company-recent-section .data-table th { background: var(--detail-soft); }
+  .app-shell .company-dashboard-page .company-priority-note { border-radius: 9px; }
+
+  .app-shell .company-choice,.app-shell .company-choice:last-child {
+    border-radius: 12px; border-color: var(--company-border); box-shadow: var(--surface-shadow);
+  }
+  .app-shell .company-choice--eyj { border-color: #c7d9e7; }
+  .app-shell .company-choice-identity { background: linear-gradient(120deg,#fff,#eef8f1); }
+  .app-shell .company-choice--eyj .company-choice-identity { background: linear-gradient(120deg,#fff,#eef5fb); }
+}
+@media screen and (max-width:650px) {
+  .app-shell .company-dashboard-page .company-metric-grid { gap: 9px; }
+  .app-shell .company-dashboard-page .company-metric { padding: 14px; }
+  .app-shell .company-dashboard-page .company-dashboard-heading { border-radius: 11px; }
+}
+@media (prefers-reduced-motion:reduce) {
+  .app-shell :is(.button,.company-metric) { transition: none; }
+}
