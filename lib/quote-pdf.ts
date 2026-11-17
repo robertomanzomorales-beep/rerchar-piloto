@@ -12,6 +12,7 @@ export async function renderQuotePdf(quote:Quote,lines:QuoteLine[],warning="",ro
   const regular=await doc.embedFont(await readFile(resolve(process.cwd(),"public/fonts/montserrat-regular.ttf")),{subset:true});
   const bold=await doc.embedFont(await readFile(resolve(process.cwd(),"public/fonts/montserrat-bold.ttf")),{subset:true});
   const logo=quote.issuer==="rerchar"?await doc.embedPng(await readFile(resolve(process.cwd(),"public/rerchar-logo-transparente.png"))):null;
+  const sicep=quote.issuer==="rerchar"?await doc.embedPng(await readFile(resolve(process.cwd(),"public/rerchar-sicep.png"))):null;
   const certifications=quote.issuer==="rerchar"?await doc.embedPng(await readFile(resolve(process.cwd(),"public/rerchar-certificaciones-iso.png"))):null;
   const isRerchar=quote.issuer==="rerchar";
   const dark=isRerchar?rgb(0.12,0.18,0.16):rgb(0.12,0.18,0.25);
@@ -54,7 +55,8 @@ export async function renderQuotePdf(quote:Quote,lines:QuoteLine[],warning="",ro
     page.drawRectangle({x:0,y:830,width:595.28,height:12,color:green});
     if(logo)page.drawImage(logo,{x:45,y:755,width:175,height:61});
     else {write("E y J",45,781,25,bold,green);write("SERVICIOS INTEGRALES",46,761,8,bold,gray);}
-    if(certifications)page.drawImage(certifications,{x:234,y:767,width:103.5,height:36});
+    if(sicep)page.drawImage(sicep,{x:236,y:767,width:100,height:100*sicep.height/sicep.width});
+    if(certifications)page.drawImage(certifications,{x:290,y:707,width:260,height:260*certifications.height/certifications.width});
     write(issuer.name,45,736,9,bold);write(`RUT ${issuer.tax_id}`,45,721,8,regular,gray);
     write(continuation?"COTIZACIÓN · CONTINUACIÓN":"COTIZACIÓN COMERCIAL",350,791,10,bold,green);
     write(quoteFolio(quote),350,763,19,bold);

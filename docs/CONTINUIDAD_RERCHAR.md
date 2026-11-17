@@ -1,5 +1,12 @@
 # Continuidad RERCHAR — 17 de noviembre de 2026
 
+## Logos de RERCHAR y corrección de la matriz — 17/11
+
+- Roberto aportó `sicep.png` y `CERT-PIE-Rerchar(1).png` y pidió retirar de la primera observación la referencia a una empresa ajena. El N.º 1 solicita incorporar logos al PDF: no corresponde añadirle como dependencia un certificado. Esta corrección prevalece sobre los registros anteriores de ese supuesto pendiente.
+- El formato conserva el logo RERCHAR, agrega SICEP y utiliza la franja de certificaciones aportada, con proporciones originales y transparencia. Se repiten en las páginas de continuación de RERCHAR. Se revisaron PDFs de una página, de continuación y de E y J con datos ficticios. Los archivos aportados se incorporan sin modificar sus píxeles.
+- La matriz conserva las 84 observaciones y sus vistos buenos. Se corrige la nota N.º 1 y pasa a **Disponible en piloto**: **76 disponibles, 1 parcial y 7 ampliaciones**. El único parcial técnico es el recorrido público de cotización, respuesta y recepción del acuse (N.º 76). El VB de cierre de RERCHAR sigue pendiente.
+- La modificación se aplica al generar borradores y nuevas versiones; los PDF ya emitidos conservan su respaldo. No se agregan migraciones ni se envían cotizaciones reales en las verificaciones.
+
 ## Cierre técnico de la respuesta de cotizaciones — 17/11
 
 - **Publicación autorizada:** Roberto autorizó explícitamente el 17/11 publicar estas correcciones en `main` de `robertomanzomorales-beep/rerchar-piloto` y desplegarlas en Vercel. Esta autorización resuelve el bloqueo previo de la revisión automática. El lote incluye la corrección de respuestas y acuses, sus pruebas y los registros de continuidad. Verificar el despliegue principal del nuevo commit antes de dar la publicación por terminada. La matriz se guardó como versión 4, con la evidencia nueva y los estados originales.
@@ -8,7 +15,7 @@
 - El resultado del acuse se agrega a la auditoría como `quote_response_ack`, asociado al hash del enlace utilizado. Un fallo SMTP conserva la decisión y muestra el acuse pendiente, también al recargar. El acuse de una versión anterior no confirma una nueva respuesta. No se agregan migraciones.
 - `npm run test:quote-response-http` reproduce el recorrido con Next.js real, formularios y redirecciones, base temporal y SMTP exclusivamente en loopback. Comprueba seis cotizaciones de ambas empresas: aceptación, rechazo, respuesta repetida y simultánea, enlace vencido/desconocido/reemplazado, confirmación persistente, fallo del acuse y auditoría. Los nueve mensajes quedan en memoria y los destinatarios son ficticios.
 - Verificación: **48 pruebas automáticas aprobadas**, TypeScript y compilación de producción correctos. También pasó la regresión de nueva versión, invalidación del enlace anterior y constancia de un acuse independiente para la nueva respuesta.
-- La observación 76 sigue parcial: falta una cotización de revisión acordada, recibida por correo real, apertura del enlace publicado, respuesta y recepción del acuse. El SICEP vigente propio de RERCHAR sigue pendiente. No se modifica ningún VB ni se declara aprobada la matriz: **75 disponibles, 2 parciales y 7 ampliaciones**.
+- La observación 76 sigue parcial: falta una cotización de revisión acordada, recibida por correo real, apertura del enlace publicado, respuesta y recepción del acuse. El formato N.º 1 quedó completado con los logos aportados el 17/11. No se modifica ningún VB ni se declara aprobada la matriz: **76 disponibles, 1 parcial y 7 ampliaciones**.
 - La evidencia de N.º 76 se actualiza en la matriz vigente, conservando su identidad y los estados de todas las observaciones. Antes de afirmar la publicación, verificar el check **Vercel – rerchar-piloto** del commit de este lote.
 
 ## Correo y vigencia de la respuesta del cliente
@@ -19,7 +26,7 @@
 - `tests/quote-email.test.ts` recorre ambas empresas con una base aislada y un servidor SMTP que sólo escucha en loopback: envío, PDF idéntico al respaldo guardado, CC, vencimiento a medianoche de Chile, aceptación/rechazo, acuse y bloqueo de una segunda respuesta. Los destinatarios de este recorrido son ficticios y los mensajes permanecen en memoria.
 - Verificación posterior: suite completa con **42 pruebas aprobadas, 0 fallidas**; compilación de producción y TypeScript correctos.
 - La prueba SMTP real y el recorrido automatizado aportan evidencias distintas. Sigue pendiente el recorrido público con un caso de revisión acordado: abrir la cotización recibida, responder desde su enlace y comprobar el acuse en el correo del destinatario. La observación 76 conserva su estado parcial hasta completar ese recorrido.
-- El certificado SICEP vigente y propio de RERCHAR sigue pendiente. El hosting definitivo se evaluará el 17/11 para la entrega objetivo del 18/11. La matriz mantiene 75 disponibles, 2 parciales y 7 ampliaciones a evaluar.
+- El formato N.º 1 quedó completado con los logos aportados el 17/11. El hosting definitivo se evaluará el 17/11 para la entrega objetivo del 18/11. La matriz actual mantiene 76 disponibles, 1 parcial y 7 ampliaciones a evaluar.
 
 ## Reanudación y revisión de la beta del 18 de noviembre
 
@@ -28,8 +35,8 @@
 - Se aplicaron las **68 migraciones** actuales en una base local independiente y se completaron **135 comprobaciones HTTP**: accesos de administración para ambas empresas, fichas de servicio y cotización, carpeta del cliente, EDP/calendario, PDF, Excel y CSV; además, restricciones de operaciones, conductor, cliente y visitantes sin sesión. Los casos usan dos clientes ficticios y cinco cuentas locales; no se insertaron registros ni se enviaron correos en producción.
 - Las comprobaciones de cliente/conductor no mostraron el cliente ajeno en paneles ni reportes. Las descargas ajenas devuelven 404, las descargas sin sesión 401 y las administrativas con perfil insuficiente 403. Las páginas con `notFound()` después de iniciar el streaming pueden conservar HTTP 200 e incluir el marcador 404 de Next; se comprobó el contenido de rechazo, no sólo el estado HTTP.
 - Se corrigió el título accesible de cada punto del gráfico para entregarlo como un texto único a React. El recorrido posterior ya no registra la advertencia. El diseño, los colores verde/azul y los datos del panel se conservan.
-- Al corte inicial, todavía no estaban configuradas las variables SMTP. La configuración y la prueba real posteriores se detallan arriba. No se dispone de un SICEP vigente propio de RERCHAR; tampoco debe darse por realizado el recorrido público completo de la respuesta y el acuse.
-- La matriz vigente conserva **84 observaciones: 75 disponibles para prueba, 2 parciales y 7 ampliaciones a evaluar**. No se modificaron sus estados por haber pasado las pruebas técnicas. Los responsables todavía deben probar sus casos reales.
+- Al corte inicial, todavía no estaban configuradas las variables SMTP. La configuración y la prueba real posteriores se detallan arriba. El formato de logos N.º 1 se resolvió el 17/11; el recorrido público completo de la respuesta y el acuse sigue pendiente.
+- El corte inicial del 16/11 registraba 84 observaciones: 75 disponibles, 2 parciales y 7 ampliaciones. El formato de logos se completó el 17/11 y el estado actual figura al comienzo de este registro. Los responsables todavía deben probar sus casos reales y dar su VB.
 - Ver `docs/REVISION_BETA_18-11-2026.md` para el recorrido y las dependencias de entrega. Este lote no agrega migraciones.
 - Roberto autorizó expresamente el 16/11 publicar este lote de código y documentos de continuidad en el repositorio GitHub de RERCHAR y desplegarlo en Vercel. La autorización comprende la corrección del gráfico y ambos registros de revisión/continuidad. Comprobar el despliegue principal antes de dar la publicación por completada.
 
@@ -87,5 +94,5 @@ env -u DATABASE_URL -u NODE_ENV node --import tsx --test --test-concurrency=3 te
 - Existe además un check de un proyecto duplicado **Vercel – rerchar-piloto-pjlu**, fallido en el commit anterior; distinguirlo del proyecto principal.
 - La conexión Vercel de esta sesión devolvió 403 para el equipo del proyecto. El estado del despliegue se puede contrastar con los checks del commit en GitHub.
 - Los paneles publicados ya se revisaron en escritorio y ancho móvil. La revisión visual de Cobranza con datos de prueba debe hacerse en el entorno aislado; su recorrido de servidor, formularios y CSV ya fue comprobado por HTTP. No poblar producción con registros de prueba.
-- El corte anterior dejó SICEP propio de RERCHAR y SMTP real como parciales; no se resolvieron en esta entrega.
+- El formato de logos N.º 1 ya está disponible. SMTP está habilitado; falta el recorrido público completo de N.º 76 y la recepción del acuse por el destinatario.
 - Al continuar, leer este registro y el estado Git actual. Mantener un registro breve y actualizado para que la continuidad no dependa de la longitud del chat.
