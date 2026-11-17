@@ -40,6 +40,13 @@ export default function Shell({ actor, children }: { actor: Actor; children: Rea
   },[pathname,routeCompany]);
   useEffect(()=>{setMobileOpen(false);setCompanyOpen(false);},[pathname]);
   useEffect(()=>{
+    if(!companyOpen)return;
+    const dismiss=(event:PointerEvent)=>{if(event.target instanceof Element&&!event.target.closest('.company-picker'))setCompanyOpen(false);};
+    const onKey=(event:KeyboardEvent)=>{if(event.key==="Escape")setCompanyOpen(false);};
+    document.addEventListener("pointerdown",dismiss);document.addEventListener("keydown",onKey);
+    return()=>{document.removeEventListener("pointerdown",dismiss);document.removeEventListener("keydown",onKey);};
+  },[companyOpen]);
+  useEffect(()=>{
     if(!mobileOpen)return;
     const previous=document.body.style.overflow;
     document.body.style.overflow="hidden";
@@ -106,11 +113,12 @@ export default function Shell({ actor, children }: { actor: Actor; children: Rea
   ];
   const searchItems=[{href:activeCompany?`/empresa/${activeCompany}`:"/",text:"Panel de empresa",group:"Inicio"},
     ...(activeCompany?links.filter(link=>link.visible).map(link=>({href:companyHref(link.href),text:link.text,group:link.group})):[])];
-  const activeHref=links.filter(link=>link.visible&&(pathname===link.href||pathname.startsWith(`${link.href}/`)))
-    .sort((a,b)=>b.href.length-a.href.length)[0]?.href;
+  const activeLink=links.filter(link=>link.visible&&(pathname===link.href||pathname.startsWith(`${link.href}/`)))
+    .sort((a,b)=>b.href.length-a.href.length)[0];
+  const activeHref=activeLink?.href;
   const activeGroup=links.find(link=>link.href===activeHref)?.group;
   const navKey=`${pathname}:${activeCompany??"selector"}`;
-  const nav = (mobile=false) => <nav className="nav-items" aria-label={mobile?"Navegación móvil":"Navegación principal"}><Link href={activeCompany?`/empresa/${activeCompany}`:"/"} onClick={()=>mobile&&setMobileOpen(false)} className={`nav-link ${pathname==="/"||pathname.startsWith("/empresa/")?"active":""}`}><LayoutDashboard size={18}/> Panel de {selectedName??"empresas"} <NavPendingHint/></Link>{["Comercial","Operación","Cierre y control","Abastecimiento","Recursos compartidos","Configuración"].map(group=>{
+  const nav = (mobile=false) => <nav className="nav-items" aria-label={mobile?"Navegación móvil":"Navegación principal"}><Link href={activeCompany?`/empresa/${activeCompany}`:"/"} aria-current={pathname==="/"||pathname.startsWith("/empresa/")?"page":undefined} onClick={()=>mobile&&setMobileOpen(false)} className={`nav-link ${pathname==="/"||pathname.startsWith("/empresa/")?"active":""}`}><LayoutDashboard size={18}/> Panel de {selectedName??"empresas"} <NavPendingHint/></Link>{["Comercial","Operación","Cierre y control","Abastecimiento","Recursos compartidos","Configuración"].map(group=>{
     const groupLinks=activeCompany?links.filter(link=>link.group===group&&link.visible):[];
     const active=groupLinks.some(link=>pathname===link.href||pathname.startsWith(`${link.href}/`));
     const groupState=expanded.path===navKey?expanded.groups:{"Comercial":true};
@@ -119,9 +127,10 @@ export default function Shell({ actor, children }: { actor: Actor; children: Rea
     return groupLinks.length?<div className={`nav-group ${isOpen?"expanded":""}`} data-ui-tone={appearance.tone} key={group}><button type="button" className="nav-group-toggle" aria-expanded={isOpen} onClick={()=>setExpanded(old=>{
       const groups=old.path===navKey?old.groups:{"Comercial":true};
       return {path:navKey,groups:{...groups,[group]:!(groups[group]??active)}};
-    })}><span className="nav-group-label"><GroupIcon size={14} strokeWidth={1.8} aria-hidden="true"/>{group}</span><ChevronDown size={16}/></button><div className="nav-group-panel" inert={!isOpen}><div className="nav-group-inner">{groupLinks.map(link=><Link key={link.href} href={companyHref(link.href)} onClick={()=>mobile&&setMobileOpen(false)} className={`nav-link ${activeHref===link.href?"active":""}`}><link.icon size={18} strokeWidth={1.9}/>{link.text}<NavPendingHint/></Link>)}</div></div></div>:null;
+    })}><span className="nav-group-label"><GroupIcon size={14} strokeWidth={1.8} aria-hidden="true"/>{group}</span><ChevronDown size={16}/></button><div className="nav-group-panel" inert={!isOpen}><div className="nav-group-inner">{groupLinks.map(link=><Link key={link.href} href={companyHref(link.href)} aria-current={activeHref===link.href?"page":undefined} onClick={()=>mobile&&setMobileOpen(false)} className={`nav-link ${activeHref===link.href?"active":""}`}><link.icon size={18} strokeWidth={1.9}/>{link.text}<NavPendingHint/></Link>)}</div></div></div>:null;
   })}</nav>;
   return <div className="app-shell" data-company={activeCompany??"selector"} data-section-tone={activeGroup?navigationAppearance[activeGroup].tone:"green"}>
+    <a href="#workspace-content" className="workspace-skip">Ir al contenido</a>
     <aside className="sidebar">
       <Link href="/" className="brand brand-sidebar" aria-label="Seleccionar empresa">{activeCompany==="e_y_j"?<span className="eyj-brand"><strong>E y J</strong><small>Servicios Integrales</small></span>:activeCompany==="rerchar"?<Image src="/rerchar-logo-transparente.png" alt="RERCHAR Economía Circular" width={892} height={311} loading="eager" className="brand-art"/>:<span className="platform-brand"><Image src="/rerchar-logo-transparente.png" alt="RERCHAR" width={892} height={311} loading="eager"/><i aria-hidden="true"/><strong>E y J</strong></span>}<span className="system-name"><strong>{selectedName??"OPERACIÓN INDUSTRIAL"}</strong><span>Plataforma operativa</span></span></Link>
       <button type="button" className="sidebar-search-trigger" onClick={()=>setSearchOpen(true)}><Search size={18}/><span>Buscar en el sistema...</span><kbd>⌘ K</kbd></button>
@@ -135,10 +144,10 @@ export default function Shell({ actor, children }: { actor: Actor; children: Rea
       </div>
     </aside>
     <div className="main-area">
-      <header className="topbar"><Link href={activeCompany?`/empresa/${activeCompany}`:"/"} className="mobile-brand" aria-label={selectedName?`Panel de ${selectedName}`:"Seleccionar empresa"}>{activeCompany==="rerchar"?<Image src="/rerchar-logo-transparente.png" alt="" width={892} height={311} loading="eager" className="mobile-brand-logo"/>:activeCompany==="e_y_j"?<span className="mobile-brand-eyj" aria-hidden="true">E y J</span>:<span className="mobile-brand-combined"><Image src="/rerchar-logo-transparente.png" alt="" width={892} height={311} loading="eager"/><i aria-hidden="true"/><strong>E y J</strong></span>}<span className="mobile-brand-copy"><strong>{activeCompany==="rerchar"?"RERCHAR":activeCompany==="e_y_j"?"Servicios Integrales":"Plataforma operativa"}</strong><small>{activeCompany==="rerchar"?"GESTIÓN DE MATERIALES":activeCompany==="e_y_j"?"SERVICIOS INDUSTRIALES":"RERCHAR · E Y J"}</small></span></Link><span className="topbar-label">{selectedName??"RERCHAR / E y J"} <span>Plataforma operativa</span></span><div className="topbar-actions"><button type="button" className="topbar-search-trigger" onClick={()=>setSearchOpen(true)} aria-label="Buscar"><Search size={19}/><span>Buscar módulos</span></button><span className="topbar-user">{actor.name}</span></div>
+      <header className="topbar"><Link href={activeCompany?`/empresa/${activeCompany}`:"/"} className="mobile-brand" aria-label={selectedName?`Panel de ${selectedName}`:"Seleccionar empresa"}>{activeCompany==="rerchar"?<Image src="/rerchar-logo-transparente.png" alt="" width={892} height={311} loading="eager" className="mobile-brand-logo"/>:activeCompany==="e_y_j"?<span className="mobile-brand-eyj" aria-hidden="true">E y J</span>:<span className="mobile-brand-combined"><Image src="/rerchar-logo-transparente.png" alt="" width={892} height={311} loading="eager"/><i aria-hidden="true"/><strong>E y J</strong></span>}<span className="mobile-brand-copy"><strong>{activeCompany==="rerchar"?"RERCHAR":activeCompany==="e_y_j"?"Servicios Integrales":"Plataforma operativa"}</strong><small>{activeCompany==="rerchar"?"GESTIÓN DE MATERIALES":activeCompany==="e_y_j"?"SERVICIOS INDUSTRIALES":"RERCHAR · E Y J"}</small></span></Link><nav className="workspace-breadcrumb" aria-label="Ubicación actual"><Link href={activeCompany?`/empresa/${activeCompany}`:"/"}><span className="workspace-company-dot" aria-hidden="true"/>{selectedName??"Empresas"}</Link><span aria-hidden="true">/</span><span>{activeGroup??"Vista general"}</span>{activeLink&&<><span aria-hidden="true">/</span><strong aria-current="page">{activeLink.text}</strong></>}</nav><div className="topbar-actions"><button type="button" className="topbar-search-trigger" onClick={()=>setSearchOpen(true)} aria-label="Buscar"><Search size={16}/><span>Buscar módulos</span><kbd>⌘ K</kbd></button><span className="topbar-user"><span className="topbar-avatar" aria-hidden="true">{actor.name.trim().slice(0,1).toUpperCase()}</span>{actor.name}</span></div>
         <button type="button" ref={mobileToggle} className="mobile-nav-trigger" aria-label="Abrir menú" aria-expanded={mobileOpen} aria-controls="mobile-navigation" onClick={()=>{setCompanyOpen(true);setMobileOpen(true);}}><Menu size={22}/></button>
       </header>
-      <div className="page-content">{children}</div>
+      <main id="workspace-content" tabIndex={-1} className="page-content">{children}</main>
     </div>
     {mobileOpen&&<div className="mobile-nav-layer"><button type="button" className="mobile-nav-backdrop" aria-label="Cerrar menú" onClick={()=>setMobileOpen(false)}/><aside ref={mobileDrawer} id="mobile-navigation" role="dialog" aria-modal="true" aria-label="Menú de navegación" className="mobile-nav-drawer"><div className="mobile-nav-heading"><div><small>PLATAFORMA OPERATIVA</small><strong>{selectedName??"Elija una empresa"}</strong></div><button type="button" ref={mobileClose} aria-label="Cerrar menú" onClick={()=>{setMobileOpen(false);mobileToggle.current?.focus();}}><X size={21}/></button></div><div className="mobile-nav-scroll"><div className="mobile-nav-caption">Cambiar empresa</div>{companyOptions}<button type="button" className="mobile-search-trigger" onClick={()=>{setMobileOpen(false);setSearchOpen(true);}}><Search size={18}/> Buscar un módulo</button><div className="mobile-nav-caption">Navegación</div>{nav(true)}<div className="mobile-nav-footer"><span>{actor.name} · {actor.role==="admin"?"Administración":actor.role==="operaciones"?"Operaciones":actor.role==="conductor"?"Conductor":"Cliente"}</span><form action={logoutAction}><SubmitButton className="logout"><LogOut size={17}/> Cerrar sesión</SubmitButton></form></div></div></aside></div>}
     <GlobalSearch open={searchOpen} onClose={()=>setSearchOpen(false)} items={searchItems}/>
