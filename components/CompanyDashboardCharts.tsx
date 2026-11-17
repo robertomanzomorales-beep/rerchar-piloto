@@ -1,4 +1,5 @@
 import Link from "next/link";
+import {ChartNoAxesCombined,ChartPie} from "lucide-react";
 
 export type MonthActivity={period:string;opened:string;closed:string};
 export type ServiceStatus={label:string;status:string;count:number};
@@ -18,7 +19,7 @@ export function ActivityChart({months,company,currentPeriod}:{months:MonthActivi
   const series=(kind:"opened"|"closed")=>months.map((month,index)=>`${index?"L":"M"}${x(index)} ${y(number(month[kind]))}`).join(" ");
   const enteredArea=`${series("opened")} L${x(months.length-1)} 170 L${x(0)} 170 Z`;
   return <section className={`section-card company-chart-card company-chart-card--activity${entered+closed===0?" company-chart-card--empty":""}`} aria-labelledby="activity-title">
-    <div className="company-chart-head"><div><span className="eyebrow">EVOLUCIÓN · 6 MESES</span><h2 id="activity-title">Actividad de servicios</h2><p>Solicitudes creadas y operaciones cerradas</p></div><div className="company-chart-total"><strong>{entered}</strong><span>creadas</span></div></div>
+    <div className="company-chart-head"><div><span className="eyebrow">EVOLUCIÓN · 6 MESES</span><h2 id="activity-title"><ChartNoAxesCombined className="chart-title-glyph" size={16} aria-hidden="true"/>Actividad de servicios</h2><p>Solicitudes creadas y operaciones cerradas</p></div><div className="company-chart-total"><strong>{entered}</strong><span>creadas</span></div></div>
     {entered+closed>0&&<div className="company-chart-legend"><span><i className="legend-opened"/> Solicitudes <b>{entered}</b></span><span><i className="legend-closed"/> Cierres <b>{closed}</b></span></div>}
     {entered+closed>0?<figure className="company-chart-figure"><svg className="company-activity-svg" viewBox="0 0 660 215" role="img" aria-label={description} preserveAspectRatio="xMidYMid meet">
       <defs><linearGradient id={`activity-area-${company}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--company-accent)" stopOpacity=".14"/><stop offset="100%" stopColor="var(--company-accent)" stopOpacity="0"/></linearGradient></defs>
@@ -50,7 +51,7 @@ export function StatusComposition({items,company}:{items:ServiceStatus[];company
   const total=items.reduce((sum,item)=>sum+item.count,0);
   const completed=items.find(item=>item.status==="completada")?.count??0;
   return <section className={`section-card company-chart-card company-chart-card--status${total===0?" company-chart-card--empty":""}`} aria-labelledby="status-title">
-    <div className="company-chart-head"><div><span className="eyebrow">DISTRIBUCIÓN ACTUAL</span><h2 id="status-title">Cartera operativa</h2><p>Servicios por etapa, incluidos los cancelados</p></div><div className="company-chart-total"><strong>{total}</strong><span>servicios</span></div></div>
+    <div className="company-chart-head"><div><span className="eyebrow">DISTRIBUCIÓN ACTUAL</span><h2 id="status-title"><ChartPie className="chart-title-glyph" size={16} aria-hidden="true"/>Cartera operativa</h2><p>Servicios por etapa, incluidos los cancelados</p></div><div className="company-chart-total"><strong>{total}</strong><span>servicios</span></div></div>
     {total>0?<><div className="company-composition" role="img" aria-label={items.map(item=>`${item.label}: ${item.count} de ${total}`).join("; ")}>
       {items.filter(item=>item.count>0).map(item=><span className={`company-composition-segment status-${item.status}`} key={item.status} style={{width:`${item.count/total*100}%`}} title={`${item.label}: ${item.count}`}/>)}
     </div><p className="company-composition-caption"><strong>{Math.round(completed/total*100)}%</strong> completados sobre el total registrado</p><div className="company-status-chart">{items.map(item=><Link href={`/solicitudes?empresa=${company}&estado=${item.status}`} className="company-status-row" key={item.status}>

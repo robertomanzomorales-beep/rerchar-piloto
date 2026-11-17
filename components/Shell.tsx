@@ -4,12 +4,18 @@ import Link from "next/link";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
-import { LayoutDashboard, ClipboardList, CalendarDays, Boxes, LogOut, Menu, ShieldCheck, Wrench, FileBarChart2, ShoppingCart, Warehouse, Fuel, Container, Users, Banknote, FileCheck2, ScrollText, FileBadge2, Building2, FileText, ReceiptText, Search, ChevronDown, MapPin, X } from "lucide-react";
+import { LayoutDashboard, ClipboardList, CalendarDays, Boxes, LogOut, Menu, ShieldCheck, Wrench, FileBarChart2, ShoppingCart, Warehouse, Fuel, Container, Users, Banknote, FileCheck2, ScrollText, FileBadge2, Building2, FileText, ReceiptText, Search, ChevronDown, MapPin, Settings2, X } from "lucide-react";
 import type { Actor } from "@/lib/auth";
 import { logoutAction } from "@/app/actions";
 import { NavPendingHint, SubmitButton } from "@/components/Transition";
 import GlobalSearch from "@/components/GlobalSearch";
 import {companyForPath} from "@/lib/companies";
+
+const navigationAppearance:Record<string,{tone:string;icon:typeof FileText}>={
+  Comercial:{tone:"blue",icon:FileText},Operación:{tone:"cyan",icon:ClipboardList},
+  "Cierre y control":{tone:"amber",icon:ReceiptText},Abastecimiento:{tone:"orange",icon:ShoppingCart},
+  "Recursos compartidos":{tone:"lime",icon:Wrench},Configuración:{tone:"slate",icon:Settings2},
+};
 
 export default function Shell({ actor, children }: { actor: Actor; children: React.ReactNode }) {
   const pathname = usePathname();
@@ -102,18 +108,20 @@ export default function Shell({ actor, children }: { actor: Actor; children: Rea
     ...(activeCompany?links.filter(link=>link.visible).map(link=>({href:companyHref(link.href),text:link.text,group:link.group})):[])];
   const activeHref=links.filter(link=>link.visible&&(pathname===link.href||pathname.startsWith(`${link.href}/`)))
     .sort((a,b)=>b.href.length-a.href.length)[0]?.href;
+  const activeGroup=links.find(link=>link.href===activeHref)?.group;
   const navKey=`${pathname}:${activeCompany??"selector"}`;
   const nav = (mobile=false) => <nav className="nav-items" aria-label={mobile?"Navegación móvil":"Navegación principal"}><Link href={activeCompany?`/empresa/${activeCompany}`:"/"} onClick={()=>mobile&&setMobileOpen(false)} className={`nav-link ${pathname==="/"||pathname.startsWith("/empresa/")?"active":""}`}><LayoutDashboard size={18}/> Panel de {selectedName??"empresas"} <NavPendingHint/></Link>{["Comercial","Operación","Cierre y control","Abastecimiento","Recursos compartidos","Configuración"].map(group=>{
     const groupLinks=activeCompany?links.filter(link=>link.group===group&&link.visible):[];
     const active=groupLinks.some(link=>pathname===link.href||pathname.startsWith(`${link.href}/`));
     const groupState=expanded.path===navKey?expanded.groups:{"Comercial":true};
     const isOpen=groupState[group]??active;
-    return groupLinks.length?<div className={`nav-group ${isOpen?"expanded":""}`} key={group}><button type="button" className="nav-group-toggle" aria-expanded={isOpen} onClick={()=>setExpanded(old=>{
+    const appearance=navigationAppearance[group],GroupIcon=appearance.icon;
+    return groupLinks.length?<div className={`nav-group ${isOpen?"expanded":""}`} data-ui-tone={appearance.tone} key={group}><button type="button" className="nav-group-toggle" aria-expanded={isOpen} onClick={()=>setExpanded(old=>{
       const groups=old.path===navKey?old.groups:{"Comercial":true};
       return {path:navKey,groups:{...groups,[group]:!(groups[group]??active)}};
-    })}><span>{group}</span><ChevronDown size={16}/></button><div className="nav-group-panel" inert={!isOpen}><div className="nav-group-inner">{groupLinks.map(link=><Link key={link.href} href={companyHref(link.href)} onClick={()=>mobile&&setMobileOpen(false)} className={`nav-link ${activeHref===link.href?"active":""}`}><link.icon size={18} strokeWidth={1.9}/>{link.text}<NavPendingHint/></Link>)}</div></div></div>:null;
+    })}><span className="nav-group-label"><GroupIcon size={14} strokeWidth={1.8} aria-hidden="true"/>{group}</span><ChevronDown size={16}/></button><div className="nav-group-panel" inert={!isOpen}><div className="nav-group-inner">{groupLinks.map(link=><Link key={link.href} href={companyHref(link.href)} onClick={()=>mobile&&setMobileOpen(false)} className={`nav-link ${activeHref===link.href?"active":""}`}><link.icon size={18} strokeWidth={1.9}/>{link.text}<NavPendingHint/></Link>)}</div></div></div>:null;
   })}</nav>;
-  return <div className="app-shell" data-company={activeCompany??"selector"}>
+  return <div className="app-shell" data-company={activeCompany??"selector"} data-section-tone={activeGroup?navigationAppearance[activeGroup].tone:"green"}>
     <aside className="sidebar">
       <Link href="/" className="brand brand-sidebar" aria-label="Seleccionar empresa">{activeCompany==="e_y_j"?<span className="eyj-brand"><strong>E y J</strong><small>Servicios Integrales</small></span>:activeCompany==="rerchar"?<Image src="/rerchar-logo-transparente.png" alt="RERCHAR Economía Circular" width={892} height={311} loading="eager" className="brand-art"/>:<span className="platform-brand"><Image src="/rerchar-logo-transparente.png" alt="RERCHAR" width={892} height={311} loading="eager"/><i aria-hidden="true"/><strong>E y J</strong></span>}<span className="system-name"><strong>{selectedName??"OPERACIÓN INDUSTRIAL"}</strong><span>Plataforma operativa</span></span></Link>
       <button type="button" className="sidebar-search-trigger" onClick={()=>setSearchOpen(true)}><Search size={18}/><span>Buscar en el sistema...</span><kbd>⌘ K</kbd></button>
