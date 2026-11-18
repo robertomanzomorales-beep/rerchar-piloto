@@ -1,13 +1,14 @@
 "use client";
 
 import {useState} from "react";
+import type {StatementDraft} from "@/lib/statement-form-state";
 
 type Client={id:string;name:string;tax_id:string|null;address:string|null;email:string|null};
-export default function StatementHeaderForm({clients,defaultClientId=""}:{clients:Client[];defaultClientId?:string}){
+export default function StatementHeaderForm({clients,defaultClientId="",values={}}:{clients:Client[];defaultClientId?:string;values?:StatementDraft}){
   const initial=clients.find(c=>c.id===defaultClientId);
   const [clientId,setClientId]=useState(initial?.id??"");
-  const [name,setName]=useState(initial?.name??""),[taxId,setTaxId]=useState(initial?.tax_id??""),
-    [address,setAddress]=useState(initial?.address??""),[contact,setContact]=useState(initial?.email??"");
+  const [name,setName]=useState(values.client_name??initial?.name??""),[taxId,setTaxId]=useState(values.client_tax_id??initial?.tax_id??""),
+    [address,setAddress]=useState(values.client_address??initial?.address??""),[contact,setContact]=useState(values.client_contact??initial?.email??"");
   return <>
     <label>Cliente<select name="client_id" required value={clientId} onChange={event=>{
       const id=event.target.value,client=clients.find(c=>c.id===id);setClientId(id);

@@ -175,18 +175,15 @@
   .app-shell .nav-pending { width:15px; height:15px; color:var(--company-accent); }
   .app-shell .nav-pending .loading-indicator { width:13px; height:13px; border-width:1px; }
   .app-shell .nav-link.active .nav-pending { color:#fff; }
-  .app-shell .page-loading { min-height:40vh; gap:13px; color:var(--company-strong); }
-  .app-shell .page-loading-mark { display:flex; align-items:center; gap:10px; color:var(--company-strong); font-size:13px; line-height:1; font-weight:550; letter-spacing:.07em; }
-  .app-shell .loading-brand-rerchar { color:#147552; }
-  .app-shell .loading-brand-eyj { color:#2b6493; }
-  .app-shell .loading-brand-divider { color:#9aacaa; }
-  .app-shell[data-company="rerchar"] :is(.loading-brand-eyj,.loading-brand-divider),.app-shell[data-company="e_y_j"] :is(.loading-brand-rerchar,.loading-brand-divider) { display:none; }
-  .app-shell .page-loading-rule { width:96px; height:1px; background:var(--company-border); overflow:hidden; }
-  .app-shell .page-loading-rule i { display:block; width:30%; height:100%; background:var(--company-accent); animation:loading-rule-travel 1.6s cubic-bezier(.4,0,.6,1) infinite; }
-  .app-shell .page-loading p { margin:0; color:#7a8e87; font-size:10px; line-height:1.5; letter-spacing:.01em; }
+  .app-shell .page-loading { min-height:40vh; gap:0; }
 }
-@keyframes loading-rule-travel { 0% { transform:translateX(-110%); } 100% { transform:translateX(440%); } }
+.loading-squares { display:inline-flex; align-items:center; gap:7px; padding:3px; }
+.loading-squares i { display:block; width:8px; height:8px; border-radius:1px; background:#00a870; animation:loading-squares-breathe 3.2s cubic-bezier(.45,0,.55,1) infinite; }
+.loading-squares i:nth-child(2) { background:#0060a8; animation-delay:-2.8s; }
+.loading-squares i:nth-child(3) { background:#f8c800; animation-delay:-2.4s; }
+.loading-squares i:nth-child(4) { background:#ec533f; animation-delay:-2s; }
+@keyframes loading-squares-breathe { 0%,100% { opacity:.38; transform:scale(.94); } 50% { opacity:1; transform:scale(1); } }
 @media (prefers-reduced-motion:reduce) {
-  .loading-indicator,.app-shell .page-loading-rule i { animation:none; }
+  .loading-indicator,.loading-squares i { animation:none; }
   .app-shell .nav-group-panel,.app-shell .nav-group-toggle,.app-shell .nav-link { transition:none; }
 }

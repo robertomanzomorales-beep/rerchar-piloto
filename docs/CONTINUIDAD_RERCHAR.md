@@ -1,5 +1,12 @@
 # Continuidad RERCHAR — 17 de noviembre de 2026
 
+## Corrección explícita del preloader y revisión de entrega — 18/11
+
+- Roberto rechazó el preloader con línea y nombres: pide únicamente cuatro cuadros de colores con animación muy suave. Se sustituye por cuatro cuadros de 8 px en verde, azul, amarillo y rojo del logo; respiración de opacidad lenta (3,2 s), escala mínima y sin saltos. Sin texto, líneas, nombres, porcentajes ni retardos artificiales. El nombre accesible de carga permanece sólo para lectores de pantalla; movimiento reducido mantiene los cuadros estáticos. Esta petición prevalece sobre la decisión anterior.
+- En la revisión de EDP se detectó pérdida de todos los campos al rechazar el servidor la creación del borrador. La acción ahora devuelve el error al mismo formulario, conserva encabezado y datos del cliente, formato, período, ciclo y clave de reintento. El aviso recibe foco. No crea un EDP al fallar ni modifica las validaciones de negocio ni permisos.
+- Contratos filtra faenas por cliente y limpia la faena al cambiar cliente. La fecha final limita fechas anteriores al inicio. La empresa del contrato parte de la vista elegida, manteniendo la selección explícita en registros sin clasificar. El enlace de finanzas a Cobranzas conserva RERCHAR/E y J; sin empresa confirmada conduce a elegir una antes de consultar saldos.
+- Verificación HTTP real con Next y base temporal aprobada: error sin crear borrador, conservación de todos los campos, corrección y reintento sin duplicación, número duplicado sin perder campos, rechazo por rol y empresa de enlaces. Script repetible `npm run test:statement-form-http`, excluido del despliegue. Cuatro regresiones de EDP, importación de servicios, facturación y finanzas aprobadas. Sin correos ni datos productivos modificados en las pruebas. Comprobar compilación final y publicación antes de cerrar este lote. La matriz no se modifica.
+
 ## Ajuste solicitado: selector compacto, color integrado y carga sobria — 18/11
 
 - Roberto aclaró que la presentación iba bien encaminada pero ocupaba demasiado espacio, y que el menú había perdido los colores que le gustaban. Solicitó elegancia, suavidad y un preloader corporativo fino. Añadió que la paleta debe provenir del logo de RERCHAR y formar un conjunto; prevalece sobre la decisión anterior de neutralizar iconos.

@@ -4,6 +4,7 @@ import {redirect} from "next/navigation";
 import {revalidatePath} from "next/cache";
 import {ZodError} from "zod";
 import {requireActor} from "@/lib/auth";
+import {statementDraft,type StatementFormState} from "@/lib/statement-form-state";
 import {PaymentStatementError,createPaymentStatement,saveStatementCharge,saveStatementOperation,addStatementService,linkStatementInvoice,saveStatementClientOrder,deletePaymentStatementLine,setPaymentStatementStatus,sendPaymentStatement,recordManualStatementDelivery,resolveStatementDelivery} from "@/lib/payment-statements";
 
 const val=(form:FormData,key:string)=>String(form.get(key)??"");
@@ -20,13 +21,13 @@ async function run(target:string,fn:()=>Promise<unknown>):Promise<never>{
   revalidatePath("/","layout");redirect(`${target}?ok=1`);
 }
 
-export async function createStatementAction(form:FormData){
+export async function createStatementAction(_previous:StatementFormState,form:FormData):Promise<StatementFormState>{
   const actor=await requireActor();let id:string;
   const fields=["submission_key","client_id","number","period_on","statement_type","client_name","client_tax_id",
     "client_address","client_contact","issuer_contact","contract_manager","contract_reference","notes","cycle_id"];
   const cycleId=val(form,"cycle_id");
   try{id=await createPaymentStatement(actor,select(form,fields));}
-  catch(error){redirect(`/estados-pago/nuevo?${/^[0-9a-f-]{36}$/i.test(cycleId)?`ciclo=${encodeURIComponent(cycleId)}&`:""}error=${encodeURIComponent(message(error))}`);}
+  catch(error){return {error:message(error),values:statementDraft(form)};}
   revalidatePath("/","layout");redirect(cycleId?`/estados-pago/calendario/${encodeURIComponent(cycleId)}?ok=1`:`${path(id)}?ok=1`);
 }
 export async function saveStatementOperationAction(form:FormData){
