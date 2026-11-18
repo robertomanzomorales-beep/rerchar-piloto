@@ -1,5 +1,11 @@
 # Continuidad RERCHAR — 17 de noviembre de 2026
 
+## Verificación visual del selector nuevo — 18/11
+
+- `0149a98` quedó READY. Se comprobaron ambos accesos, identidad de RERCHAR/E y J, búsqueda «flota», categoría actual abierta y Comercial cerrado al entrar a Recursos. La flota muestra ocho activos y sólo una HXHY-46; la carpeta PDF bloquea el envío sin archivo.
+- En 681 px, las tarjetas tienen el mismo alto (466 px) y ancho (310 px). En 340 px, el documento mide 337 px y las tarjetas 305 px: sin desbordamiento. Menú móvil: cambio de empresa, acceso a Flota, cierre con Escape, recuperación de foco y liberación del fondo comprobados.
+- Ajuste final de cabecera estrecha: se conserva sólo el avatar del usuario y se retira el texto duplicado de la empresa junto al logo, para dar espacio suficiente a las marcas. Publicar/comprobar este ajuste antes de dar el lote completo por terminado.
+
 ## Rediseño del selector y navegación — 18/11
 
 - Roberto aportó captura del selector y pidió rehacer la presentación y afinar el menú: logo sobredimensionado, mala proporción y acabado insuficiente. Se sustituye la composición anterior de franjas coloreadas por una entrada con dos espacios equilibrados, marcas contenidas, títulos claros, procesos y accesos explícitos.

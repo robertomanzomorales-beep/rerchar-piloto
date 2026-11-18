@@ -136,3 +136,10 @@
   }
   @media (prefers-reduced-motion:reduce) { .app-shell .gateway-company,.app-shell .gateway-company::before,.app-shell .gateway-enter { transition:none; transform:none; } }
 }
+@media screen and (max-width:450px) {
+  .app-shell .topbar-actions { gap:8px; }
+  .app-shell .topbar-user { display:inline-flex; align-items:center; width:26px; min-width:26px; max-width:26px; margin:0; gap:0; font-size:0; overflow:visible; }
+  .app-shell .topbar-avatar { width:26px; height:26px; min-width:26px; font-size:10px; }
+  .app-shell .mobile-brand-copy { display:none; }
+  .app-shell .mobile-brand-combined { flex-shrink:0; }
+}
