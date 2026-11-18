@@ -469,3 +469,7 @@
   .app-shell .fleet-week-table th.fleet-week-today { background:var(--company-soft); color:var(--company-accent); box-shadow:inset 0 3px 0 var(--company-accent); }
   .app-shell .fleet-week-table tbody th small { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; line-height:1.5; }
 }
+
+/* Maintenance forms keep the current asset visible and group only relevant fields. */
+.maintenance-fields { border: 0; padding: 0; margin: 0; min-width: 0; display: grid; gap: 12px; }
+.maintenance-fields:disabled { opacity: .65; }

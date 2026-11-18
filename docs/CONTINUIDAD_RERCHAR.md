@@ -1,5 +1,14 @@
 # Continuidad RERCHAR — 17 de noviembre de 2026
 
+## Ficha de activos y pautas de mantenimiento — 18/11
+
+- La pasada de solicitudes/agenda quedó publicada en `8256944`, despliegue principal READY. Se comprobó en vivo el inicio sin cliente preseleccionado, limpieza de centro al cambiar cliente, rango de arriendo y agenda por empresa, además de anchos de 340 px sin desbordamiento. La matriz sigue intacta.
+- En el recorrido posterior se detectó que «Actualizar activo» comenzaba con marca/modelo/año vacíos y unidad fija en kilómetros, aunque el activo seleccionado tuviese otros datos. La ficha ahora carga sus valores existentes, deshabilita la edición hasta seleccionar el activo y conserva la unidad al guardar cuando hay historial.
+- Se reprodujo con una prueba fallida el cambio indebido de unidad después de una lectura cero. El servidor ahora comprueba el historial de lecturas dentro del bloqueo del activo y rechaza ese cambio sin alterar marca, modelo, año ni unidad. Los activos sin lecturas aún permiten configurar la unidad.
+- La pauta preventiva muestra y exige sólo los campos de su frecuencia (fecha o lectura). Los activos sin odómetro/horómetro no se ofrecen para frecuencia por lectura. Los controles de movimiento de neumáticos tienen nombres accesibles por código.
+- Verificación: **64 pruebas aprobadas**, incluida la regresión de lectura cero y conservación de la ficha. No hay migraciones ni modificaciones de registros operativos reales. Comprobar compilación, publicación y selección visual de activos antes de dar por terminado este lote.
+- SII automático permanece incluido y pendiente; las seis ampliaciones y los VB conservan su clasificación. No se actualizó la matriz.
+
 ## Solicitudes y programación semanal — 18/11
 
 - Se eliminó la selección automática del primer cliente al iniciar una solicitud administrativa. Un error de servidor conserva los valores en el mismo formulario, con aviso y foco, incluyendo empresa, ruta, fechas, centro nuevo, dirección y clave de reintento. El cambio de cliente limpia el nuevo centro/dirección. No se implementa un autoguardado externo del borrador.

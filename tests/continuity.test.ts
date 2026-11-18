@@ -25,6 +25,16 @@ test("avería a orden de trabajo, repuestos y disponibilidad; planes, combustibl
   assert.equal((await continuity.listAssets(actor)).find(a=>a.id===ramp)?.reading_unit,"sin");
   await assert.rejects(()=>continuity.setAssetDetails(outsider,asset,{brand:"Marca",model:"Serie",model_year:"2020",reading_unit:"km"}),continuity.ContinuityError);
   await continuity.setAssetDetails(actor,asset,{brand:"Marca",model:"Serie",model_year:"2020",reading_unit:"km"});
+  const zeroAsset=await pilot.createAsset(actor,{code:"CAM-ZERO",label:"Activo con lectura cero",kind:"camion",plate:""});
+  await continuity.setAssetDetails(actor,zeroAsset,{brand:"Marca original",model:"Modelo original",model_year:"2024",reading_unit:"km"});
+  await continuity.recordAssetReading(actor,zeroAsset,{reading:0,note:"Lectura inicial verificada en cero"});
+  await assert.rejects(()=>continuity.setAssetDetails(actor,zeroAsset,{brand:"Marca cambiada",model:"Modelo cambiado",model_year:"2025",reading_unit:"horas"}),continuity.ContinuityError);
+  const unchanged=(await continuity.listAssets(actor)).find(a=>a.id===zeroAsset)!;
+  assert.equal(unchanged.reading_unit,"km");
+  assert.equal(unchanged.has_readings,true);
+  assert.equal(unchanged.brand,"Marca original");
+  assert.equal(unchanged.model,"Modelo original");
+  assert.equal(unchanged.model_year,2024);
   await continuity.recordAssetReading(actor,asset,{reading:100,note:"Lectura inicial del odómetro"});
   await assert.rejects(()=>continuity.recordAssetReading(actor,asset,{reading:99,note:"Lectura que retrocede"}),continuity.ContinuityError);
   const warehouse=await supply.createWarehouse(actor,{code:"B-01",name:"Principal"});

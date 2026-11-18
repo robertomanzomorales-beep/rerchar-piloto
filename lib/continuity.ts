@@ -20,10 +20,12 @@ async function audit(tx: Db, actor: Actor, action: string, entityType: string, e
     [actor.id,action,entityType,entityId,JSON.stringify(change)]);
 }
 
-export type AssetBrief = { id: string; code: string; label: string; kind: string; available: boolean; reading_unit: string; current_reading: string; brand: string | null; model: string | null; model_year: number | null };
+export type AssetBrief = { id: string; code: string; label: string; kind: string; available: boolean; reading_unit: string; current_reading: string; has_readings: boolean; brand: string | null; model: string | null; model_year: number | null };
 export async function listAssets(actor: Actor) {
   guard(actor);
-  return db.query<AssetBrief>("SELECT id,code,label,kind,available,reading_unit,current_reading,brand,model,model_year FROM assets WHERE deleted_at IS NULL ORDER BY kind,label");
+  return db.query<AssetBrief>(`SELECT a.id,a.code,a.label,a.kind,a.available,a.reading_unit,a.current_reading,a.brand,a.model,a.model_year,
+    EXISTS (SELECT 1 FROM asset_readings r WHERE r.asset_id=a.id) AS has_readings
+    FROM assets a WHERE a.deleted_at IS NULL ORDER BY a.kind,a.label`);
 }
 
 export async function setAssetDetails(actor: Actor, assetId: string, input: unknown) {
@@ -34,7 +36,10 @@ export async function setAssetDetails(actor: Actor, assetId: string, input: unkn
   await transaction(async (tx) => {
     const [asset] = await tx.query<{ current_reading: string; reading_unit: string }>("SELECT current_reading,reading_unit FROM assets WHERE id=$1 AND deleted_at IS NULL FOR UPDATE",[id]);
     if (!asset) reject("Activo no encontrado.");
-    if (Number(asset.current_reading)>0 && asset.reading_unit!==data.reading_unit) reject("No cambie la unidad de un activo con lecturas registradas.");
+    if (asset.reading_unit!==data.reading_unit) {
+      const [history]=await tx.query<{recorded:boolean}>("SELECT EXISTS (SELECT 1 FROM asset_readings WHERE asset_id=$1) AS recorded",[id]);
+      if (Number(asset.current_reading)>0 || history.recorded) reject("No cambie la unidad de un activo con lecturas registradas.");
+    }
     await tx.query("UPDATE assets SET brand=NULLIF($2,''),model=NULLIF($3,''),model_year=NULLIF($4,'')::integer,reading_unit=$5 WHERE id=$1",
       [id,data.brand,data.model,String(data.model_year),data.reading_unit]);
     await audit(tx,actor,"update_details","asset",id,data);
