@@ -128,9 +128,9 @@ export async function syncGuideStock(tx:Db,actor:Actor,itemId:string,materialId:
 
 export async function guideStockPostings(actor:Actor,guideId:string){
   manage(actor);
-  return db.query<{guide_item_id:string;material_id:string;posted_kg:string}>(`SELECT m.guide_item_id,m.material_id,(-sum(m.delta_kg))::text AS posted_kg
+  return db.query<{guide_item_id:string;material_id:string|null;posted_kg:string}>(`SELECT m.guide_item_id,i.material_id,(-sum(m.delta_kg))::text AS posted_kg
     FROM material_stock_movements m JOIN material_guide_items i ON i.id=m.guide_item_id
-    WHERE i.guide_id=$1 GROUP BY m.guide_item_id,m.material_id`,[guideId]);
+    WHERE i.guide_id=$1 GROUP BY m.guide_item_id,i.material_id ORDER BY m.guide_item_id`,[guideId]);
 }
 
 export async function receiptStockPosting(actor:Actor,receiptId:string){

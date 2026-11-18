@@ -174,4 +174,11 @@ test("Control de Guía registra una venta real con varios materiales y conserva 
     occurred_on:"2026-09-05",reference:"ACTA-12",reason:"Cliente sin permiso de ajuste"}),stock.MaterialStockError);
   assert.equal((await guides.listMaterialGuides(actor,"aluminio","venta")).length,1);
   assert.equal((await db.query<{n:string}>("SELECT count(*)::text AS n FROM audit_events WHERE entity_type='material_guide_item'"))[0].n,"3");
+  await guides.saveMaterialGuideItem(actor,id,{item_id:second.id,line_number:"2",material_id:iron.id,stock_kg:"50"});
+  const correctedPostings=(await stock.guideStockPostings(actor,id)).filter(p=>p.guide_item_id===second.id);
+  assert.equal(correctedPostings.length,1,"el ítem muestra un único descuento vigente tras cambiar de material");
+  assert.equal(correctedPostings[0].material_id,iron.id);
+  assert.equal(correctedPostings[0].posted_kg,"50.00","la reversa del material anterior no oculta el descuento actual");
+  assert.equal((await stock.listMaterialCatalog(actor)).find(m=>m.id===aluminum.id)?.quantity_kg,"500.00");
+  assert.equal((await stock.listMaterialCatalog(actor)).find(m=>m.id===iron.id)?.quantity_kg,"50.00");
 });

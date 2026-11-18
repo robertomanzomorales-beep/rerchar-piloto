@@ -5,11 +5,9 @@ import {requireActor} from "@/lib/auth";
 import {db} from "@/lib/db";
 import {getMaterialGuide,materialGuideTotals,MaterialGuideError} from "@/lib/material-guides";
 import {listMaterialCatalog,guideStockPostings} from "@/lib/material-stock";
-import {GuideHeaderFields,GuideItemFields} from "@/components/MaterialGuideForms";
-import {saveMaterialGuideItemAction,updateMaterialGuideAction} from "@/app/material-guide-actions";
-import {linkMaterialSaleInvoiceAction} from "@/app/material-guide-actions";
+import MaterialGuideForm from "@/components/MaterialGuideForm";
+import {guideHeaderDefaults,guideItemDefaults} from "@/lib/material-guide-form-state";
 import {getMaterialSaleInvoices} from "@/lib/material-sale-billing";
-import {SubmitButton} from "@/components/Transition";
 import {Notice} from "@/components/UI";
 import PrintButton from "@/components/PrintButton";
 import DocumentBrand from "@/components/DocumentBrand";
@@ -22,7 +20,7 @@ const day=(v:Date|string)=>new Intl.DateTimeFormat("es-CL",{dateStyle:"short",ti
 const iso=(v:Date|string)=>v instanceof Date?v.toISOString().slice(0,10):String(v).slice(0,10);
 const company="RERCHAR CHILE SPA";
 
-export default async function MaterialGuideDetail({params,searchParams}:{params:Promise<{id:string}>;searchParams:Promise<{error?:string;ok?:string;editar?:string}>}){
+export default async function MaterialGuideDetail({params,searchParams}:{params:Promise<{id:string}>;searchParams:Promise<{error?:string;ok?:string;editar?:string;general?:string}>}){
   const actor=await requireActor(),{id}=await params;
   if(!await moduleReady("guias"))return <ModuleUnavailable title="Control de guías" company="rerchar"/>;
   let detail;
@@ -35,6 +33,7 @@ export default async function MaterialGuideDetail({params,searchParams}:{params:
   const invoicesByItem=new Map(invoices.map(invoice=>[invoice.item_id,invoice]));
   const posted=new Map(postings.map(p=>[p.guide_item_id,Number(p.posted_kg)]));
   const today=new Intl.DateTimeFormat("sv-SE",{timeZone:"America/Santiago",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
+  const itemValues=guideItemDefaults(editing,items.length+1),headerValues=guideHeaderDefaults(guide,today);
   const mismatch=!!guide.freight_guide_reference&&guide.freight_guide_reference.trim()!==guide.guide_number.trim();
   return <>
     <div className="order-actions print-hide"><Link href="/control-guias" className="back-link"><ArrowLeft size={16}/> Todas las guías</Link><PrintButton label="Imprimir control / guardar PDF"/></div>
@@ -56,24 +55,17 @@ export default async function MaterialGuideDetail({params,searchParams}:{params:
       <div className="order-section"><h2>Flete y cierre</h2><div className="order-grid"><div><small>Transportista / valor</small><strong>{guide.freight_company||"—"} · {money(guide.freight_cost_clp)}</strong></div><div><small>Factura / estado</small><strong>{guide.freight_invoice_number||"—"} · {guide.freight_invoice_status||"—"}</strong></div><div><small>Guía transportista / pago</small><strong>{guide.freight_guide_reference||"—"} · {guide.freight_payment_required||"—"}</strong></div></div>{mismatch&&<p className="guide-alert"><AlertTriangle size={16}/> La referencia de guía del transportista difiere de esta guía; revisar antes del pago.</p>}{guide.notes&&<p>{guide.notes}</p>}</div>
       <footer className="order-footer">Control operativo interno · Los pesos y valores se calculan con las fórmulas de la planilla de guías 2026. Este documento no reemplaza la guía tributaria.</footer>
     </article>
-    {guide.movement_type==="venta"&&actor.role==="admin"&&<section id="cobranza" className="section-card print-hide"><div className="section-heading"><div><div className="eyebrow">VENTA DE MATERIAL · RERCHAR</div><h2>Factura externa y cobranza</h2></div></div>
+    {guide.movement_type==="venta"&&actor.role==="admin"&&<section id="cobranza" className="section-card print-hide material-guide-section"><div className="section-heading"><div><div className="eyebrow">VENTA DE MATERIAL · RERCHAR</div><h2>Factura externa y cobranza</h2></div></div>
       {billingReady?<><p className="helper-text">Registre el total real del documento emitido externamente, con impuestos si corresponde. Si varios materiales comparten el folio, se vinculan a una sola cuenta y un solo saldo.</p>
-        {items.map(item=>{const invoice=invoicesByItem.get(item.id);return <div className="note-block" key={item.id}><strong>Ítem {item.line_number} · {item.material_name}</strong>
+        {items.map(item=>{const invoice=invoicesByItem.get(item.id);const billingValues={item_id:item.id,invoice_number:item.invoice_number??"",issued_on:item.invoice_issued_on?iso(item.invoice_issued_on):"",due_on:"",total_clp:""};return <div className="note-block" key={item.id}><strong>Ítem {item.line_number} · {item.material_name}</strong>
           {invoice?<><p>Factura {invoice.invoice_number} · Total {money(invoice.total_clp)} · Abonado {money(invoice.paid_clp)} · Saldo {money(Math.max(0,Number(invoice.total_clp)-Number(invoice.paid_clp)))} · Vence {day(invoice.due_on)}</p>
-            <Link href="/cobranzas?empresa=rerchar">Ver factura y registrar abono →</Link></>:<form action={linkMaterialSaleInvoiceAction} className="form-grid detail-form">
-            <input type="hidden" name="guide_id" value={id}/><input type="hidden" name="item_id" value={item.id}/>
-            <label>Folio factura<input name="invoice_number" required minLength={2} maxLength={80} defaultValue={item.invoice_number??""}/></label>
-            <label>Emisión<input name="issued_on" type="date" min={iso(guide.movement_on)} max={today} defaultValue={item.invoice_issued_on?iso(item.invoice_issued_on):""} required/></label>
-            <label>Vencimiento<input name="due_on" type="date" min={item.invoice_issued_on?iso(item.invoice_issued_on):iso(guide.movement_on)} required/></label>
-            <label>Total real del documento (CLP)<input name="total_clp" type="number" min="0.01" step="0.01" required/></label>
-            <div className="field-full form-footer"><SubmitButton className="button button-primary">Vincular a Cobranza</SubmitButton></div>
-          </form>}</div>;})}</>:<p role="alert" className="notice notice-error">La vinculación con Cobranza requiere aplicar la migración 043 a la base de datos. El control operativo de la guía sigue disponible.</p>}
+            <Link href="/cobranzas?empresa=rerchar">Ver factura y registrar abono →</Link></>:<MaterialGuideForm key={JSON.stringify(billingValues)} kind="billing" guideId={id} values={billingValues} movementOn={iso(guide.movement_on)} today={today}/>}</div>;})}</>:<p role="alert" className="notice notice-error">La vinculación con Cobranza requiere aplicar la migración 043 a la base de datos. El control operativo de la guía sigue disponible.</p>}
     </section>}
-    <section id="material" className="section-card print-hide"><div className="section-heading"><div><div className="eyebrow">MATERIALES DE ESTA GUÍA</div><h2><Weight size={19}/> {editing?`Editar ítem ${editing.line_number}`:"Agregar otro material"}</h2></div></div>
+    <section id="material" className="section-card print-hide material-guide-section"><div className="section-heading"><div><div className="eyebrow">MATERIALES DE ESTA GUÍA</div><h2><Weight size={19}/> {editing?`Editar ítem ${editing.line_number}`:"Agregar otro material"}</h2></div></div>
       <p className="helper-text">Cada material tiene sus propios tickets, pesos y factura. En una venta, los kg «desde stock» se descuentan sólo si existe saldo confirmado del material elegido. Los campos vacíos en una edición se borran.</p>
-      <form action={saveMaterialGuideItemAction} className="form-grid" key={editing?.id??"new"}><input type="hidden" name="guide_id" value={id}/><input type="hidden" name="item_id" value={editing?.id??""}/><GuideItemFields item={editing} catalog={catalog} lineNumber={items.length+1}/><div className="field-full form-footer"><SubmitButton className="button button-primary">{editing?"Guardar cambios del material":"Agregar material"}</SubmitButton></div></form>
+      <MaterialGuideForm key={JSON.stringify(itemValues)} kind="item" guideId={id} values={itemValues} catalog={catalog} billingLinked={Boolean(editing?.receivable_invoice_id)}/>
     </section>
-    <details className="section-card print-hide"><summary>Corregir datos generales y flete</summary><form action={updateMaterialGuideAction} className="form-grid guide-header-edit"><input type="hidden" name="guide_id" value={id}/><GuideHeaderFields guide={guide} clients={clients} today={today}/><div className="field-full form-footer"><SubmitButton className="button button-outline">Guardar datos generales</SubmitButton></div></form></details>
+    <details id="datos-generales" className="section-card print-hide material-guide-section" open={query.general==="1"}><summary>Corregir datos generales y flete</summary><MaterialGuideForm key={JSON.stringify(headerValues)} kind="header" guideId={id} values={headerValues} clients={clients}/></details>
     <p className="helper-text print-hide">Los saldos de materiales empiezan en cero y sólo incluyen recepciones y saldos iniciales confirmados; la bodega de EPP e insumos se controla aparte.</p>
   </>;
 }
