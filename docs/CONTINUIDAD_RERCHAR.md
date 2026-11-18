@@ -1,5 +1,10 @@
 # Continuidad RERCHAR — 17 de noviembre de 2026
 
+## Sustitución de cuadros por movimiento circular — 18/11
+
+- Roberto rechazó expresamente los cuadros y el efecto de opacidad apenas perceptible. La petición vigente es otro preloader con movimiento real, suave, sin texto ni barras. Se retiran los cuadros: tres puntos redondos verde, azul y dorado en una órbita de 34 px, giro continuo lineal de 2,4 s. No hay saltos, pulsos ni retardos añadidos a la navegación. Se conserva el nombre accesible y la preferencia de movimiento reducido.
+- Se comprobó que el navegador de revisión tiene movimiento reducido desactivado. Compilación local aprobada; comprobar giro real y publicación antes de cerrar este cambio. Continuar después la revisión operativa de cotizaciones. La matriz permanece intacta.
+
 ## Corrección explícita del preloader y revisión de entrega — 18/11
 
 - Roberto rechazó el preloader con línea y nombres: pide únicamente cuatro cuadros de colores con animación muy suave. Se sustituye por cuatro cuadros de 8 px en verde, azul, amarillo y rojo del logo; respiración de opacidad lenta (3,2 s), escala mínima y sin saltos. Sin texto, líneas, nombres, porcentajes ni retardos artificiales. El nombre accesible de carga permanece sólo para lectores de pantalla; movimiento reducido mantiene los cuadros estáticos. Esta petición prevalece sobre la decisión anterior.

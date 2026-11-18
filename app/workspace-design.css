@@ -177,13 +177,12 @@
   .app-shell .nav-link.active .nav-pending { color:#fff; }
   .app-shell .page-loading { min-height:40vh; gap:0; }
 }
-.loading-squares { display:inline-flex; align-items:center; gap:7px; padding:3px; }
-.loading-squares i { display:block; width:8px; height:8px; border-radius:1px; background:#00a870; animation:loading-squares-breathe 3.2s cubic-bezier(.45,0,.55,1) infinite; }
-.loading-squares i:nth-child(2) { background:#0060a8; animation-delay:-2.8s; }
-.loading-squares i:nth-child(3) { background:#f8c800; animation-delay:-2.4s; }
-.loading-squares i:nth-child(4) { background:#ec533f; animation-delay:-2s; }
-@keyframes loading-squares-breathe { 0%,100% { opacity:.38; transform:scale(.94); } 50% { opacity:1; transform:scale(1); } }
+.loading-orbit { display:block; position:relative; width:34px; height:34px; animation:loading-orbit-turn 2.4s linear infinite; }
+.loading-orbit i { position:absolute; top:50%; left:50%; width:6px; height:6px; margin:-3px; border-radius:50%; background:#00a870; transform:translateX(12px); }
+.loading-orbit i:nth-child(2) { background:#0060a8; transform:rotate(120deg) translateX(12px); }
+.loading-orbit i:nth-child(3) { background:#e7b900; transform:rotate(240deg) translateX(12px); }
+@keyframes loading-orbit-turn { to { transform:rotate(360deg); } }
 @media (prefers-reduced-motion:reduce) {
-  .loading-indicator,.loading-squares i { animation:none; }
+  .loading-indicator,.loading-orbit { animation:none; }
   .app-shell .nav-group-panel,.app-shell .nav-group-toggle,.app-shell .nav-link { transition:none; }
 }
