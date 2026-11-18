@@ -1,5 +1,15 @@
 # Continuidad RERCHAR — 17 de noviembre de 2026
 
+## Preparación funcional SII y corrección de alcance — 18/11
+
+- Roberto confirmó que **SII está incluido** y que ambas empresas utilizan el facturador gratuito del SII. Prevalece sobre las clasificaciones históricas: son 78 observaciones incluidas y **seis ampliaciones**, números 52, 56 y 81–84. SII (65) no se recotiza ni se excluye por requerir conexión productiva.
+- Se implementó una bandeja administrativa real de XML emitidos/recibidos, configuración de RUT por empresa, detección de pertenencia y duplicados, archivos originales privados, revisión interna y paginación. No hay generación automática de deudas ni pagos.
+- La migración aditiva 070 prepara tres tablas. Se agregó `fast-xml-parser` con versión exacta y lockfile. Ver `docs/DOCUMENTOS_SII_PREPARACION.md`.
+- Verificación del lote: **62 pruebas aprobadas**, TypeScript y compilación de producción correctos; recorrido HTTP real completado con base aislada (configuración, carga, duplicados/conflictos, original exacto, revisión, filtros y permisos). Se leyó además el ejemplo XML oficial del SII. No se completó la revisión visual interactiva por fallo de arranque del navegador local.
+- **Consulta automática pendiente:** no existe todavía un conector de red operativo. El módulo lo indica expresamente. La importación XML es una base funcional y no se presenta como sincronización automática ni como validación de firma/aceptación de SII. La interfaz `SiiXmlConnector` no acredita un proveedor conectado.
+- Mantener pendiente/parcial la observación 65 hasta completar el mecanismo de conexión y la prueba real; no declarar terminadas todas las solicitudes incluidas. Pedir guía/ticket real en la entrega y conservar los VB del cliente pendientes.
+- Publicación y aplicación de la migración de este lote pendientes de confirmación. No se introdujeron documentos reales ni credenciales en las pruebas.
+
 ## Revisión de ficha ambiental y certificados — 18/11
 
 - Se reprodujo que `Number(null)` interpretaba bruto/tara ausentes como cero. La ficha ambiental podía guardarse y revisarse con un neto incompleto; un borrador histórico podía permitir preparar o emitir un certificado sin ambos pesos.

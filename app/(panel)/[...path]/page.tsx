@@ -16,6 +16,7 @@ const routes: {pattern:string[];load:()=>Promise<{default:unknown}>}[]=[
   {pattern:["cotizaciones"],load:()=>import("@/lib/panel-pages/cotizaciones/page")},
   {pattern:["cumplimiento"],load:()=>import("@/lib/panel-pages/cumplimiento/page")},
   {pattern:["destinos"],load:()=>import("@/lib/panel-pages/destinos/page")},
+  {pattern:["documentos-sii"],load:()=>import("@/lib/panel-pages/documentos-sii/page")},
   {pattern:["estados-pago"],load:()=>import("@/lib/panel-pages/estados-pago/page")},
   {pattern:["facturas-recibidas"],load:()=>import("@/lib/panel-pages/facturas-recibidas/page")},
   {pattern:["fichas"],load:()=>import("@/lib/panel-pages/fichas/page")},

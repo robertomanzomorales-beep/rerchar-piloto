@@ -77,7 +77,7 @@ export default function Shell({ actor, children }: { actor: Actor; children: Rea
       <Link href="/empresa/e_y_j" aria-current={activeCompany==="e_y_j"?"page":undefined} onClick={()=>{setCompanyOpen(false);setMobileOpen(false);}} className={`company-switch company-switch--eyj ${activeCompany==="e_y_j"?"selected":""}`}><span className="switch-mark" aria-hidden="true"/><span><strong>E y J</strong><small>Servicios industriales</small></span><span className="switch-indicator" aria-hidden="true"/></Link>
     </div></div>
   </div>;
-  const companyHref=(href:string)=>activeCompany&&["/cotizaciones","/solicitudes","/agenda","/seguimiento-guias","/facturas-recibidas","/transferencias","/transacciones","/finanzas","/cobros-extraordinarios","/cobranzas"].includes(href)?`${href}?empresa=${activeCompany}`:activeCompany&&href==="/reportes"?`${href}?company=${activeCompany}`:href;
+  const companyHref=(href:string)=>activeCompany&&["/cotizaciones","/solicitudes","/agenda","/seguimiento-guias","/facturas-recibidas","/transferencias","/transacciones","/finanzas","/cobros-extraordinarios","/cobranzas","/documentos-sii"].includes(href)?`${href}?empresa=${activeCompany}`:activeCompany&&href==="/reportes"?`${href}?company=${activeCompany}`:href;
   const links = [
     { group:"Comercial", href: "/cotizaciones", text: "Cotizaciones", icon: FileText, visible: actor.role !== "conductor" },
     { group:"Comercial", href: "/clientes", text: "Clientes y documentos", icon: Building2, visible: actor.role !== "conductor" },
@@ -92,6 +92,7 @@ export default function Shell({ actor, children }: { actor: Actor; children: Rea
     { group:"Cierre y control", href: "/finanzas", text: "Contratos, tarifas y facturas", icon: Banknote, visible: actor.role === "admin" },
     { group:"Cierre y control", href: "/cobros-extraordinarios", text: "Cobros extraordinarios", icon: ReceiptText, visible: actor.role === "admin" || actor.role === "operaciones" },
     { group:"Cierre y control", href: "/cobranzas", text: "Cobranza clientes", icon: Banknote, visible: actor.role === "admin" },
+    { group:"Cierre y control", href: "/documentos-sii", text: "Documentos SII", icon: FileText, visible: actor.role === "admin" },
     { group:"Cierre y control", href: "/certificados", text: "Certificados RERCHAR", icon: FileBadge2, visible: activeCompany==="rerchar" && actor.role !== "conductor" },
     { group:"Cierre y control", href: "/cumplimiento", text: "Registro ambiental", icon: FileCheck2, visible: actor.role === "admin" || actor.role === "operaciones" },
     { group:"Cierre y control", href: "/transacciones", text: "Registro de transacciones", icon: ScrollText, visible: actor.role === "admin" },

@@ -17,12 +17,14 @@ import {GET as materialGuidesExport} from "@/lib/api-downloads/material-guides-e
 import {GET as environmentReport} from "@/lib/api-downloads/environment-report";
 import {GET as auditReport} from "@/lib/api-downloads/audit-report";
 import {GET as servicesReport} from "@/lib/api-downloads/services-report";
+import {GET as siiDocument} from "@/lib/api-downloads/sii-document";
 
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
 
 type DownloadHandler=(request:Request,context:{params:Promise<{id:string}>})=>Promise<Response>;
 const routes:{path:string[];handler:DownloadHandler}[]=[
+  {path:["documentos-sii",":id","xml"],handler:siiDocument},
   {path:["archivos-operacion",":id"],handler:operationFile},
   {path:["certificados",":id","pdf"],handler:certificatePdf},
   {path:["cotizaciones",":id","pdf"],handler:quotePdf},

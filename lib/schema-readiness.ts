@@ -1,10 +1,11 @@
 import {db} from "./db";
 
-export type ModuleKey="guias"|"ingresos"|"receipt_followup"|"receipt_closure"|"stock"|"edp"|"edp_delivery"|"edp_service_import"|"edp_billing"|"edp_client_order"|"edp_calendar"|"cotizaciones"|"certificados_borradores"|"material_sale_billing"|"supplier_transfers"|"counterparty_profiles"|"purchase_supplier_profile";
+export type ModuleKey="guias"|"ingresos"|"receipt_followup"|"receipt_closure"|"stock"|"edp"|"edp_delivery"|"edp_service_import"|"edp_billing"|"edp_client_order"|"edp_calendar"|"cotizaciones"|"certificados_borradores"|"material_sale_billing"|"supplier_transfers"|"counterparty_profiles"|"purchase_supplier_profile"|"sii_documents";
 
 // Sólo se consultan nombres fijos del esquema. Detectar la tabla sin sus columnas
 // evita mostrar un módulo parcialmente migrado como si estuviera operativo.
 const requirements:Record<ModuleKey,{tables:string[];columns:[string,string][]}>={
+  sii_documents:{tables:["sii_company_settings","sii_documents","sii_xml_sources"],columns:[["sii_documents","payload_sha256"],["sii_xml_sources","original_xml"],["sii_documents","review_status"]]},
   certificados_borradores:{tables:["service_certificate_drafts"],columns:[["service_certificate_drafts","snapshot"]]},
   guias:{tables:["material_guides","material_guide_items","material_catalog","material_stock_movements"],
     columns:[["material_guide_items","material_id"],["material_guides","movement_detail"]]},
