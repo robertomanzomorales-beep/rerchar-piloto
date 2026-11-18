@@ -6,6 +6,7 @@
 - Se reprodujo desbordamiento de Reportes: ancho CSS 681 px y documento de 945 px. Las tablas ahora desplazan dentro de su contenedor en todos los anchos. Se ordenaron filtros y columnas, se mejoraron estados vacíos y se retiró la fila decorativa del título en móvil.
 - La carga XML SII ahora explica y bloquea la falta de RUT/empresa/archivo; muestra la selección en español y conserva la validación del servidor. La configuración prioriza la empresa actual. No hay cambios de alcance ni un conector automático nuevo.
 - Verificación previa a publicar: seis pruebas focalizadas aprobadas, TypeScript/compilación correctos, 83 comprobaciones HTTP de páginas y recorrido funcional SII completos. Ver `docs/REVISION_EXPERIENCIA_18-11-2026.md`.
+- El primer lote visual se publicó en `fa8048d` y quedó READY. En 681 px se comprobó un documento de 674 px, con la tabla contenida. Se afinaron también los nombres cortos de empresa en Reportes y la concordancia de los conteos del panel.
 - La matriz permanece intacta. No se modifican registros operativos/financieros de producción ni se envían correos en las pruebas.
 
 ## Recorrido y corrección de Reportes — 18/11

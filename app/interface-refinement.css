@@ -441,6 +441,7 @@
 }
 @media screen and (max-width:600px) {
   .app-shell .page-title-row > .title-icon { display:none; }
+  .app-shell :is(.sii-source,.sii-records) .section-heading { flex-wrap:wrap; gap:9px; }
   .app-shell .sii-import-footer .button { width:100%; min-height:42px; }
 }
 @media screen and (max-width:520px) {

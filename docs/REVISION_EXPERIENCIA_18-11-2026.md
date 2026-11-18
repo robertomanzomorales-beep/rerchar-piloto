@@ -25,4 +25,10 @@ Roberto pidió continuar la revisión, incluyendo uso y estética. Se conserva e
 - Recorrido HTTP SII correcto: configuración, incorporación, duplicados, conflicto, pertenencia, original exacto, revisión, filtros y restricciones de acceso.
 - Los recorridos funcionales usan bases temporales y datos ficticios. La revisión visual de producción es de consulta: no modifica registros operativos/financieros ni envía correos.
 
-Después del despliegue se deben comprobar las medidas de Reportes en 681/340 px y ambas identidades, los estados de SII y el menú móvil, restaurando el zoom al 100%.
+El primer lote se publicó en `fa8048d`, con despliegue READY. En la comprobación publicada de Reportes E y J, 681 px disponibles dieron 674 px de documento: la tabla de 910 px desplaza dentro de una región de 604 px. Los filtros quedaron alineados y la identidad azul se conservó.
+
+En 340 px SII conservó el documento en 337 px, con archivo y envío deshabilitados correctamente hasta configurar la empresa. Se ordenó el salto de línea de sus encabezados para que la indicación de conexión no comprima el título.
+
+Se afinó además la columna de empresa con nombre corto (el nombre legal permanece en el título y CSV) y la concordancia de los conteos de guías, EDP, cierres y servicios por clasificar.
+
+Al cerrar el ajuste se deben comprobar las medidas de Reportes en 681/340 px y ambas identidades, los estados de SII y el menú móvil, restaurando el zoom al 100%.
