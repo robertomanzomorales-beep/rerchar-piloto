@@ -390,3 +390,63 @@
 @media screen and (prefers-reduced-motion:reduce) {
   .app-shell :is(.button,.company-metric,.company-process-group li a) { transition:none; }
 }
+
+/* Keep wide records inside their own scroll region at every screen width. */
+@media screen {
+  .app-shell .table-wrap { width:100%; max-width:100%; min-width:0; margin-inline:0; padding-inline:0; overflow-x:auto; overscroll-behavior-x:contain; }
+  .app-shell .table-wrap:focus-visible { outline:2px solid var(--company-accent); outline-offset:3px; }
+  .app-shell .service-report-filters { grid-template-columns:repeat(3,minmax(125px,1fr)) minmax(150px,1fr) minmax(180px,1.5fr) auto; margin-bottom:18px; }
+  .app-shell .service-report-filters--scoped { grid-template-columns:repeat(3,minmax(125px,1fr)) minmax(150px,1fr) auto; }
+  .app-shell .service-report-filters > label { min-width:0; }
+  .app-shell .report-table { table-layout:fixed; }
+  .app-shell .report-table td { overflow-wrap:anywhere; }
+  .app-shell .report-asset-label { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; line-height:1.55; }
+  .app-shell .report-net { white-space:nowrap; font-variant-numeric:tabular-nums; }
+  .app-shell .report-summary { flex-wrap:wrap; gap:18px 28px; padding-block:16px; }
+  .app-shell .report-summary strong { font-variant-numeric:tabular-nums; }
+  .app-shell .report-reset { display:block; width:fit-content; margin:-12px auto 18px; }
+  .app-shell .sii-company-settings { margin-top:17px; }
+  .app-shell .sii-company-settings > summary { cursor:pointer; color:var(--company-accent); font-size:11.5px; font-weight:650; }
+  .app-shell .sii-company-settings > .form-grid { margin-top:12px; }
+  .app-shell .sii-company-form { padding:13px; border:1px solid var(--surface-line); border-radius:6px; background:#f8faf9; }
+  .app-shell .sii-company-settings > .helper-text { margin:10px 0 0; }
+  .app-shell .sii-import-form { align-items:start; }
+  .app-shell .xml-file-control { display:grid; gap:5px; min-width:0; }
+  .app-shell .xml-file-control > label { color:#485a62; font-size:11px; font-weight:650; }
+  .app-shell .xml-file-field { position:relative; display:flex; align-items:center; gap:12px; min-height:36px; padding:6px 9px; border:1px solid #cbd6dd; border-radius:6px; background:#fff; }
+  .app-shell input[type="file"].xml-file-native { position:absolute; inset:0; z-index:1; width:100%; height:100%; min-height:0; margin:0; padding:0; border:0; opacity:0; cursor:pointer; }
+  .app-shell .xml-file-trigger { display:inline-flex; align-items:center; flex-shrink:0; gap:7px; color:var(--company-accent); font-size:11px; font-weight:650; }
+  .app-shell .xml-file-name { min-width:0; color:#697b84; font-size:10.5px; overflow-wrap:anywhere; }
+  .app-shell .xml-file-field:focus-within { outline:2px solid var(--company-accent); outline-offset:1px; }
+  .app-shell .xml-file-field.is-disabled { background:#f5f7f8; border-color:#dce4e6; }
+  .app-shell .xml-file-field.is-disabled :is(.xml-file-trigger,.xml-file-name) { color:#71828b; }
+  .app-shell .xml-file-error { margin:2px 0 0; color:#a23c31; font-size:11px; }
+  .app-shell .sii-import-footer { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; padding-top:12px; border-top:1px solid var(--surface-line); }
+  .app-shell .sii-import-footer .helper-text { flex:1 1 260px; margin:0; }
+  .app-shell .sii-file-limits { margin:12px 0 0; }
+  .app-shell .document-filters { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)) auto; align-items:end; padding:13px 16px; border:1px solid var(--surface-line); border-radius:7px; background:#fff; }
+  .app-shell .document-filters > label { display:grid; gap:5px; min-width:0; color:#485a62; font-size:11px; font-weight:650; }
+  .app-shell .document-filters select { width:100%; }
+  .app-shell .document-empty { display:grid; justify-items:center; gap:9px; padding:30px 16px; text-align:center; border-top:1px solid var(--surface-line); }
+  .app-shell .document-empty > svg { color:var(--company-accent); }
+  .app-shell .document-empty h3 { margin:0; font-size:14px; font-weight:650; }
+  .app-shell .document-empty p { max-width:470px; margin:0; color:#697b84; font-size:12px; line-height:1.6; }
+  .app-shell :is(#sii-import,#sii-company-settings) { scroll-margin-top:76px; }
+}
+@media screen and (max-width:1200px) {
+  .app-shell .service-report-filters { grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
+@media screen and (max-width:720px) {
+  .app-shell .document-filters { grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
+@media screen and (max-width:600px) {
+  .app-shell .page-title-row > .title-icon { display:none; }
+  .app-shell .sii-import-footer .button { width:100%; min-height:42px; }
+}
+@media screen and (max-width:520px) {
+  .app-shell :is(.service-report-filters,.document-filters) { grid-template-columns:minmax(0,1fr); }
+  .app-shell :is(.service-report-filters,.document-filters) .button { width:100%; min-height:42px; }
+  .app-shell :is(.service-report-filters,.document-filters,.sii-import-form,.sii-company-form) :is(input:not([type="file"]),select) { font-size:16px; min-height:42px; }
+  .app-shell .xml-file-field { align-items:flex-start; flex-direction:column; gap:7px; padding:11px; }
+  .app-shell .document-empty { padding:26px 8px; }
+}

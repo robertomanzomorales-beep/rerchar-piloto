@@ -1,5 +1,13 @@
 # Continuidad RERCHAR — 17 de noviembre de 2026
 
+## Experiencia visual y adaptación — 18/11
+
+- Roberto pidió revisar también la experiencia y estética. Se accedió al sitio publicado mediante el formulario seguro del navegador; se pudo inspeccionar visualmente el selector, panel, Reportes, SII y Nueva cotización. La limitación visual de los cortes anteriores queda superada para este recorrido.
+- Se reprodujo desbordamiento de Reportes: ancho CSS 681 px y documento de 945 px. Las tablas ahora desplazan dentro de su contenedor en todos los anchos. Se ordenaron filtros y columnas, se mejoraron estados vacíos y se retiró la fila decorativa del título en móvil.
+- La carga XML SII ahora explica y bloquea la falta de RUT/empresa/archivo; muestra la selección en español y conserva la validación del servidor. La configuración prioriza la empresa actual. No hay cambios de alcance ni un conector automático nuevo.
+- Verificación previa a publicar: seis pruebas focalizadas aprobadas, TypeScript/compilación correctos, 83 comprobaciones HTTP de páginas y recorrido funcional SII completos. Ver `docs/REVISION_EXPERIENCIA_18-11-2026.md`.
+- La matriz permanece intacta. No se modifican registros operativos/financieros de producción ni se envían correos en las pruebas.
+
 ## Recorrido y corrección de Reportes — 18/11
 
 - Roberto pidió seguir revisando/corrigiendo y entregar en la conversación la lista de pendientes y ampliaciones, sin actualizar la matriz en este bloque.
