@@ -529,22 +529,32 @@ export async function cancelService(actor: Actor, id: string, reason: string) {
   });
 }
 
-export type FleetAsset = { id: string; code: string; label: string; kind: string; plate: string | null; available: boolean; open_incidents: string; equipment_alerts: string; current_reading: string; reading_unit: string };
-export type FleetIncident = { id: string; asset_id: string; asset_label: string; code: string; description: string; severity: string; reported_at: Date; observed_on: Date|string|null; source_service_id: string|null; reported_by_name: string };
+export type FleetAsset = { id: string; code: string; label: string; kind: string; plate: string | null; available: boolean; open_incidents: string; blocking_orders: string; equipment_alerts: string; current_reading: string; reading_unit: string };
+export type FleetIncident = { id: string; asset_id: string; asset_label: string; code: string; description: string; severity: string; reported_at: Date; observed_on: Date|string|null; source_service_id: string|null; reported_by_name: string; order_id:string|null; order_folio:string|null; order_status:string|null };
 
-export async function listFleet(actor: Actor) {
+export async function listFleet(actor: Actor, requestedPage=1) {
   if (!canManage(actor)) reject("No tiene permiso para revisar flota y averías.");
-  const [assets, incidents] = await Promise.all([
+  const [assets, count] = await Promise.all([
     db.query<FleetAsset>(`SELECT a.id,a.code,a.label,a.kind,a.plate,a.available,a.current_reading,a.reading_unit,count(i.id)::text AS open_incidents,
+      (SELECT count(*)::text FROM work_orders w WHERE w.asset_id=a.id AND w.status='en_trabajo' AND w.blocks_asset=true) AS blocking_orders,
       (SELECT count(*)::text FROM asset_equipment_inventory e WHERE e.asset_id=a.id AND e.active=true
         AND (e.condition<>'operativo' OR e.expires_on <= (now() AT TIME ZONE 'America/Santiago')::date+30)) AS equipment_alerts
       FROM assets a LEFT JOIN fleet_incidents i ON i.asset_id=a.id AND i.status='abierta'
       WHERE a.deleted_at IS NULL GROUP BY a.id ORDER BY a.kind,a.label`),
-    db.query<FleetIncident>(`SELECT i.id,i.asset_id,i.description,i.severity,i.reported_at,i.observed_on,i.source_service_id,a.label AS asset_label,a.code,u.name AS reported_by_name
-      FROM fleet_incidents i JOIN assets a ON a.id=i.asset_id JOIN users u ON u.id=i.reported_by
-      WHERE i.status='abierta' ORDER BY i.reported_at DESC LIMIT 100`),
+    db.query<{total:string}>(`SELECT count(*)::text AS total FROM fleet_incidents i JOIN assets a ON a.id=i.asset_id
+      WHERE i.status='abierta' AND a.deleted_at IS NULL`),
   ]);
-  return { assets, incidents };
+  const totalIncidents=Number(count[0]?.total??0),totalPages=Math.max(1,Math.ceil(totalIncidents/50));
+  const page=Math.min(totalPages,Number.isSafeInteger(requestedPage)&&requestedPage>=1?requestedPage:1);
+  const incidents=await db.query<FleetIncident>(`SELECT i.id,i.asset_id,i.description,i.severity,i.reported_at,i.observed_on,i.source_service_id,
+      a.label AS asset_label,a.code,u.name AS reported_by_name,w.id AS order_id,w.folio AS order_folio,w.status AS order_status
+      FROM fleet_incidents i JOIN assets a ON a.id=i.asset_id JOIN users u ON u.id=i.reported_by
+      LEFT JOIN LATERAL (SELECT id,folio,status FROM work_orders WHERE incident_id=i.id AND status IN ('abierta','en_trabajo')
+        ORDER BY created_at DESC,id DESC LIMIT 1) w ON true
+      WHERE i.status='abierta' AND a.deleted_at IS NULL
+      ORDER BY CASE i.severity WHEN 'critica' THEN 0 WHEN 'alta' THEN 1 WHEN 'media' THEN 2 ELSE 3 END,i.reported_at DESC,i.id DESC
+      LIMIT 50 OFFSET $1`,[(page-1)*50]);
+  return { assets, incidents, totalIncidents, page, totalPages };
 }
 
 export async function reportFleetIncident(actor: Actor, input: unknown) {

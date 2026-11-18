@@ -479,3 +479,50 @@
   .app-shell .fuel-history-table td:nth-child(n+3) { white-space:nowrap; overflow-wrap:normal; }
   @media (min-width:991px) { .app-shell .fuel-layout { grid-template-columns:minmax(300px,.8fr) minmax(0,1.2fr); } }
 }
+
+/* Shared fleet: compact indicators, clear identifiers and actionable maintenance. */
+@media screen {
+  .app-shell :is(.fleet-page,.personnel-page) .fleet-stats { grid-template-columns:repeat(4,minmax(0,1fr)); gap:0; border:1px solid var(--surface-line); border-radius:6px; background:white; overflow:hidden; }
+  .app-shell :is(.fleet-page,.personnel-page) .fleet-stats>div { border:0; border-radius:0; padding:15px 18px; box-shadow:none; background:transparent; min-width:0; }
+  .app-shell :is(.fleet-page,.personnel-page) .fleet-stats>div+div { border-left:1px solid var(--surface-line); }
+  .app-shell :is(.fleet-page,.personnel-page) .fleet-stats strong { color:var(--company-strong); font-size:25px; font-weight:650; }
+  .app-shell :is(.fleet-page,.personnel-page) .fleet-stats span { font-size:10.5px; font-weight:500; color:#667984; }
+  .app-shell :is(.fleet-page,.personnel-page) .fleet-stats .fleet-stat-attention strong { color:#9b621f; }
+  .app-shell .fleet-page .fleet-assets li { gap:10px; padding:12px 0; align-items:center; }
+  .app-shell .fleet-page .fleet-asset-copy { flex:1; min-width:0; gap:3px; }
+  .app-shell .fleet-page .fleet-asset-id { color:var(--company-strong); font-size:12px; font-weight:650; letter-spacing:.01em; }
+  .app-shell .fleet-page .fleet-asset-label,.app-shell .fleet-incident-asset { font-size:11px; line-height:1.45; color:#526875; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; overflow-wrap:anywhere; }
+  .app-shell .fleet-page .fleet-assets small { color:#74858e; line-height:1.45; overflow-wrap:anywhere; }
+  .app-shell .fleet-page .fleet-assets .fleet-equipment-alert { color:#96601f; }
+  .app-shell .fleet-page .fleet-state { font-weight:550; font-size:10px; }
+  .app-shell .fleet-page .incident-card { background:white; border-color:var(--surface-line); padding:16px; display:flex; flex-direction:column; }
+  .app-shell .fleet-page .incident-head>div { min-width:0; }
+  .app-shell .fleet-page .incident-head .table-main { color:var(--company-strong); }
+  .app-shell .fleet-page .incident-card>p { color:#425965; overflow-wrap:anywhere; }
+  .app-shell .fleet-page .incident-severity { color:#657069; font-weight:600; flex:none; }
+  .app-shell .fleet-page .incident-severity.severity-alta,.app-shell .fleet-page .incident-severity.severity-critica { color:#9d4436; }
+  .app-shell .fleet-page .incident-severity.severity-media { color:#86621e; }
+  .app-shell .fleet-incident-order { border-top:1px solid var(--surface-line); margin-top:auto; padding-top:13px; display:flex; align-items:center; flex-wrap:wrap; gap:12px; }
+  .app-shell .fleet-incident-order>div { flex:1; min-width:150px; }
+  .app-shell .fleet-incident-order strong { font-size:11px; font-weight:600; color:#425965; }
+  .app-shell .fleet-incident-order p { font-size:10.5px; line-height:1.5; color:#74858e; margin:4px 0 0; }
+  .app-shell .fleet-page .incident-resolve { margin-top:auto; }
+  @media (max-width:700px) {
+    .app-shell :is(.fleet-page,.personnel-page) .fleet-stats { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    .app-shell :is(.fleet-page,.personnel-page) .fleet-stats>div { padding:12px 14px; }
+    .app-shell :is(.fleet-page,.personnel-page) .fleet-stats>div:nth-child(3) { border-left:0; }
+    .app-shell :is(.fleet-page,.personnel-page) .fleet-stats>div:nth-child(n+3) { border-top:1px solid var(--surface-line); }
+  }
+  @media (max-width:450px) {
+    .app-shell .fleet-page .fleet-status-icon { width:24px; height:24px; }
+    .app-shell .fleet-page .fleet-assets li { display:grid; grid-template-columns:24px minmax(0,1fr); gap:4px 9px; }
+    .app-shell .fleet-page .fleet-asset-copy { grid-column:2; grid-row:1/3; }
+    .app-shell .fleet-page .fleet-state { grid-column:2; margin:4px 0 0; white-space:normal; }
+    .app-shell .fleet-page .fleet-incident-order .button { width:100%; }
+  }
+}
+
+@media screen {
+  .app-shell .profile-fields { border:0; padding:0; margin:0; min-width:0; display:grid; gap:12px; }
+  .app-shell .profile-fields:disabled { opacity:.65; }
+}

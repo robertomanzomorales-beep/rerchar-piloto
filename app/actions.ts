@@ -25,7 +25,7 @@ function message(error: unknown) {
 }
 async function run(path: string, operation: () => Promise<unknown>, success = path): Promise<never> {
   try { await operation(); }
-  catch (error) { redirect(`${path}?error=${encodeURIComponent(message(error))}`); }
+  catch (error) { redirect(`${path}${path.includes("?") ? "&" : "?"}error=${encodeURIComponent(message(error))}`); }
   revalidatePath("/", "layout");
   redirect(`${success}${success.includes("?") ? "&" : "?"}ok=1`);
 }
@@ -151,15 +151,19 @@ export async function cancelServiceAction(form: FormData) {
   const actor = await requireActor(); const id = value(form,"id");
   await run(servicePath(id), () => cancelService(actor, id, value(form,"reason")));
 }
+function fleetReturnPath(form:FormData) {
+  const page=Number(value(form,"page"));
+  return Number.isSafeInteger(page)&&page>1&&page<=10_000?`/flota?pagina=${page}`:"/flota";
+}
 export async function reportFleetIncidentAction(form: FormData) {
   const actor = await requireActor();
-  await run("/flota", () => reportFleetIncident(actor, {
+  await run(fleetReturnPath(form), () => reportFleetIncident(actor, {
     asset_id: value(form,"asset_id"), description: value(form,"description"), severity: value(form,"severity"),observed_on:value(form,"observed_on"),
   }));
 }
 export async function resolveFleetIncidentAction(form: FormData) {
   const actor = await requireActor();
-  await run("/flota", () => resolveFleetIncident(actor, value(form,"id"), value(form,"resolution")));
+  await run(fleetReturnPath(form), () => resolveFleetIncident(actor, value(form,"id"), value(form,"resolution")));
 }
 export async function saveChecklistAction(form: FormData) {
   const actor = await requireActor(); const id = value(form,"id");

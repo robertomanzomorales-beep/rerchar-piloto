@@ -1,5 +1,15 @@
 # Continuidad RERCHAR — 17 de noviembre de 2026
 
+## Acabado de flota y personal — 18/11
+
+- El lote previo de Mantenimiento/Combustible quedó publicado en `2aebc65`, despliegue principal READY. Se comprobaron ficha de activos, frecuencia de pautas y tabla de combustible en escritorio y anchos de 681/340 px. La tabla mantiene los números completos, admite teclado y desplaza dentro de su región; la página no se desborda.
+- En Flota se sustituyen indicadores dispersos por una banda compacta de cuatro métricas, con acentos de empresa y estados de atención. Patente/código pasa a ser el identificador principal y los nombres extensos se contienen conservando su texto completo accesible. Los estados distinguen averías, mantenimiento bloqueante e indisponibilidad sin mostrar «0 averías».
+- Las averías se paginan de cincuenta en cincuenta, con total completo, prioridad por criticidad y acceso a todas las páginas. Las de activos archivados quedan fuera de esta vista operativa. El retorno de las acciones conserva la página tanto en error como en éxito; el último tramo se ajusta si disminuye la cantidad.
+- Las averías con OT activa abren esa orden, sin ofrecer una resolución directa que el servidor rechazaría. Se conserva el bloqueo de servidor y el enlace al servicio de origen cuando existe. La selección de OT excluye canceladas y cerradas.
+- En Personal, la ficha carga empresa, identificación, cargo, turno y teléfono actuales al seleccionar al trabajador. Los campos se deshabilitan hasta seleccionarlo. Requisitos ofrece sólo faenas del cliente seleccionado y limpia la faena al cambiar de cliente. Los documentos propios y de terceros limitan el vencimiento según su fecha de emisión, conservando la validación de servidor.
+- Regresión `tests/fleet-review.test.ts`: 123 averías en tres páginas sin omisiones/duplicados, prioridad crítica antigua, OT activa/cancelada, activo en mantenimiento sin avería, exclusión de archivados, límites de página y permisos. El recorrido HTTP real `npm run test:fleet-http` reproduce avisos y guardados en página dos, rechazo por rol y enlaces de OT, con Next y base temporal.
+- Verificación previa a publicar: **65 pruebas aprobadas**, compilación correcta y recorrido HTTP real de Flota aprobado. No hay migraciones, envíos de correo ni modificaciones de datos operativos reales. La matriz no se modifica. Verificar despliegue y acabado visual del lote antes de darlo por publicado.
+
 ## Ficha de activos y pautas de mantenimiento — 18/11
 
 - La pasada de solicitudes/agenda quedó publicada en `8256944`, despliegue principal READY. Se comprobó en vivo el inicio sin cliente preseleccionado, limpieza de centro al cambiar cliente, rango de arriendo y agenda por empresa, además de anchos de 340 px sin desbordamiento. La matriz sigue intacta.
