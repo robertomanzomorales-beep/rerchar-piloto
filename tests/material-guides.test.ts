@@ -41,9 +41,11 @@ test("Control de Guía registra una venta real con varios materiales y conserva 
   const monthly=await materials.exportMaterialReceipts(actor,"2026-09");
   assert.equal(monthly.length,1);
   assert.equal((await materials.exportMaterialReceipts(actor,"2026-10")).length,0);
-  assert.equal(entryHeaders.length,21,"columnas B:V del formato operativo");
-  assert.equal(entryRow(monthly[0])[10],820,"peso recibido calculado sin impurezas");
-  assert.equal(entryRow(monthly[0])[13],"EXT-12","guía de origen en la columna de la planilla");
+  assert.equal(entryHeaders.length,22,"columnas B:W del formato que distingue ambos pesajes");
+  assert.deepEqual(entryRow(monthly[0]).slice(8,12),[900,850,30,820],"conserva los dos pesos, impurezas y neto sin reemplazar uno por otro");
+  assert.equal(entryRow({...monthly[0],net_basis:"proveedor",net_reported_kg:null})[11],870,"respeta la base de pesaje elegida para el neto");
+  assert.equal(entryRow({...monthly[0],supplier_kg:null})[8],null,"no inventa un peso proveedor cuando falta");
+  assert.equal(entryRow(monthly[0])[14],"EXT-12","guía de origen en la columna de la planilla");
   assert.equal(buildEntryWorkbook(monthly,"2026-09").subarray(0,2).toString(),"PK","archivo Excel real");
   await assert.rejects(()=>materials.exportMaterialReceipts(customer,"2026-09"),materials.MaterialError);
   await materials.updateMaterialGuideFollowup(actor,receipt,{requested_on:"2026-09-02",received_on:"",valued_guide:""});

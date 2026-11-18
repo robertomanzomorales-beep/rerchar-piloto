@@ -4,7 +4,8 @@ import {calculateQuoteCost,mapsConfigured,type QuoteRoute,type QuoteCosting,type
 import {saveQuoteRouteAction,calculateMapRouteAction,saveQuoteCostingAction,applySuggestedPriceAction,saveQuoteCostRatesAction} from "@/app/quote-planning-actions";
 import {SubmitButton} from "@/components/Transition";
 
-type Asset={id:string;code:string;label:string;kind:string};
+type Asset={id:string;code:string;label:string;kind:string;plate:string|null};
+const assetKind:Record<string,string>={camion:"Camión",rampa:"Rampla",equipo:"Equipo"};
 const money=(value:number)=>`$${value.toLocaleString("es-CL")}`;
 const km=(value:string|number)=>`${Number(value).toLocaleString("es-CL",{maximumFractionDigits:2})} km`;
 function Numeric({name,label,value="0",step="0.01",min="0"}:{name:string;label:string;value?:string|number;step?:string;min?:string}){
@@ -74,7 +75,7 @@ export function QuotePlanningPanel({quote,lines,destinations,assets,route,cost,r
         <form action={saveQuoteCostingAction} className="form-grid"><input name="quote_id" type="hidden" value={quote.id}/>
           <div className="form-section-title">Viajes y capacidad</div>
           <Numeric name="trips" label="Cantidad de viajes" value={cost?.trips??"1"} step="1" min="1"/>
-          <label>Vehículo / equipo<select name="asset_id" defaultValue={cost?.asset_id??""}><option value="">Sin seleccionar</option>{assets.map(a=><option key={a.id} value={a.id}>{a.code} · {a.label} ({a.kind})</option>)}</select></label>
+          <label>Vehículo / equipo<select name="asset_id" defaultValue={cost?.asset_id??""}><option value="">Sin seleccionar</option>{assets.map(a=><option key={a.id} value={a.id}>{a.plate||a.label} · {a.code} ({assetKind[a.kind]??a.kind})</option>)}</select></label>
           <label>Equipo o modalidad<input name="equipment" defaultValue={cost?.equipment??""} maxLength={120} placeholder="Camión tolva, pluma, batea..."/></label>
           <Numeric name="capacity" label="Capacidad por viaje" value={cost?.capacity??"0"}/>
           <label>Unidad de capacidad<select name="capacity_unit" defaultValue={cost?.capacity_unit??"tonelada"}><option value="tonelada">Tonelada</option><option value="m³">m³</option></select></label>

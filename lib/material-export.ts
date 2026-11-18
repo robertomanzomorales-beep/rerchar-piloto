@@ -1,8 +1,8 @@
 import {materialAmounts,type MaterialReceipt} from "./materials";
 
-// Columnas B:V de «ENTRADA MATERIAL - 2026», con una fila por ingreso registrado.
+// Columnas B:W del formato con pesos de proveedor y RERCHAR separados.
 export const entryHeaders=["FECHA","EMPRESA /FAENA","CONDUCTOR","RUT CONDUCTOR","PATENTE CAMIÓN",
-  "PATENTE RAMPLA","TICKET DE PESAJE","MATERIAL","PESO","IMPUREZA","TOTAL KILOS RECIBIDOS",
+  "PATENTE RAMPLA","TICKET DE PESAJE","MATERIAL","PESO PROVEEDOR","PESO RERCHAR","IMPUREZA","TOTAL KILOS RECIBIDOS",
   "N° INFORME DE IMPUREZA","OBSERVACIÓN","GD CODELCO","GD TRASLADO","HOJA DE INGRESO",
   "GD E° VALORIZADA","N°FACTURA","ESTADO","CERTIFICACIÓN N°","NUMERO DE ACTA"];
 
@@ -10,11 +10,11 @@ export type Cell=string|number|Date|null;
 const day=(value:Date|string)=>String(value instanceof Date?value.toISOString():value).slice(0,10);
 export function entryRow(r:MaterialReceipt):Cell[]{
   const amount=materialAmounts(r);
-  const base=r.net_basis==="proveedor"?r.supplier_kg:r.rerchar_kg;
   const payment:Record<string,string>={pendiente:"Pendiente",parcial:"Parcial",pagado:"Pagado",no_aplica:"No aplica"};
   return [new Date(`${day(r.movement_on)}T00:00:00Z`),[r.client_name,r.site_name].filter(Boolean).join(" / "),
     r.driver_name,r.driver_tax_id,r.truck_plate,r.trailer_plate,r.weighing_ticket,r.material_name,
-    base==null?null:Number(base),Number(r.impurity_kg),amount.net_kg,r.impurity_report,r.notes,
+    r.supplier_kg==null?null:Number(r.supplier_kg),r.rerchar_kg==null?null:Number(r.rerchar_kg),
+    Number(r.impurity_kg),amount.net_kg,r.impurity_report,r.notes,
     r.origin_guide,r.transfer_guide,r.entry_sheet,r.valued_guide,r.invoice_number,payment[r.payment_status]??r.payment_status,
     r.certificate_number,r.act_number];
 }

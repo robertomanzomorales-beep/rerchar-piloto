@@ -1,9 +1,9 @@
 "use client";
 
 import {useEffect,useRef,useState} from "react";
-import {documentFields,type DocumentField,type DocumentReading} from "@/lib/document-fields";
+import {documentFields,selectDocumentFields,type DocumentAliases,type DocumentField,type DocumentReading} from "@/lib/document-fields";
 export type DocumentSource={id:string;name:string};
-export function DocumentReader({fields,sources=[],onApply}:{fields:DocumentField[];sources?:DocumentSource[];onApply?:(values:Partial<Record<DocumentField,string>>)=>void}){
+export function DocumentReader({fields,aliases={},sources=[],onApply}:{fields:DocumentField[];aliases?:DocumentAliases;sources?:DocumentSource[];onApply?:(values:Partial<Record<DocumentField,string>>)=>void}){
   const root=useRef<HTMLDivElement>(null),controller=useRef<AbortController|null>(null);
   const [file,setFile]=useState<File|null>(null),[source,setSource]=useState("");
   const [reading,setReading]=useState<DocumentReading|null>(null),[busy,setBusy]=useState(false),[message,setMessage]=useState("");
@@ -26,7 +26,7 @@ export function DocumentReader({fields,sources=[],onApply}:{fields:DocumentField
         blob=await response.blob();
       }
       const {readDocument}=await import("@/lib/document-reader");
-      const result=await readDocument(blob,{signal:abort.signal,progress:value=>{if(!abort.signal.aborted)setMessage(value);}});
+      const result=selectDocumentFields(await readDocument(blob,{signal:abort.signal,progress:value=>{if(!abort.signal.aborted)setMessage(value);}}),fields,aliases);
       if(abort.signal.aborted)return;
       setReading(result);setValues(Object.fromEntries(result.suggestions.map(item=>[item.field,item.value])));
       setMessage(result.suggestions.some(item=>fields.includes(item.field))?"Revise los datos y marque sólo los que quiere incorporar.":"No se identificaron campos compatibles. Revise la calidad del documento y complete los datos manualmente.");

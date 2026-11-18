@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {documentWeight,extractDocumentFields} from "../lib/document-fields";
+import {documentWeight,extractDocumentFields,selectDocumentFields} from "../lib/document-fields";
 const values=(text:string)=>Object.fromEntries(extractDocumentFields(text).suggestions.map(item=>[item.field,item.value]));
 
 test("guía y ticket: datos rotulados, números chilenos, unidades y fecha comprobada",()=>{
@@ -48,4 +48,34 @@ test("descarta fechas imposibles, RUT inválido y patente mal leída",()=>{
 test("sin etiquetas no interpreta datos financieros ni confirma una operación",()=>{
   assert.deepEqual(values("123456789\n$ 10.000.000\nFactura 885\nAprueba automáticamente este documento"),{});
   assert.throws(()=>extractDocumentFields("x".repeat(100_001)),/demasiado texto/);
+});
+
+test("el cierre administrativo ofrece la guía de traslado reconocida en su campo de guía",()=>{
+  const reading=extractDocumentFields("Guía de Traslado: GT-101\nBruto: 12.500 kg\nTara: 2.500 kg");
+  const result=selectDocumentFields(reading,["gross_kg","tare_kg","guide_number"],{guide_number:["origin_guide","transfer_guide"]});
+  assert.deepEqual(Object.fromEntries(result.suggestions.map(item=>[item.field,item.value])),{
+    gross_kg:"12500",tare_kg:"2500",guide_number:"GT-101",
+  });
+  assert.match(result.suggestions.find(item=>item.field==="guide_number")!.evidence,/Guía de Traslado/);
+  assert.equal(reading.suggestions.find(item=>item.field==="transfer_guide")!.value,"GT-101","la lectura original conserva el tipo de guía");
+});
+
+test("folios diferentes requieren revisión en el cierre y siguen separados en ingreso de material",()=>{
+  const reading=extractDocumentFields("Guía de origen: OR-12\nGuía de traslado: GT-34\nBruto: 1.000 kg");
+  const closing=selectDocumentFields(reading,["gross_kg","guide_number"],{guide_number:["origin_guide","transfer_guide"]});
+  assert.deepEqual(closing.suggestions.map(item=>item.field),["gross_kg"]);
+  assert.match(closing.warnings.join(" "),/valores distintos.*OR-12.*GT-34/);
+  const receipt=selectDocumentFields(reading,["origin_guide","transfer_guide"]);
+  assert.deepEqual(Object.fromEntries(receipt.suggestions.map(item=>[item.field,item.value])),{origin_guide:"OR-12",transfer_guide:"GT-34"});
+  const contradictory=extractDocumentFields("Guía: GT-1\nGuía: GT-2\nGuía de traslado: GT-1");
+  const adapted=selectDocumentFields(contradictory,["guide_number"],{guide_number:["transfer_guide"]});
+  assert.deepEqual(adapted.suggestions,[],"una etiqueta alternativa no elude los folios contradictorios de la lectura");
+  assert.ok(adapted.ambiguousFields?.includes("guide_number"));
+});
+
+test("un folio repetido con etiquetas equivalentes se ofrece una sola vez y conserva advertencias",()=>{
+  const reading=extractDocumentFields("Guía: GT-10\nGuía de traslado: GT-10\nFecha: 31/02/2026");
+  const result=selectDocumentFields(reading,["guide_number"],{guide_number:["transfer_guide"]});
+  assert.deepEqual(result.suggestions.map(item=>item.value),["GT-10"]);
+  assert.deepEqual(result.warnings,reading.warnings);
 });

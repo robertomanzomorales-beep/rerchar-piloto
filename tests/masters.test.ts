@@ -38,6 +38,9 @@ test("corrección de maestros conserva vínculos y registra los cambios",async()
   assert.deepEqual([record.client_id,record.site_id,record.assigned_asset_id],[client.id,site.id,asset.id]);
   assert.deepEqual([record.client_name,record.site_name,record.asset_label,record.code,record.kind,record.plate],
     ["Cliente corregido","Faena corregida","Camión corregido","CAM-01","camion","XY-987"]);
+  const {listPlanningAssets,QuotePlanningError}=await import("../lib/quote-planning");
+  assert.equal((await listPlanningAssets(actor)).find(item=>item.id===asset.id)!.plate,"XY-987","la cotización recibe la patente corregida del maestro");
+  await assert.rejects(()=>listPlanningAssets(outside),QuotePlanningError);
   assert.equal((await db.query<{client_id:string}>("SELECT client_id FROM users WHERE id=$1",[portal.id]))[0].client_id,client.id);
   const history=await db.query<{entity_type:string;previous_value:{name?:string;label?:string};next_value:{name?:string;label?:string}}>(
     "SELECT entity_type,previous_value,next_value FROM audit_events WHERE action='update' ORDER BY created_at,id");

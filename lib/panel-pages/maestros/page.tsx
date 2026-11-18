@@ -7,6 +7,8 @@ import { createAssetAction, createClientAction, createSiteAction, updateAssetAct
 import { Notice } from "@/components/UI";
 import { SubmitButton } from "@/components/Transition";
 
+const assetKind:Record<string,string>={camion:"Camión",rampa:"Rampla",equipo:"Equipo"};
+
 export default async function Masters({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string }> }) {
   const actor = await requireActor();
   if (!canManage(actor)) redirect("/");
@@ -36,8 +38,8 @@ export default async function Masters({ searchParams }: { searchParams: Promise<
       <section className="section-card"><div className="section-heading"><div><div className="eyebrow">03 · ACTIVOS</div><h2><Truck size={19}/> Flota y equipos</h2></div><span className="count-pill">{assets.length}</span></div>
         <form action={createAssetAction} className="form-stack compact"><div className="two-fields"><label>Código<input name="code" required maxLength={30} placeholder="CAM-01"/></label><label>Tipo<select name="kind" defaultValue="camion"><option value="camion">Camión</option><option value="rampa">Rampla</option><option value="equipo">Equipo</option></select></label></div><label>Patente (camión o rampla)<input name="plate" maxLength={15} placeholder="Identificador principal del vehículo"/></label><label>Descripción (opcional si hay patente)<input name="label" maxLength={120}/></label><SubmitButton className="button button-outline">Agregar activo</SubmitButton></form>
         <ul className="record-list master-records">{assets.map((a) => <li key={a.id}>
-          <details className="master-entry"><summary><span className="master-entry-name"><strong>{a.label}</strong><small>{a.code} · {a.kind}{a.plate ? ` · ${a.plate}` : ""}</small></span><span className="master-edit-hint">Editar</span></summary>
-            <form action={updateAssetAction} className="form-stack compact"><input type="hidden" name="id" value={a.id}/><p className="master-locked-field">Código y tipo: <strong>{a.code} · {a.kind}</strong></p><label>Patente<input name="plate" defaultValue={a.plate??""} maxLength={15}/></label><label>Descripción (opcional si hay patente)<input name="label" defaultValue={a.label} maxLength={120}/></label><SubmitButton className="button button-outline">Guardar activo</SubmitButton></form>
+          <details className="master-entry"><summary><span className="master-entry-name"><strong>{a.plate||a.label}</strong><small>{a.code} · {assetKind[a.kind]??a.kind}{a.plate&&a.label!==a.plate?` · ${a.label}`:""}</small></span><span className="master-edit-hint">Editar</span></summary>
+            <form action={updateAssetAction} className="form-stack compact"><input type="hidden" name="id" value={a.id}/><p className="master-locked-field">Código y tipo: <strong>{a.code} · {assetKind[a.kind]??a.kind}</strong></p><label>Patente<input name="plate" defaultValue={a.plate??""} maxLength={15}/></label><label>Descripción (opcional si hay patente)<input name="label" defaultValue={a.label} maxLength={120}/></label><SubmitButton className="button button-outline">Guardar activo</SubmitButton></form>
           </details></li>)}{!assets.length && <li className="muted">Sin activos registrados.</li>}</ul></section>
       {actor.role === "admin" && <section className="section-card"><div className="section-heading"><div><div className="eyebrow">04 · ACCESOS</div><h2><Users size={19}/> Usuarios y perfiles</h2></div><span className="count-pill">{users[0]?.total??"0"} activos</span></div>
         <p className="helper-text">Administre cuentas, claves y perfiles en un espacio dedicado. Las cuentas Cliente sólo consultan los datos de la empresa asignada.</p>

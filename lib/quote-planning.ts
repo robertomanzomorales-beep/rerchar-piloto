@@ -101,7 +101,7 @@ export async function getQuotePlanning(actor:Actor,quoteId:string){
 }
 export async function listPlanningAssets(actor:Actor){
   staff(actor);
-  return db.query<{id:string;code:string;label:string;kind:string}>("SELECT id,code,label,kind FROM assets WHERE deleted_at IS NULL ORDER BY code");
+  return db.query<{id:string;code:string;label:string;kind:string;plate:string|null}>("SELECT id,code,label,kind,plate FROM assets WHERE deleted_at IS NULL ORDER BY code");
 }
 async function draft(tx:Db,id:string){
   const [quote]=await tx.query<{status:string;vat_rate:string;planning_review_after:Date|string|null}>(

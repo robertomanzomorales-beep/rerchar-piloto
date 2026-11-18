@@ -8,7 +8,28 @@ export const documentFields={
 } as const;
 export type DocumentField=keyof typeof documentFields;
 export type DocumentSuggestion={field:DocumentField;value:string;evidence:string};
-export type DocumentReading={suggestions:DocumentSuggestion[];warnings:string[]};
+export type DocumentReading={suggestions:DocumentSuggestion[];warnings:string[];ambiguousFields?:DocumentField[]};
+export type DocumentAliases=Partial<Record<DocumentField,readonly DocumentField[]>>;
+
+export function selectDocumentFields(reading:DocumentReading,fields:readonly DocumentField[],aliases:DocumentAliases={}):DocumentReading{
+  const suggestions:DocumentSuggestion[]=[],warnings=[...reading.warnings],ambiguous=new Set(reading.ambiguousFields??[]);
+  for(const field of new Set(fields)){
+    const sources=[field,...(aliases[field]??[])];
+    if(sources.some(source=>reading.ambiguousFields?.includes(source))){
+      ambiguous.add(field);warnings.push(`${documentFields[field]}: hay valores ambiguos en el respaldo. Complete este campo manualmente.`);continue;
+    }
+    const candidates=sources.flatMap(source=>reading.suggestions.filter(item=>item.field===source));
+    const distinct=new Map<string,DocumentSuggestion>();
+    for(const item of candidates)if(!distinct.has(item.value))distinct.set(item.value,item);
+    if(distinct.size>1){
+      ambiguous.add(field);
+      warnings.push(`${documentFields[field]}: aparecen valores distintos (${[...distinct.keys()].join(", ")}). Revise el respaldo y complete el campo manualmente.`);
+    }else if(distinct.size===1){
+      suggestions.push({...distinct.values().next().value!,field});
+    }
+  }
+  return {suggestions,warnings:[...new Set(warnings)],...(ambiguous.size?{ambiguousFields:[...ambiguous]}:{})};
+}
 const plain=(text:string)=>text.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toUpperCase();
 const labels:[DocumentField,string][]=[
   ["movement_on","FECHA(?: DE (?:MOVIMIENTO|PESAJE|EMISION))?"],
@@ -57,7 +78,7 @@ function validRut(raw:string){
 }
 export function extractDocumentFields(text:string):DocumentReading{
   if(text.length>100_000)throw new Error("El documento contiene demasiado texto. Separe la guía o ticket que desea revisar.");
-  const found=new Map<DocumentField,DocumentSuggestion[]>(),warnings=new Set<string>();
+  const found=new Map<DocumentField,DocumentSuggestion[]>(),warnings=new Set<string>(),ambiguousFields:DocumentField[]=[];
   for(const original of text.split(/\r?\n/)){
     const line=original.trim();if(!line)continue;
     const normalized=plain(line);
@@ -92,7 +113,7 @@ export function extractDocumentFields(text:string):DocumentReading{
   const suggestions:DocumentSuggestion[]=[];
   for(const [field,items] of found){
     if(items.length===1)suggestions.push(items[0]);
-    else warnings.add(`${documentFields[field]}: aparecen valores distintos (${items.map(i=>i.value).join(", ")}). Seleccione el correcto directamente en el formulario.`);
+    else{ambiguousFields.push(field);warnings.add(`${documentFields[field]}: aparecen valores distintos (${items.map(i=>i.value).join(", ")}). Seleccione el correcto directamente en el formulario.`);}
   }
   const get=(field:DocumentField)=>suggestions.find(i=>i.field===field)?.value;
   const gross=get("gross_kg"),tare=get("tare_kg"),net=get("net_reported_kg");
@@ -100,5 +121,5 @@ export function extractDocumentFields(text:string):DocumentReading{
     warnings.add("Bruto, tara y neto no concuerdan. Los pesos requieren cotejo manual.");
     for(let i=suggestions.length-1;i>=0;i--)if(["gross_kg","tare_kg","net_reported_kg"].includes(suggestions[i].field))suggestions.splice(i,1);
   }
-  return {suggestions,warnings:[...warnings]};
+  return {suggestions,warnings:[...warnings],...(ambiguousFields.length?{ambiguousFields}:{})};
 }
