@@ -49,7 +49,7 @@ export async function saveWasteRecord(actor:Actor,input:unknown){
   manager(actor);
   const data=form.parse(input);
   return transaction(async(tx)=>{
-    const [service]=await tx.query<{id:string;status:string;gross_kg:string;tare_kg:string}>(`
+    const [service]=await tx.query<{id:string;status:string;gross_kg:string|null;tare_kg:string|null}>(`
       SELECT id,status,gross_kg,tare_kg FROM service_requests WHERE id=$1 AND deleted_at IS NULL FOR UPDATE`,[data.service_id]);
     if(!service||service.status!=="completada")reject("Cierre primero el servicio para preparar su registro ambiental.");
     const [previous]=await tx.query<{id:string;status:string;category:string;classification:string;generator_name:string;
@@ -58,7 +58,8 @@ export async function saveWasteRecord(actor:Actor,input:unknown){
       FROM waste_records WHERE service_id=$1 FOR UPDATE`,[data.service_id]);
     if(previous&&previous.status!=="borrador"&&previous.status!=="observado")reject("La ficha revisada está bloqueada. Registre una observación motivada para corregirla.");
     const quantity=Number(service.gross_kg)-Number(service.tare_kg);
-    if(!Number.isFinite(quantity)||quantity<0)reject("El pesaje del servicio requiere revisión.");
+    if(service.gross_kg===null||service.tare_kg===null||!Number.isFinite(quantity)||quantity<0)
+      reject("El pesaje del servicio requiere revisión. Complete bruto y tara antes de preparar la ficha.");
     const next={...data,quantity_kg:quantity,status:"borrador"};
     const [row]=await tx.query<{id:string}>(previous ? `UPDATE waste_records SET category=$2,classification=$3,generator_name=$4,
       transporter_name=$5,receiver_name=$6,treatment=$7,guide_number=$8,quantity_kg=$9,status='borrador',
@@ -75,14 +76,19 @@ export async function saveWasteRecord(actor:Actor,input:unknown){
 export async function reviewWasteRecord(actor:Actor,id:string){
   admin(actor);uuid.parse(id);
   await transaction(async(tx)=>{
-    const [record]=await tx.query<{service_id:string;status:string;guide_number:string;category:string}>(`
-      SELECT service_id,status,guide_number,category FROM waste_records WHERE id=$1 FOR UPDATE`,[id]);
+    const [record]=await tx.query<{service_id:string;status:string;guide_number:string;category:string;quantity_kg:string}>(`
+      SELECT service_id,status,guide_number,category,quantity_kg FROM waste_records WHERE id=$1 FOR UPDATE`,[id]);
     if(!record||record.status!=="borrador")reject("Sólo se puede revisar un borrador.");
     const [evidence]=await tx.query<{total:string}>(`SELECT count(*)::text AS total FROM service_evidence
       WHERE service_id=$1 AND storage_key IS NOT NULL`,[record.service_id]);
     if(Number(evidence.total)<1)reject("Adjunte evidencia al servicio antes de revisar el registro.");
-    const [service]=await tx.query<{status:string}>("SELECT status FROM service_requests WHERE id=$1 FOR UPDATE",[record.service_id]);
+    const [service]=await tx.query<{status:string;gross_kg:string|null;tare_kg:string|null}>(
+      "SELECT status,gross_kg,tare_kg FROM service_requests WHERE id=$1 FOR UPDATE",[record.service_id]);
     if(service?.status!=="completada")reject("El servicio debe estar cerrado.");
+    const quantity=Number(service.gross_kg)-Number(service.tare_kg);
+    if(service.gross_kg===null||service.tare_kg===null||!Number.isFinite(quantity)||quantity<0
+      ||Math.abs(quantity-Number(record.quantity_kg))>0.001)
+      reject("Revise el pesaje del servicio y actualice la ficha antes de revisarla.");
     await tx.query(`UPDATE waste_records SET status='revisado',reviewed_by=$2,reviewed_at=now(),updated_at=now() WHERE id=$1`,[id,actor.id]);
     await event(tx,actor,id,"revisar",record,{status:"revisado",evidence_count:evidence.total});
   });
