@@ -13,7 +13,8 @@
     "test:quote-response-http": "node --import tsx scripts/verify-quote-response.ts",
     "typecheck": "tsc --noEmit",
     "predev": "node scripts/prepare-document-reader.mjs",
-    "prebuild": "node scripts/prepare-document-reader.mjs"
+    "prebuild": "node scripts/prepare-document-reader.mjs",
+    "test:request-form-http": "node --import tsx scripts/verify-request-form.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.3.13",

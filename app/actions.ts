@@ -12,6 +12,7 @@ import {updateAsset,updateClient,updateSite,MastersError} from "@/lib/masters";
 import {createExternalDriver,PersonnelError} from "@/lib/personnel";
 import {setFleetDay,FleetScheduleError} from "@/lib/fleet-schedule";
 import {reportServiceDay,ServiceDayError} from "@/lib/service-day";
+import {requestDraft,type RequestFormState} from "@/lib/request-form-state";
 
 const value = (form: FormData, key: string) => String(form.get(key) ?? "");
 const servicePath = (id: string) => `/solicitudes/${encodeURIComponent(id)}`;
@@ -83,7 +84,7 @@ export async function createExternalDriverForServiceAction(form: FormData) {
     name:value(form,"name"),tax_id:value(form,"tax_id"),company_name:value(form,"company_name"),phone:value(form,"phone"),
   }));
 }
-export async function createServiceAction(form: FormData) {
+export async function createServiceAction(_previous:RequestFormState,form:FormData):Promise<RequestFormState> {
   const actor = await requireActor();
   let id: string;
   try {
@@ -97,10 +98,7 @@ export async function createServiceAction(form: FormData) {
       priority: value(form,"priority"), notes: value(form,"notes"),
     });
   } catch (error) {
-    const params=new URLSearchParams({error:message(error)});
-    if(value(form,"quote_id"))params.set("cotizacion",value(form,"quote_id"));
-    params.set("tipo",value(form,"service_type"));
-    redirect(`/solicitudes/nueva?${params.toString()}`);
+    return {error:message(error),values:requestDraft(form)};
   }
   revalidatePath("/", "layout");
   redirect(`${servicePath(id)}?ok=1`);

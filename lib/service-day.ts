@@ -53,9 +53,11 @@ export async function listServiceDays(actor:Actor,serviceId:string){
 
 export async function listWeekResults(actor:Actor,from:string,to:string){
   if(!canPlan(actor))invalid("Acceso de operaciones requerido.");
+  if(!z.iso.date().safeParse(from).success||!z.iso.date().safeParse(to).success||from>=to||
+    new Date(to).getTime()-new Date(from).getTime()!==7*86400000)invalid("Semana inválida.");
   return db.query<DayReportWeek>(`SELECT d.*,s.folio,s.operating_company,c.name AS client_name,s.waste_type
     FROM service_day_reports d JOIN service_requests s ON s.id=d.service_id JOIN clients c ON c.id=s.client_id
-    WHERE s.deleted_at IS NULL AND d.day >= $1::date AND d.day < $2::date ORDER BY d.day,d.updated_at LIMIT 1000`,[from,to]);
+    WHERE s.deleted_at IS NULL AND d.day >= $1::date AND d.day < $2::date ORDER BY d.day,d.updated_at,d.service_id`,[from,to]);
 }
 
 export async function listOpenDayAlerts(actor:Actor,company="",page=1){

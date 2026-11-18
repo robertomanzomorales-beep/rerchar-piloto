@@ -17,7 +17,7 @@ export async function weeklyFleet(actor:Actor,from:string,to:string,company=""){
   if(!daySchema.safeParse(from).success||!daySchema.safeParse(to).success||from>=to||
     (new Date(to).getTime()-new Date(from).getTime())!==7*86400000)deny("Semana inválida.");
   if(company!==""&&company!=="rerchar"&&company!=="e_y_j")deny("Empresa inválida.");
-  const [assets,notes,trips,pending]=await Promise.all([
+  const [assets,notes,trips,pending,pendingSummary]=await Promise.all([
     db.query<{id:string;code:string;plate:string|null;label:string;available:boolean}>(
       "SELECT id,code,plate,label,available FROM assets WHERE kind='camion' AND deleted_at IS NULL ORDER BY code"),
     db.query<FleetDayNote>("SELECT asset_id,day,kind,detail FROM fleet_day_notes WHERE day >= $1::date AND day < $2::date ORDER BY day",[from,to]),
@@ -31,14 +31,18 @@ export async function weeklyFleet(actor:Actor,from:string,to:string,company=""){
         AND s.status IN ('programada','en_ruta','pendiente_revision','completada')
         AND (s.scheduled_for AT TIME ZONE 'America/Santiago')::date >= $1::date
         AND (s.scheduled_for AT TIME ZONE 'America/Santiago')::date < $2::date
-      ORDER BY s.scheduled_for,s.folio LIMIT 1000`,[from,to]),
+      ORDER BY s.scheduled_for,s.folio`,[from,to]),
     db.query<UnplannedTrip>(`SELECT s.id,s.folio,s.operating_company,s.priority,c.name AS client_name,cs.name AS site_name,s.waste_type,s.created_at
       FROM service_requests s JOIN clients c ON c.id=s.client_id JOIN client_sites cs ON cs.id=s.site_id
       WHERE s.deleted_at IS NULL AND s.status='solicitada' AND s.service_type<>'arriendo'
         AND ($1::text='' OR s.operating_company=$1)
       ORDER BY CASE s.priority WHEN 'critica' THEN 0 WHEN 'alta' THEN 1 ELSE 2 END,s.created_at,s.folio LIMIT 60`,[company]),
+    db.query<{total:string;priority:string}>(`SELECT count(*)::text AS total,
+      count(*) FILTER (WHERE priority IN ('alta','critica'))::text AS priority
+      FROM service_requests WHERE deleted_at IS NULL AND status='solicitada' AND service_type<>'arriendo'
+        AND ($1::text='' OR operating_company=$1)`,[company]),
   ]);
-  return {assets,notes,trips,pending};
+  return {assets,notes,trips,pending,pendingTotal:Number(pendingSummary[0].total),pendingPriorityTotal:Number(pendingSummary[0].priority)};
 }
 
 export async function setFleetDay(actor:Actor,input:unknown){

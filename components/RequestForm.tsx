@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState,useActionState,useEffect,useRef } from "react";
 import Link from "next/link";
 import { createServiceAction } from "@/app/actions";
 import { SubmitButton } from "@/components/Transition";
+import type {RequestFormState} from "@/lib/request-form-state";
 import {requestTypesFromQuote} from "@/lib/request-kind";
 
 type Client = { id: string; name: string };
@@ -12,13 +13,17 @@ type AcceptedQuote = {id:string;client_id:string;issuer:"rerchar"|"e_y_j";folio:
   route:{pickup:string;destination:string}|null;
   lines:{description:string;quantity:string;unit:string;line_note:string|null;principal:string|null}[]};
 export default function RequestForm({ clients, sites, materials, clientId, submissionKey, quote, canCreateSite, initialCompany, initialCategory="servicios", initialServiceType="traslado" }: { clients: Client[]; sites: Site[]; materials:{id:string;name:string}[]; clientId?: string; submissionKey: string; quote?: AcceptedQuote; canCreateSite:boolean; initialCompany?: "rerchar"|"e_y_j"; initialCategory?: "servicios"|"compra"|"venta"|"retiro"|"otro"; initialServiceType?: "traslado"|"arriendo" }) {
-  const initialClient=quote?.client_id ?? clientId ?? clients[0]?.id ?? "";
+  const [state,formAction]=useActionState<RequestFormState,FormData>(createServiceAction,{error:"",values:{}});
+  const restored=state.values;
+  const errorRef=useRef<HTMLDivElement>(null);
+  useEffect(()=>{if(state.error)errorRef.current?.focus();},[state]);
+  const initialClient=quote?.client_id??clientId??(clients.some(c=>c.id===restored.client_id)?restored.client_id!:"");
   const [selected, setSelected] = useState(initialClient);
-  const [siteId,setSiteId]=useState(()=>{const initial=sites.filter(site=>site.client_id===initialClient);return initial.length===1?initial[0].id:"";});
-  const [newSiteName,setNewSiteName]=useState("");
-  const [category, setCategory] = useState<string>(initialCategory);
-  const [serviceType, setServiceType] = useState(initialServiceType);
-  const [materialId,setMaterialId]=useState("");
+  const [siteId,setSiteId]=useState(()=>{const initial=sites.filter(site=>site.client_id===initialClient);return initial.some(s=>s.id===restored.site_id)?restored.site_id!:restored.new_site_name?"":initial.length===1?initial[0].id:"";});
+  const [newSiteName,setNewSiteName]=useState(restored.new_site_name??"");
+  const [category, setCategory] = useState<string>(restored.service_type==="retiro"?"retiro":restored.request_category??initialCategory);
+  const [serviceType, setServiceType] = useState(restored.service_type==="arriendo"?"arriendo":restored.service_type==="traslado"?"traslado":initialServiceType);
+  const [materialId,setMaterialId]=useState(restored.material_id??"");
   const rental=category==="servicios"&&serviceType==="arriendo";
   const available = sites.filter((site) => site.client_id === selected);
   const materialLines=quote?.lines.filter(line=>/^(kg|kilos?|kilogramos?)$/i.test(line.unit.trim()))??[];
@@ -29,29 +34,34 @@ export default function RequestForm({ clients, sites, materials, clientId, submi
   const suggestedRoute=quotedFlows.length<=1&&initialServiceType!=="arriendo"?quote?.route:null;
   const summary=materialNames.join(", ");
   const suggestedMaterial=summary.length<=120?summary:materialNames.length?`Varios materiales · ver ${quote?.folio}`:"";
-  return <form action={createServiceAction} className="form-grid">
-    <input type="hidden" name="submission_key" value={submissionKey}/>
+  const [fields,setFields]=useState({waste_type:restored.waste_type??suggestedMaterial,origin:restored.origin??suggestedRoute?.pickup??"",
+    destination:restored.destination??suggestedRoute?.destination??"",rental_from:restored.rental_from??"",rental_to:restored.rental_to??"",
+    estimated_kg:restored.estimated_kg??"",priority:restored.priority??"normal",notes:restored.notes??quote?.notes??"",new_site_address:restored.new_site_address??""});
+  const update=(key:keyof typeof fields,value:string)=>setFields(previous=>({...previous,[key]:value}));
+  return <form action={formAction} className="form-grid request-form">
+    {state.error&&<div ref={errorRef} tabIndex={-1} role="alert" className="notice notice-error request-form-error"><strong>No se pudo registrar la solicitud.</strong><span>{state.error}</span><small>Los datos ingresados se conservan. Revise la información e intente nuevamente.</small></div>}
+    <input type="hidden" name="submission_key" value={restored.submission_key||submissionKey}/>
     <input type="hidden" name="quote_id" value={quote?.id??""}/>
     <div className="form-section-title">Cliente y empresa</div>
-    <label>Cliente<select name="client_id" value={selected} onChange={(event) => {const next=event.target.value;setSelected(next);const found=sites.filter(site=>site.client_id===next);setSiteId(found.length===1?found[0].id:"");setNewSiteName("");}} required disabled={Boolean(clientId||quote)}><option value="">Seleccione un cliente</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select>{(clientId||quote) && <input type="hidden" name="client_id" value={selected}/>}</label>
-    <label>Empresa que presta el servicio<select name="operating_company" defaultValue={quote?.issuer??initialCompany??""} required disabled={Boolean(quote)}><option value="">Seleccione la empresa</option><option value="rerchar">RERCHAR Chile SpA</option><option value="e_y_j">E y J Limitada</option></select>{quote&&<input type="hidden" name="operating_company" value={quote.issuer}/>}</label>
+    <label>Cliente<select name="client_id" value={selected} onChange={(event) => {const next=event.target.value;setSelected(next);const found=sites.filter(site=>site.client_id===next);setSiteId(found.length===1?found[0].id:"");setNewSiteName("");update("new_site_address","");}} required disabled={Boolean(clientId||quote)}><option value="">Seleccione un cliente</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select>{(clientId||quote) && <input type="hidden" name="client_id" value={selected}/>}</label>
+    <label>Empresa que presta el servicio<select name="operating_company" defaultValue={quote?.issuer??restored.operating_company??initialCompany??""} required disabled={Boolean(quote)}><option value="">Seleccione la empresa</option><option value="rerchar">RERCHAR Chile SpA</option><option value="e_y_j">E y J Limitada</option></select>{quote&&<input type="hidden" name="operating_company" value={quote.issuer}/>}</label>
     {quote&&<div className="field-full quote-source"><strong>Propuesta aceptada · <Link href={`/cotizaciones/${quote.id}`}>{quote.folio}</Link></strong><span>{quote.title}</span><p>Cliente, empresa y {quote.kind==="compra_material"?"materiales del catálogo":"alcance"} se vinculan al guardar. Revise el centro y la ruta.</p>{quotedFlows.length>1&&<p role="alert">La propuesta reúne operaciones distintas. Seleccione el tipo de esta solicitud y registre cada operación por separado con el mismo folio comercial.</p>}{suggestedRoute&&<p>Se proponen retiro y destino del recorrido revisado en la cotización. Confirme ambos antes de registrar.</p>}<ul>{quote.lines.map((line,i)=><li key={i}>{line.description} · {Number(line.quantity).toLocaleString("es-CL",{maximumFractionDigits:3})} {line.unit}{line.line_note&&` · ${line.line_note}`}</li>)}</ul>{quote.notes&&<p><strong>Condiciones:</strong> {quote.notes}</p>}</div>}
-    <label>Centro o faena<select name="site_id" value={siteId} onChange={event=>{setSiteId(event.target.value);if(event.target.value)setNewSiteName("");}} required={!newSiteName}><option value="">{canCreateSite?"Nuevo centro / lugar de entrega":"Seleccione un centro"}</option>{available.map((site) => <option key={site.id} value={site.id}>{site.name}</option>)}</select>{!available.length&&!canCreateSite&&<span className="helper-text">Solicite a operaciones registrar un centro para este cliente.</span>}</label>
-    {canCreateSite&&!siteId&&<><label>Nuevo centro o lugar de entrega<input name="new_site_name" value={newSiteName} onChange={event=>setNewSiteName(event.target.value)} required minLength={2} maxLength={180} placeholder="Ej. Bodega del cliente"/></label><label>Dirección del nuevo centro (opcional)<input name="new_site_address" maxLength={250}/></label><p className="field-full helper-text">El centro se creará para este cliente al guardar la solicitud y quedará disponible para futuras ventas y retiros.</p></>}
+    <label>Centro o faena<select name="site_id" value={siteId} onChange={event=>{setSiteId(event.target.value);if(event.target.value)setNewSiteName("");}} required={!newSiteName} disabled={!selected}><option value="">{canCreateSite?"Nuevo centro / lugar de entrega":"Seleccione un centro"}</option>{available.map((site) => <option key={site.id} value={site.id}>{site.name}</option>)}</select>{!selected&&<span className="helper-text">Seleccione primero el cliente para consultar sus centros.</span>}{selected&&!available.length&&!canCreateSite&&<span className="helper-text">Solicite a operaciones registrar un centro para este cliente.</span>}</label>
+    {canCreateSite&&selected&&!siteId&&<><label>Nuevo centro o lugar de entrega<input name="new_site_name" value={newSiteName} onChange={event=>setNewSiteName(event.target.value)} required minLength={2} maxLength={180} placeholder="Ej. Bodega del cliente"/></label><label>Dirección del nuevo centro (opcional)<input name="new_site_address" maxLength={250} value={fields.new_site_address} onChange={event=>update("new_site_address",event.target.value)}/></label><p className="field-full helper-text">El centro se creará para este cliente al guardar la solicitud y quedará disponible para futuras ventas y retiros.</p></>}
     <div className="form-section-title">Operación solicitada</div>
     <label>Tipo de solicitud<select value={category} onChange={(event)=>{const next=event.target.value;setCategory(next);if(next==="servicios"&&serviceOptions.length)setServiceType(serviceOptions[0]);}} required disabled={quote?.kind==="compra_material"}>{serviceOptions.length>0&&<option value="servicios">Servicios</option>}{(!quote||quote.kind==="compra_material")&&<option value="compra">Compra de material</option>}{!quote&&<option value="venta">Venta de material</option>}{(!quote||permitted?.some(type=>type==="retiro"))&&<option value="retiro">Retiro de material</option>}{!quote&&<option value="otro">Otro</option>}</select></label>
     <input type="hidden" name="request_category" value={category==="retiro"?"servicios":category}/>
     {category==="servicios"?<label>Servicio<select name="service_type" value={serviceType} onChange={(event)=>setServiceType(event.target.value as "traslado"|"arriendo")} required>{serviceOptions.includes("traslado")&&<option value="traslado">Traslado</option>}{serviceOptions.includes("arriendo")&&<option value="arriendo">Arriendo de equipo</option>}</select></label>:<input type="hidden" name="service_type" value={category}/>}
     {category==="compra"&&!quote&&<label>Material del catálogo<select name="material_id" required value={materialId} onChange={event=>setMaterialId(event.target.value)}><option value="">Seleccione según Entrada de material</option>{materials.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}
-    {category==="compra"&&!quote?<><input type="hidden" name="waste_type" value={materials.find(item=>item.id===materialId)?.name??""}/><p className="helper-text field-full">El peso se registra al recibir y pesar el material. Puede crear la solicitud sin kilos estimados.</p></>:<label>{rental?"Equipo o servicio en arriendo":"Residuo o material"}<input name="waste_type" list={quote?"quote-materials":undefined} defaultValue={suggestedMaterial} maxLength={120} required placeholder={rental?"Ej. excavadora con garra":"Ej. chatarra metálica"}/>{quote&&<datalist id="quote-materials">{materialNames.map(name=><option key={name} value={name.slice(0,120)}/>)}</datalist>}</label>}
+    {category==="compra"&&!quote?<><input type="hidden" name="waste_type" value={materials.find(item=>item.id===materialId)?.name??""}/><p className="helper-text field-full">El peso se registra al recibir y pesar el material. Puede crear la solicitud sin kilos estimados.</p></>:<label>{rental?"Equipo o servicio en arriendo":"Residuo o material"}<input name="waste_type" list={quote?"quote-materials":undefined} value={fields.waste_type} onChange={event=>update("waste_type",event.target.value)} maxLength={120} required placeholder={rental?"Ej. excavadora con garra":"Ej. chatarra metálica"}/>{quote&&<datalist id="quote-materials">{materialNames.map(name=><option key={name} value={name.slice(0,120)}/>)}</datalist>}</label>}
     <div className="form-section-title">Recorrido y período</div>
-    <label>{rental?"Lugar de entrega del equipo":"Origen"}<input name="origin" defaultValue={suggestedRoute?.pickup??""} maxLength={250} required placeholder={rental?"Lugar de entrega":"Lugar de retiro"}/></label>
-    <label>{rental?"Lugar de uso del equipo":"Destino"}<input name="destination" defaultValue={suggestedRoute?.destination??""} maxLength={250} required placeholder={rental?"Faena o lugar de trabajo":"Lugar de entrega"}/></label>
-    {rental&&<><label>Inicio del arriendo<input name="rental_from" type="date" required/></label><label>Término del arriendo<input name="rental_to" type="date" required/></label><p className="field-full helper-text">Registre el período acordado. El cierre se respalda con un documento; el arriendo no requiere pesaje.</p></>}
-    {!rental&&category!=="compra"&&<label>Cantidad estimada (kg)<input name="estimated_kg" type="number" min="0.01" step="0.01" placeholder="Opcional"/></label>}
+    <label>{rental?"Lugar de entrega del equipo":"Origen"}<input name="origin" value={fields.origin} onChange={event=>update("origin",event.target.value)} maxLength={250} required placeholder={rental?"Lugar de entrega":"Lugar de retiro"}/></label>
+    <label>{rental?"Lugar de uso del equipo":"Destino"}<input name="destination" value={fields.destination} onChange={event=>update("destination",event.target.value)} maxLength={250} required placeholder={rental?"Faena o lugar de trabajo":"Lugar de entrega"}/></label>
+    {rental&&<><label>Inicio del arriendo<input name="rental_from" type="date" required value={fields.rental_from} onChange={event=>update("rental_from",event.target.value)}/></label><label>Término del arriendo<input name="rental_to" type="date" required min={fields.rental_from||undefined} value={fields.rental_to} onChange={event=>update("rental_to",event.target.value)}/></label><p className="field-full helper-text">Registre el período acordado. El cierre se respalda con un documento; el arriendo no requiere pesaje.</p></>}
+    {!rental&&category!=="compra"&&<label>Cantidad estimada (kg)<input name="estimated_kg" value={fields.estimated_kg} onChange={event=>update("estimated_kg",event.target.value)} type="number" min="0.01" step="0.01" placeholder="Opcional"/></label>}
     <div className="form-section-title">Indicaciones para operaciones</div>
-    <label>Prioridad<select name="priority" defaultValue="normal"><option value="normal">Normal</option><option value="alta">Alta</option><option value="critica">Crítica</option></select></label>
-    <label className="field-full">Observaciones<textarea name="notes" defaultValue={quote?.notes??""} maxLength={2000} rows={4} placeholder="Indicaciones para la planificación, accesos u otras observaciones"/></label>
-    <div className="field-full form-footer"><SubmitButton className="button button-primary">Registrar solicitud</SubmitButton></div>
+    <label>Prioridad<select name="priority" value={fields.priority} onChange={event=>update("priority",event.target.value)}><option value="normal">Normal</option><option value="alta">Alta</option><option value="critica">Crítica</option></select></label>
+    <label className="field-full">Observaciones<textarea name="notes" value={fields.notes} onChange={event=>update("notes",event.target.value)} maxLength={2000} rows={4} placeholder="Indicaciones para la planificación, accesos u otras observaciones"/></label>
+    <div className="field-full form-footer"><SubmitButton className="button button-primary" disabled={!selected}>Registrar solicitud</SubmitButton></div>
   </form>;
 }

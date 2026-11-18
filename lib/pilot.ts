@@ -78,7 +78,9 @@ export type AgendaService = {
 };
 
 export async function listAgenda(actor: Actor, firstDay: string, dayAfterLast: string, company = "") {
-  if (![firstDay, dayAfterLast].every((date) => /^\d{4}-\d{2}-\d{2}$/.test(date)) || firstDay >= dayAfterLast) reject("Rango de agenda inválido.");
+  if (![firstDay, dayAfterLast].every(date=>z.iso.date().safeParse(date).success) || firstDay >= dayAfterLast||
+    new Date(dayAfterLast).getTime()-new Date(firstDay).getTime()>7*86400000) reject("Rango de agenda inválido.");
+  if(!["","rerchar","e_y_j"].includes(company))reject("Empresa inválida.");
   return db.query<AgendaService>(
     `SELECT s.id,s.folio,s.operating_company,c.name AS client_name,cs.name AS site_name,s.origin,s.destination,s.waste_type,
       s.scheduled_for,CASE WHEN a.plate IS NOT NULL AND trim(a.plate)<>'' THEN a.plate || ' · ' || a.label ELSE a.label END AS asset_label,
@@ -92,7 +94,7 @@ export async function listAgenda(actor: Actor, firstDay: string, dayAfterLast: s
        AND ($3::text <> 'cliente' OR s.client_id=$4::uuid)
        AND ($3::text <> 'conductor' OR s.driver_id=$5::uuid)
        AND ($6::text='' OR s.operating_company=$6)
-     ORDER BY s.scheduled_for,s.folio LIMIT 300`,
+     ORDER BY s.scheduled_for,s.folio`,
     [firstDay, dayAfterLast, actor.role, actor.client_id, actor.id, company],
   );
 }
