@@ -33,7 +33,9 @@ export default async function MaterialGuideDetail({params,searchParams}:{params:
   const invoicesByItem=new Map(invoices.map(invoice=>[invoice.item_id,invoice]));
   const posted=new Map(postings.map(p=>[p.guide_item_id,Number(p.posted_kg)]));
   const today=new Intl.DateTimeFormat("sv-SE",{timeZone:"America/Santiago",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
-  const itemValues=guideItemDefaults(editing,items.length+1),headerValues=guideHeaderDefaults(guide,today);
+  const lastLine=Math.max(0,...items.map(item=>item.line_number));
+  const nextLine=lastLine<100?lastLine+1:Array.from({length:100},(_,index)=>index+1).find(line=>!items.some(item=>item.line_number===line))??null;
+  const itemValues=guideItemDefaults(editing,nextLine??100),headerValues=guideHeaderDefaults(guide,today);
   const mismatch=!!guide.freight_guide_reference&&guide.freight_guide_reference.trim()!==guide.guide_number.trim();
   return <>
     <div className="order-actions print-hide"><Link href="/control-guias" className="back-link"><ArrowLeft size={16}/> Todas las guías</Link><PrintButton label="Imprimir control / guardar PDF"/></div>
@@ -61,9 +63,9 @@ export default async function MaterialGuideDetail({params,searchParams}:{params:
           {invoice?<><p>Factura {invoice.invoice_number} · Total {money(invoice.total_clp)} · Abonado {money(invoice.paid_clp)} · Saldo {money(Math.max(0,Number(invoice.total_clp)-Number(invoice.paid_clp)))} · Vence {day(invoice.due_on)}</p>
             <Link href="/cobranzas?empresa=rerchar">Ver factura y registrar abono →</Link></>:<MaterialGuideForm key={JSON.stringify(billingValues)} kind="billing" guideId={id} values={billingValues} movementOn={iso(guide.movement_on)} today={today}/>}</div>;})}</>:<p role="alert" className="notice notice-error">La vinculación con Cobranza requiere aplicar la migración 043 a la base de datos. El control operativo de la guía sigue disponible.</p>}
     </section>}
-    <section id="material" className="section-card print-hide material-guide-section"><div className="section-heading"><div><div className="eyebrow">MATERIALES DE ESTA GUÍA</div><h2><Weight size={19}/> {editing?`Editar ítem ${editing.line_number}`:"Agregar otro material"}</h2></div></div>
+    <section id="material" className="section-card print-hide material-guide-section"><div className="section-heading"><div><div className="eyebrow">MATERIALES DE ESTA GUÍA</div><h2><Weight size={19}/> {editing?`Editar ítem ${editing.line_number}`:nextLine===null?"Guía completa":"Agregar otro material"}</h2></div></div>
       <p className="helper-text">Cada material tiene sus propios tickets, pesos y factura. En una venta, los kg «desde stock» se descuentan sólo si existe saldo confirmado del material elegido. Los campos vacíos en una edición se borran.</p>
-      <MaterialGuideForm key={JSON.stringify(itemValues)} kind="item" guideId={id} values={itemValues} catalog={catalog} billingLinked={Boolean(editing?.receivable_invoice_id)}/>
+      {editing||nextLine!==null?<MaterialGuideForm key={JSON.stringify(itemValues)} kind="item" guideId={id} values={itemValues} catalog={catalog} billingLinked={Boolean(editing?.receivable_invoice_id)}/>:<p className="helper-text">Esta guía ya tiene 100 ítems. Puede corregir los materiales existentes desde “Editar este material”. Registre otra guía para agregar más materiales.</p>}
     </section>
     <details id="datos-generales" className="section-card print-hide material-guide-section" open={query.general==="1"}><summary>Corregir datos generales y flete</summary><MaterialGuideForm key={JSON.stringify(headerValues)} kind="header" guideId={id} values={headerValues} clients={clients}/></details>
     <p className="helper-text print-hide">Los saldos de materiales empiezan en cero y sólo incluyen recepciones y saldos iniciales confirmados; la bodega de EPP e insumos se controla aparte.</p>

@@ -14,7 +14,7 @@ async function main(){
   let server:ChildProcess|undefined,logs="";
   const clean=(s:string)=>s.replace(/<!--[\s\S]*?-->/g,"");
   const decode=(s:string)=>s.replace(/&amp;/g,"&").replace(/&quot;/g,'"').replace(/&#x27;/g,"'").replace(/&lt;/g,"<").replace(/&gt;/g,">");
-  const labels={create:"Registrar guía y material",item:"Guardar cambios del material",header:"Guardar datos generales",billing:"Vincular a Cobranza"};
+  const labels={create:"Registrar guía y material",item:"Guardar cambios del material",header:"Guardar datos generales",billing:"Vincular a Cobranza",add:"Agregar material"};
   function formFrom(body:string,kind:keyof typeof labels){
     const form=(body.match(/<form\b[\s\S]*?<\/form>/g)||[]).find(x=>x.includes(labels[kind]));assert.ok(form,kind);
     const data=new FormData();
@@ -37,6 +37,7 @@ async function main(){
     const [materialA,materialB]=await db.query<{id:string}>("INSERT INTO material_catalog(name) VALUES('Material HTTP A'),('Material HTTP B') RETURNING id");
     for(const material of [materialA,materialB])await stock.recordMaterialStockAdjustment(actor,{material_id:material.id,kind:"saldo_inicial",quantity_kg:"100",occurred_on:"2026-11-01",reference:"CONTEO-HTTP",reason:"Conteo físico temporal de prueba"});
     const seed=await guides.createMaterialGuide(actor,{submission_key:randomUUID(),guide_number:"GUIA-HTTP-EDICION",movement_on:"2026-11-01",movement_type:"venta",counterparty_id:clients[0].id,origin:"Origen HTTP",destination:"Destino HTTP",line_number:"1",material_id:materialA.id,stock_kg:"20"});
+    await guides.saveMaterialGuideItem(actor,seed,{line_number:"3",material_name:"Material adicional HTTP",origin_kg:"1"});
     const item=(await guides.getMaterialGuide(actor,seed)).items[0];
     await (globalThis as typeof globalThis&{__rercharDb:{local:{close:()=>Promise<void>}}}).__rercharDb.local.close();
     delete (globalThis as typeof globalThis&{__rercharDb?:unknown}).__rercharDb;
@@ -60,6 +61,10 @@ async function main(){
     body=await html(editPath);assertValues(body,"item",{...itemValues,stock_kg:"40.00",origin_kg:"10.50",returned_kg:"2.00",return_kg:"1.50",invoice_kg:"48.00",agreed_price_clp:"123.45",invoice_price_clp:"123.40"});
     assert.match(body,/<small>Complemento desde stock \/ descontado<\/small><strong>40 kg \/ 40 kg<\/strong>/,"la reversa del material anterior no tapa el descuento vigente");
     assert.ok(!body.includes("Salida desde stock aún sin conciliar"));outcomes.push({kind:"item",itemPreserved:true,errorRecovered:true,stockAfterMaterialChange:true});
+    assert.equal(formFrom(await html(path),"add").data.get("line_number"),"4","la numeración 1,3 propone el ítem 4 en vez de repetir el 3");
+    const lastLine=formFrom(await html(path),"add");lastLine.data.set("line_number","100");lastLine.data.set("material_name","Material de posición 100 HTTP");lastLine.data.set("origin_kg","1");
+    assert.equal((await post(path,lastLine.data)).status,303);
+    assert.equal(formFrom(await html(path),"add").data.get("line_number"),"2","si existe el ítem 100, propone un hueco libre dentro del rango permitido");
 
     const createPath="/control-guias/nueva";
     original=formFrom(await html(createPath),"create");const submission=String(original.data.get("submission_key"));
@@ -86,7 +91,7 @@ async function main(){
     assert.ok(linked.data.has("invoice_status"),"la factura vinculada conserva el estado aunque su selector esté bloqueado");
     linked.data.set("notes","Peso conciliado sin modificar la factura vinculada");response=await post(editPath,linked.data);assert.equal(response.status,303);assert.equal(response.headers.get("location"),`${path}?ok=1&editar=${item.id}#material`);outcomes.push({kind:"billing",fieldsRetained:true,linkedInvoiceProtected:true,otherItemChangesAllowed:true});
     const denied=await post(editPath,linked.data,"conductor");assert.match(await denied.text(),/Sólo administración y operaciones/);assert.equal((await post(editPath,linked.data,"")).status,303);
-    const result={ok:true,cases:outcomes,permissions:true,productionMutations:false,emailsSent:false,evidenceDirectory:work};await writeFile(join(work,"http-result.json"),JSON.stringify(result,null,2));console.log(JSON.stringify(result));
+    const result={ok:true,cases:outcomes,nextLineAfterGaps:true,permissions:true,productionMutations:false,emailsSent:false,evidenceDirectory:work};await writeFile(join(work,"http-result.json"),JSON.stringify(result,null,2));console.log(JSON.stringify(result));
   }finally{if(server?.pid){try{process.kill(-server.pid,"SIGTERM");}catch{}}await writeFile(join(work,"server.log"),logs);}
 }
 main().catch(error=>{console.error(error);process.exitCode=1;});
