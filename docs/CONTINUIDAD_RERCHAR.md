@@ -1,5 +1,14 @@
 # Continuidad RERCHAR — 17 de noviembre de 2026
 
+## Revisión de ficha ambiental y certificados — 18/11
+
+- Se reprodujo que `Number(null)` interpretaba bruto/tara ausentes como cero. La ficha ambiental podía guardarse y revisarse con un neto incompleto; un borrador histórico podía permitir preparar o emitir un certificado sin ambos pesos.
+- Se exige bruto y tara presentes al guardar y revisar la ficha y al preparar/emitir certificados. La revisión también comprueba que el neto siga coincidiendo con la ficha. Un neto cero explícito con ambos pesos ingresados mantiene el comportamiento anterior.
+- Regresión con base temporal: bruto/tara ausentes por separado, fichas históricas, neto desactualizado y pérdida del pesaje después de preparar el certificado. Los errores no dejan nuevas fichas ni certificados, y conservan el borrador si la emisión se rechaza.
+- Verificación: **57 pruebas aprobadas**, TypeScript y compilación correctos. No hay migraciones ni modificación de certificados ya emitidos. Las seis pruebas de mantenimiento, flota, contenedores y certificados también pasaron.
+- Confirmación de publicación pendiente hasta verificar el nuevo commit y el despliegue principal. No confundir el código probado localmente con la versión publicada.
+- La prueba del lector con una guía/ticket real se solicitará en la entrega, según indicación de Roberto. Es una dependencia documental para ese cotejo, no una implementación nueva ni una exclusión del alcance.
+
 ## Logos de RERCHAR y corrección de la matriz — 17/11
 
 - Roberto aportó `sicep.png` y `CERT-PIE-Rerchar(1).png` y pidió retirar de la primera observación la referencia a una empresa ajena. El N.º 1 solicita incorporar logos al PDF: no corresponde añadirle como dependencia un certificado. Esta corrección prevalece sobre los registros anteriores de ese supuesto pendiente.

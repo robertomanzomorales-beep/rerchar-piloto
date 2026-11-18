@@ -98,7 +98,7 @@ export function verificationUrl(code:string){return `${verificationBaseUrl()}/ve
 
 async function certificateSnapshot(tx:Db,serviceId:string,documentType:"servicio"|"disposicion_final"="servicio"){
     const [service]=await tx.query<{id:string;folio:string;status:string;operating_company:string|null;client_name:string;site_name:string;
-      service_type:string;waste_type:string;gross_kg:string;tare_kg:string;closed_at:Date}>(`
+      service_type:string;waste_type:string;gross_kg:string|null;tare_kg:string|null;closed_at:Date}>(`
       SELECT s.id,s.folio,s.status,s.operating_company,c.name AS client_name,cs.name AS site_name,s.service_type,s.waste_type,
       s.gross_kg,s.tare_kg,s.closed_at FROM service_requests s JOIN clients c ON c.id=s.client_id
       JOIN client_sites cs ON cs.id=s.site_id WHERE s.id=$1 AND s.deleted_at IS NULL FOR UPDATE OF s`,[serviceId]);
@@ -127,7 +127,8 @@ async function certificateSnapshot(tx:Db,serviceId:string,documentType:"servicio
       WHERE service_id=$1 AND storage_key IS NOT NULL`,[serviceId]);
     if(Number(evidence.total)<1)reject("El servicio necesita un archivo de evidencia.");
     const currentNet=Number(service.gross_kg)-Number(service.tare_kg);
-    if(!Number.isFinite(currentNet)||currentNet<0||Math.abs(currentNet-Number(record.quantity_kg))>0.001)
+    if(service.gross_kg===null||service.tare_kg===null||!Number.isFinite(currentNet)||currentNet<0
+      ||Math.abs(currentNet-Number(record.quantity_kg))>0.001)
       reject("Revise el pesaje y la ficha antes de emitir el certificado.");
     // En una guía con varios materiales, un ticket individual no representa por sí solo el peso certificado del servicio.
     const [guide]=await tx.query<{movement_date:Date|string;valued_guide_number:string|null;weight_ticket:string|null}>(`
