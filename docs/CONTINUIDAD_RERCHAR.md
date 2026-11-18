@@ -6,7 +6,8 @@
 - Se reduce el selector a 940 px, título más contenido, menos espacios interiores y procesos en una línea flexible. Se mantienen los dos accesos y las marcas proporcionadas. No se eliminan funciones ni se cambian destinos.
 - Se toma la paleta del logo original: esmeralda/verde hoja, azul y acentos cálidos discretos. Las categorías del menú recuperan color, fondos claros y transiciones suaves; se reduce la sangría para dar más espacio a los textos. RERCHAR conserva verde y E y J azul en sus estados activos.
 - Se retiran los cuadrados animados y bloques de esqueleto. La carga de página usa nombre de empresa, línea fina indeterminada y «Abriendo sección»; botones y enlaces usan un indicador circular pequeño. Respeta movimiento reducido y no introduce retardos artificiales ni porcentajes inventados.
-- Compilación local aprobada. Verificar tamaño real de las tarjetas, color del menú, navegación y carga en la publicación antes de cerrar este ajuste. No hay cambios de datos, matriz ni migraciones.
+- Compilación local aprobada y publicación `096d86d` confirmada READY. En escritorio (1363 px), las tarjetas miden 461 × 351 px: 26 % menos alto que la versión anterior de 472 px. Se comprobaron ambos accesos e identidades, colores de categorías, despliegue de Recursos y navegación a Flota. La transición mostró «Abriendo sección» y terminó en el destino correcto.
+- En 340 px, el documento mide 337 px y las tarjetas apiladas 305 × 371 px: sin desbordamiento horizontal. En 681 px se conservan dos columnas equilibradas. Escape cierra el menú móvil, devuelve foco a «Abrir menú» y libera el desplazamiento del fondo. Se deja el selector publicado a zoom normal para revisión. No hay cambios de datos, matriz ni migraciones.
 
 ## Verificación visual del selector nuevo — 18/11
 
