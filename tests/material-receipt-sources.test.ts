@@ -38,5 +38,13 @@ test("ingresos propone referencias del servicio RERCHAR y distingue tickets de o
   assert.deepEqual(rows[0].origin_tickets,["OR-1","OR-2"]);
   assert.deepEqual(rows[0].destination_tickets,["DEST-1","DEST-2"]);
   assert.deepEqual(rows[0].documents,[{id:file.id,name:"ticket.pdf"}]);
+  await db.query("UPDATE service_requests SET created_at='2025-01-01' WHERE id=$1",[rerchar.id]);
+  await db.query(`INSERT INTO service_requests
+    (submission_key,client_id,site_id,operating_company,service_type,waste_type,origin,destination,created_by)
+    SELECT gen_random_uuid(),$1,$2,'rerchar','compra','Material nuevo','Faena norte','Patio RERCHAR',$3
+    FROM generate_series(1,300)`,[client.id,site.id,user.id]);
+  const historical=await listReceiptSourceServices(owner);
+  assert.equal(historical.length,301,"no oculta el servicio antiguo tras otros 300 registros");
+  assert.deepEqual(historical.find(row=>row.id===rerchar.id)?.documents,[{id:file.id,name:"ticket.pdf"}]);
   await assert.rejects(()=>listReceiptSourceServices({...owner,role:"cliente",client_id:client.id}),/Sin acceso/);
 });

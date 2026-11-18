@@ -24,5 +24,5 @@ export async function listReceiptSourceServices(actor:Actor){
     FROM service_requests s JOIN clients c ON c.id=s.client_id JOIN client_sites cs ON cs.id=s.site_id
     LEFT JOIN users u ON u.id=s.driver_id LEFT JOIN external_drivers ed ON ed.id=s.external_driver_id
     LEFT JOIN assets a ON a.id=s.assigned_asset_id LEFT JOIN assets r ON r.id=s.ramp_asset_id
-    WHERE s.operating_company='rerchar' AND s.deleted_at IS NULL ORDER BY s.created_at DESC LIMIT 300`);
+    WHERE s.operating_company='rerchar' AND s.deleted_at IS NULL ORDER BY s.created_at DESC,s.id DESC`);
 }

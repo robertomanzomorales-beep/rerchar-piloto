@@ -4,14 +4,12 @@ import {PackageCheck} from "lucide-react";
 import {requireActor,canManage} from "@/lib/auth";
 import {db} from "@/lib/db";
 import {listMaterialReceipts,materialAmounts,type ReceiptView} from "@/lib/materials";
-import {createMaterialAction} from "@/app/operation-actions";
 import {Notice} from "@/components/UI";
-import {SubmitButton} from "@/components/Transition";
 import {serviceFolio} from "@/lib/companies";
 import {listMaterialCatalog} from "@/lib/material-stock";
 import {moduleReady} from "@/lib/schema-readiness";
 import ModuleUnavailable from "@/components/ModuleUnavailable";
-import {ReceiptMaterialSelection} from "@/components/ReceiptMaterialSelection";
+import MaterialReceiptForm from "@/components/MaterialReceiptForm";
 import {listReceiptSourceServices} from "@/lib/material-receipt-sources";
 
 const date=(v:Date|string)=>v instanceof Date?v.toISOString().slice(0,10):String(v).slice(0,10);
@@ -30,8 +28,7 @@ export default async function MaterialReceipts({searchParams}:{searchParams:Prom
     canManage(actor)?listReceiptSourceServices(actor):Promise.resolve([]),
     canManage(actor)?listMaterialCatalog(actor):Promise.resolve([]),
     canManage(actor)?db.query<{service_id:string;material_id:string}>(`SELECT sm.service_id,sm.material_id FROM service_request_materials sm
-      JOIN service_requests s ON s.id=sm.service_id WHERE s.operating_company='rerchar' AND s.deleted_at IS NULL
-      AND s.id IN (SELECT id FROM service_requests WHERE operating_company='rerchar' AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 300)`):Promise.resolve([])]);
+      JOIN service_requests s ON s.id=sm.service_id WHERE s.operating_company='rerchar' AND s.deleted_at IS NULL`):Promise.resolve([])]);
   const rows=result.slice(0,pageSize),hasMore=result.length>pageSize;
   const href=(nextView:ReceiptView,page=1)=>`/ingresos?${new URLSearchParams({vista:nextView,pagina:String(page)})}`;
   const currentMonth=new Intl.DateTimeFormat("sv-SE",{timeZone:"America/Santiago",year:"numeric",month:"2-digit"}).format(new Date());
@@ -43,16 +40,8 @@ export default async function MaterialReceipts({searchParams}:{searchParams:Prom
     {canManage(actor)&&<section className="section-card"><div className="section-heading"><div><div className="eyebrow">PLANILLA DE CAROL</div><h2>Descargar entrada de material</h2></div><span className="count-pill">{guidePending} guías · {invoicePending} facturas · {paymentPending} pagos pendientes entre los registros visibles</span></div><p className="helper-text">Archivo Excel con las 21 columnas de la planilla 2026, ordenado por fecha. Los pesos y totales salen de cada ingreso registrado; puede filtrar por mes y cliente.</p><form action="/api/ingresos/exportar" method="get" className="form-grid"><label>Mes<input name="mes" type="month" defaultValue={currentMonth} required/></label><label>Cliente (opcional)<select name="cliente" defaultValue=""><option value="">Todos los clientes</option>{clients.map(client=><option key={client.id} value={client.id}>{client.name}</option>)}</select></label><div className="field-full form-footer"><button className="button button-outline" type="submit">Descargar Excel</button></div></form></section>}
     {canManage(actor)&&<section id="nuevo-ingreso" className="section-card"><div className="section-heading"><div><div className="eyebrow">NUEVO REGISTRO</div><h2>Entrada o excedente</h2></div><Link href="/materiales-stock" className="button button-outline">Stock de materiales</Link></div>
       <p className="helper-text">Indique la base del peso neto: en las planillas de entrada varía entre peso de proveedor y peso RERCHAR; en excedentes se calcula sobre RERCHAR. Una diferencia con el neto anotado requiere explicación.</p>
-      <form action={createMaterialAction} className="form-grid">
-        <label>Tipo<select name="kind" defaultValue="ingreso"><option value="ingreso">Entrada de material</option><option value="excedente">Excedente RESITER / SPENCE</option></select></label>
-        <label>Fecha de movimiento<input name="movement_on" type="date" required/></label>
-        <ReceiptMaterialSelection key={initialServiceId||"directa"} clients={clients} services={services.map(s=>({...s,folio:serviceFolio(s)}))} materials={catalog} linked={linked} initialServiceId={initialServiceId}/>
-        <label>Nombre si no figura en catálogo<input name="material_name" maxLength={180}/></label>
-        <div className="form-section-title field-full">Pesos de la planilla (kg)</div>
-        <label>Peso proveedor<input name="supplier_kg" type="number" min="0" step="0.01"/></label><label>Peso RERCHAR<input name="rerchar_kg" type="number" min="0" step="0.01"/></label><label>Impurezas<input name="impurity_kg" type="number" min="0" step="0.01" defaultValue="0"/></label><label>Base del neto<select name="net_basis"><option value="rerchar">Peso RERCHAR − impurezas</option><option value="proveedor">Peso proveedor − impurezas</option></select></label><label>Neto anotado (opcional)<input name="net_reported_kg" type="number" min="0" step="0.01"/></label><label>Informe impurezas<input name="impurity_report" maxLength={80}/></label>
-        <div className="form-section-title field-full">Documentos y cobro</div><p className="helper-text field-full">En una recepción directa, registre conductor externo, RUT, patente y guía de traslado, guía de origen u hoja de ingreso. El ticket puede agregarse después. Guardar el ingreso aún no suma stock: confírmelo en su ficha tras verificar el peso físico y la propiedad del material.</p>
-        <label>Certificado<input name="certificate_number" maxLength={80}/></label><label>Acta<input name="act_number" maxLength={80}/></label><label>Factura (si ya existe)<input name="invoice_number" maxLength={80}/></label><label>Precio unitario ($/kg)<input name="unit_price_clp" type="number" min="0" step="0.01"/></label><label>Estado inicial<select name="payment_status"><option value="pendiente">Pendiente</option><option value="no_aplica">No aplica</option></select></label><label className="field-full">Observaciones<textarea name="notes" rows={2} maxLength={1000}/></label>
-        <div className="field-full form-footer"><SubmitButton className="button button-primary">Registrar ingreso</SubmitButton></div></form></section>}
+      <MaterialReceiptForm key={initialServiceId||"directa"} clients={clients} services={services.map(s=>({...s,folio:serviceFolio(s)}))}
+        materials={catalog.map(({id,name})=>({id,name}))} linked={linked} initialServiceId={initialServiceId}/></section>}
     <section className="section-card"><div className="section-heading"><div><div className="eyebrow">CONTROL</div><h2>{view?views[view]:"Movimientos registrados"}</h2></div><span className="count-pill">{rows.length} en esta página</span></div>
       <form action="/ingresos" className="filters"><label>Vista<select name="vista" defaultValue={view}>{Object.entries(views).filter(([key])=>key===""||key==="guia"&&guideReady||key!=="guia"&&closureReady).map(([key,label])=><option key={key} value={key}>{label}</option>)}</select></label><button type="submit" className="button button-outline">Aplicar</button></form>
       <div className="table-wrap"><table className="data-table"><thead><tr><th>Fecha / referencia</th><th>Cliente / faena</th><th>Material</th><th>Neto calculado</th><th>Guía valorizada</th><th>Pago</th></tr></thead><tbody>{rows.map(r=>{const amount=materialAmounts(r);return <tr key={r.id}><td><Link href={`/ingresos/${r.id}`}><strong>{r.weighing_ticket||r.transfer_guide||r.origin_guide||r.entry_sheet||"Ingreso"}</strong></Link><span className="table-sub">{date(r.movement_on)} · {r.receipt_mode||r.kind}</span></td><td>{r.client_name}<span className="table-sub">{r.site_name}</span></td><td>{r.material_name}</td><td>{amount.net_kg?.toLocaleString("es-CL")??"—"} kg</td><td>{r.valued_guide?<span className="inventory-good">{r.valued_guide}</span>:r.valued_guide_requested_on?<span className="inventory-low">Pendiente desde {date(r.valued_guide_requested_on)}</span>:"Por solicitar"}</td><td>{r.payment_status}</td></tr>;})}</tbody></table>{rows.length===0&&<p className="muted">{view?"Sin ingresos en esta vista.":"Aún no hay ingresos de material registrados."}</p>}</div>

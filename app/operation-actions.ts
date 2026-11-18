@@ -10,6 +10,7 @@ import {SupplierInvoiceError,createSupplierInvoice,registerSupplierPayment,updat
 import {LedgerError,saveGuideFollowup,saveCommercialDetails} from "@/lib/service-ledger";
 import {OperationFileError,addOperationFile} from "@/lib/operation-files";
 import {supplierInvoiceDraft,type SupplierInvoiceFormState} from "@/lib/supplier-invoice-form-state";
+import {materialReceiptDraft,materialReceiptFields,type MaterialReceiptFormState} from "@/lib/material-receipt-form-state";
 
 const val=(form:FormData,key:string)=>String(form.get(key)??"");
 function message(error:unknown){
@@ -23,14 +24,10 @@ async function run(path:string,fn:()=>Promise<unknown>):Promise<never>{
   try{await fn();}catch(e){redirect(`${path}?error=${encodeURIComponent(message(e))}`);}
   revalidatePath("/","layout");redirect(`${path}?ok=1`);
 }
-export async function createMaterialAction(form:FormData){
+export async function createMaterialAction(_previous:MaterialReceiptFormState,form:FormData):Promise<MaterialReceiptFormState>{
   const actor=await requireActor();let id:string;
-  const fields=["client_id","service_id","kind","movement_on","site_name","origin","destination","driver_name",
-    "driver_tax_id","truck_plate","trailer_plate","weighing_ticket","material_id","material_name","receipt_mode","supplier_kg","rerchar_kg",
-    "impurity_kg","net_basis","net_reported_kg","impurity_report","origin_guide","transfer_guide","entry_sheet",
-    "valued_guide","certificate_number","act_number","invoice_number","unit_price_clp","payment_status","paid_on","notes"];
-  try{id=await createMaterialReceipt(actor,Object.fromEntries(fields.map(field=>[field,val(form,field)])));}
-  catch(e){redirect(`/ingresos?error=${encodeURIComponent(message(e))}`);}
+  try{id=await createMaterialReceipt(actor,Object.fromEntries(materialReceiptFields.map(field=>[field,val(form,field)])));}
+  catch(e){return {error:message(e),values:materialReceiptDraft(form)};}
   revalidatePath("/","layout");redirect(`/ingresos/${id}?ok=1`);
 }
 export async function updateMaterialPaymentAction(form:FormData){
