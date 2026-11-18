@@ -33,7 +33,7 @@ export async function findMissingExternalRequirements(tx:Db,driverId:string,clie
 export type ExternalDriver={id:string;name:string;tax_id:string;company_name:string;phone:string|null};
 export async function listExternalDrivers(actor:Actor) {
   guard(actor);
-  return db.query<ExternalDriver>("SELECT id,name,tax_id,company_name,phone FROM external_drivers WHERE active=true ORDER BY name");
+  return db.query<ExternalDriver>("SELECT id,name,tax_id,company_name,phone FROM external_drivers WHERE active=true ORDER BY name,id");
 }
 
 export async function createExternalDriver(actor:Actor,input:unknown) {
@@ -51,7 +51,7 @@ export async function createExternalDriver(actor:Actor,input:unknown) {
   });
 }
 
-export type Worker={id:string;name:string;email:string;role:string;national_id:string|null;position:string|null;shift:string|null;phone:string|null;employer:string|null};
+export type Worker={id:string;name:string;email:string;role:string;national_id:string|null;position:string|null;shift:string|null;phone:string|null;employer:string|null;profile_updated_at:Date|null};
 export type Requirement={id:string;client_id:string;site_id:string|null;client_name:string;site_name:string|null;name:string;kind:string;warning_days:number;created_at:Date};
 export type Credential={id:string;user_id:string;requirement_id:string;worker_name:string;requirement_name:string;client_name:string;site_name:string|null;
   reference:string;issued_on:Date|string;expires_on:Date|string;state:string;reviewed_by_name:string|null;review_note:string|null;created_at:Date};
@@ -70,11 +70,13 @@ export async function listCredentialAlerts(actor:Actor,company?:Company){
       c.issued_on,c.expires_on,c.created_at,u.name AS worker_name
     FROM worker_credentials c JOIN users u ON u.id=c.user_id
     WHERE c.state='verificada' AND u.active=true AND u.role='conductor'
+      AND c.issued_on<=(now() AT TIME ZONE 'America/Santiago')::date
     UNION ALL
     SELECT c.id,'tercero'::text,c.external_driver_id,c.requirement_id,
       c.issued_on,c.expires_on,c.created_at,e.name
     FROM external_driver_credentials c JOIN external_drivers e ON e.id=c.external_driver_id
     WHERE c.state='verificada' AND e.active=true
+      AND c.issued_on<=(now() AT TIME ZONE 'America/Santiago')::date
   ), latest AS (
     SELECT d.*,row_number() OVER (PARTITION BY source,worker_id,requirement_id
       ORDER BY expires_on DESC,created_at DESC,id DESC) AS position FROM valid_documents d
@@ -102,25 +104,25 @@ export async function listCredentialAlerts(actor:Actor,company?:Company){
 export async function listPersonnel(actor:Actor) {
   guard(actor);
   const [workers,clients,sites,requirements,credentials,externalDrivers,externalCredentials]=await Promise.all([
-    db.query<Worker>(`SELECT u.id,u.name,u.email,u.role,p.national_id,p.position,p.shift,p.phone,p.employer FROM users u
-      LEFT JOIN worker_profiles p ON p.user_id=u.id WHERE u.active=true AND u.role IN ('conductor','operaciones') ORDER BY u.name`),
-    db.query<{id:string;name:string}>("SELECT id,name FROM clients WHERE deleted_at IS NULL ORDER BY name"),
+    db.query<Worker>(`SELECT u.id,u.name,u.email,u.role,p.national_id,p.position,p.shift,p.phone,p.employer,p.updated_at AS profile_updated_at FROM users u
+      LEFT JOIN worker_profiles p ON p.user_id=u.id WHERE u.active=true AND u.role IN ('conductor','operaciones') ORDER BY u.name,u.id`),
+    db.query<{id:string;name:string}>("SELECT id,name FROM clients WHERE deleted_at IS NULL ORDER BY name,id"),
     db.query<{id:string;client_id:string;name:string;client_name:string}>(`SELECT s.id,s.client_id,s.name,c.name AS client_name FROM client_sites s
-      JOIN clients c ON c.id=s.client_id WHERE s.deleted_at IS NULL AND c.deleted_at IS NULL ORDER BY c.name,s.name`),
+      JOIN clients c ON c.id=s.client_id WHERE s.deleted_at IS NULL AND c.deleted_at IS NULL ORDER BY c.name,s.name,s.id`),
     db.query<Requirement>(`SELECT r.id,r.client_id,r.site_id,r.name,r.kind,r.warning_days,r.created_at,c.name AS client_name,s.name AS site_name
       FROM site_requirements r JOIN clients c ON c.id=r.client_id LEFT JOIN client_sites s ON s.id=r.site_id
-      WHERE r.active=true ORDER BY c.name,s.name NULLS FIRST,r.name`),
+      WHERE r.active=true ORDER BY c.name,s.name NULLS FIRST,r.name,r.id`),
     db.query<Credential>(`SELECT d.id,d.user_id,d.requirement_id,d.reference,d.issued_on,d.expires_on,d.state,d.review_note,d.created_at,
       u.name AS worker_name,r.name AS requirement_name,c.name AS client_name,s.name AS site_name,a.name AS reviewed_by_name
       FROM worker_credentials d JOIN users u ON u.id=d.user_id JOIN site_requirements r ON r.id=d.requirement_id
       JOIN clients c ON c.id=r.client_id LEFT JOIN client_sites s ON s.id=r.site_id LEFT JOIN users a ON a.id=d.reviewed_by
-      ORDER BY CASE d.state WHEN 'pendiente' THEN 0 WHEN 'verificada' THEN 1 ELSE 2 END,d.created_at DESC LIMIT 400`),
+      ORDER BY CASE d.state WHEN 'pendiente' THEN 0 WHEN 'verificada' THEN 1 ELSE 2 END,d.created_at DESC,d.id DESC`),
     listExternalDrivers(actor),
     db.query<ExternalCredential>(`SELECT d.id,d.external_driver_id,d.requirement_id,d.reference,d.issued_on,d.expires_on,d.state,d.review_note,d.created_at,
       e.name AS worker_name,r.name AS requirement_name,c.name AS client_name,s.name AS site_name,a.name AS reviewed_by_name
       FROM external_driver_credentials d JOIN external_drivers e ON e.id=d.external_driver_id JOIN site_requirements r ON r.id=d.requirement_id
       JOIN clients c ON c.id=r.client_id LEFT JOIN client_sites s ON s.id=r.site_id LEFT JOIN users a ON a.id=d.reviewed_by
-      ORDER BY CASE d.state WHEN 'pendiente' THEN 0 WHEN 'verificada' THEN 1 ELSE 2 END,d.created_at DESC LIMIT 400`),
+      ORDER BY CASE d.state WHEN 'pendiente' THEN 0 WHEN 'verificada' THEN 1 ELSE 2 END,d.created_at DESC,d.id DESC`),
   ]);
   return {workers,clients,sites,requirements,credentials,externalDrivers,externalCredentials};
 }

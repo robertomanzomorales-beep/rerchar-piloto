@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { ZodError } from "zod";
 import { requireActor } from "@/lib/auth";
 import { createExternalDriver, createRequirement, disableRequirement, PersonnelError, recordCredential, recordExternalCredential, reviewCredential, reviewExternalCredential, saveWorkerProfile } from "@/lib/personnel";
+import {personnelAnchor,personnelContextFromForm,personnelDraft,personnelHref,type PersonnelFormKind,type PersonnelFormState} from "@/lib/personnel-form-state";
 
 const value=(form:FormData,key:string)=>String(form.get(key)??"");
 function message(error:unknown) {
@@ -14,44 +15,44 @@ function message(error:unknown) {
   console.error("Error en personal",error);
   return "No fue posible registrar este cambio de acreditación.";
 }
-async function run(operation:()=>Promise<unknown>):Promise<never> {
-  try{await operation();}catch(error){redirect(`/personal?error=${encodeURIComponent(message(error))}`);}
+async function run(kind:PersonnelFormKind,form:FormData,operation:()=>Promise<unknown>):Promise<PersonnelFormState> {
+  try{await operation();}catch(error){return {error:message(error),values:personnelDraft(kind,form)};}
   revalidatePath("/","layout");
-  redirect("/personal?ok=1");
+  redirect(personnelHref(personnelContextFromForm(form),personnelAnchor(kind),{ok:"1"}));
 }
-export async function saveWorkerProfileAction(form:FormData) {
+export async function saveWorkerProfileAction(_previous:PersonnelFormState,form:FormData):Promise<PersonnelFormState> {
   const actor=await requireActor();
-  await run(()=>saveWorkerProfile(actor,value(form,"user_id"),{national_id:value(form,"national_id"),position:value(form,"position"),shift:value(form,"shift"),phone:value(form,"phone"),employer:value(form,"employer")}));
+  return run("profile",form,()=>saveWorkerProfile(actor,value(form,"user_id"),{national_id:value(form,"national_id"),position:value(form,"position"),shift:value(form,"shift"),phone:value(form,"phone"),employer:value(form,"employer")}));
 }
-export async function createRequirementAction(form:FormData) {
+export async function createRequirementAction(_previous:PersonnelFormState,form:FormData):Promise<PersonnelFormState> {
   const actor=await requireActor();
-  await run(()=>createRequirement(actor,{client_id:value(form,"client_id"),site_id:value(form,"site_id"),name:value(form,"name"),kind:value(form,"kind"),warning_days:value(form,"warning_days")}));
+  return run("requirement",form,()=>createRequirement(actor,{client_id:value(form,"client_id"),site_id:value(form,"site_id"),name:value(form,"name"),kind:value(form,"kind"),warning_days:value(form,"warning_days")}));
 }
-export async function disableRequirementAction(form:FormData) {
+export async function disableRequirementAction(_previous:PersonnelFormState,form:FormData):Promise<PersonnelFormState> {
   const actor=await requireActor();
-  await run(()=>disableRequirement(actor,value(form,"requirement_id"),value(form,"reason")));
+  return run("disable",form,()=>disableRequirement(actor,value(form,"requirement_id"),value(form,"reason")));
 }
-export async function recordCredentialAction(form:FormData) {
+export async function recordCredentialAction(_previous:PersonnelFormState,form:FormData):Promise<PersonnelFormState> {
   const actor=await requireActor();
-  await run(()=>recordCredential(actor,{user_id:value(form,"user_id"),requirement_id:value(form,"requirement_id"),reference:value(form,"reference"),issued_on:value(form,"issued_on"),expires_on:value(form,"expires_on")}));
+  return run("credential",form,()=>recordCredential(actor,{user_id:value(form,"user_id"),requirement_id:value(form,"requirement_id"),reference:value(form,"reference"),issued_on:value(form,"issued_on"),expires_on:value(form,"expires_on")}));
 }
-export async function reviewCredentialAction(form:FormData) {
+export async function reviewCredentialAction(_previous:PersonnelFormState,form:FormData):Promise<PersonnelFormState> {
   const actor=await requireActor();
-  await run(()=>reviewCredential(actor,value(form,"credential_id"),value(form,"decision") as "verificada"|"rechazada"|"revocada",value(form,"reason")));
+  return run("review",form,()=>reviewCredential(actor,value(form,"credential_id"),value(form,"decision") as "verificada"|"rechazada"|"revocada",value(form,"reason")));
 }
-export async function createExternalDriverAction(form:FormData) {
+export async function createExternalDriverAction(_previous:PersonnelFormState,form:FormData):Promise<PersonnelFormState> {
   const actor=await requireActor();
-  await run(()=>createExternalDriver(actor,{name:value(form,"name"),tax_id:value(form,"tax_id"),
+  return run("external_driver",form,()=>createExternalDriver(actor,{name:value(form,"name"),tax_id:value(form,"tax_id"),
     company_name:value(form,"company_name"),phone:value(form,"phone")}));
 }
-export async function recordExternalCredentialAction(form:FormData) {
+export async function recordExternalCredentialAction(_previous:PersonnelFormState,form:FormData):Promise<PersonnelFormState> {
   const actor=await requireActor();
-  await run(()=>recordExternalCredential(actor,{external_driver_id:value(form,"external_driver_id"),
+  return run("external_credential",form,()=>recordExternalCredential(actor,{external_driver_id:value(form,"external_driver_id"),
     requirement_id:value(form,"requirement_id"),reference:value(form,"reference"),
     issued_on:value(form,"issued_on"),expires_on:value(form,"expires_on")}));
 }
-export async function reviewExternalCredentialAction(form:FormData) {
+export async function reviewExternalCredentialAction(_previous:PersonnelFormState,form:FormData):Promise<PersonnelFormState> {
   const actor=await requireActor();
-  await run(()=>reviewExternalCredential(actor,value(form,"credential_id"),
+  return run("external_review",form,()=>reviewExternalCredential(actor,value(form,"credential_id"),
     value(form,"decision") as "verificada"|"rechazada"|"revocada",value(form,"reason")));
 }
