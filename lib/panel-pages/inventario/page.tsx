@@ -28,10 +28,10 @@ export default async function Inventory({ searchParams }: { searchParams: Promis
   const movementPage=recordPage(query.pagina_kardex),reservationPage=recordPage(query.pagina_reservas);
   const itemFilter=z.uuid().safeParse(query.articulo).success?query.articulo!:"";
   const warehouseFilter=z.uuid().safeParse(query.bodega).success?query.bodega!:"";
-  const href=(movement=movementPage,reservation=reservationPage,anchor="kardex")=>`/inventario?${new URLSearchParams({mes:month,articulo:itemFilter,bodega:warehouseFilter,pagina_kardex:String(movement),pagina_reservas:String(reservation)})}#${anchor}`;
+  const href=(movement=movementPage,reservation=reservationPage,anchor="kardex",keepNotice=false)=>`/inventario?${new URLSearchParams({mes:month,articulo:itemFilter,bodega:warehouseFilter,pagina_kardex:String(movement),pagina_reservas:String(reservation),...(keepNotice&&query.ok==="1"?{ok:"1"}:{}),...(keepNotice&&query.error?{error:query.error}:{})})}#${anchor}`;
   const [inventory,spend,skuRules]=await Promise.all([listInventory(actor,itemFilter,warehouseFilter,movementPage,reservationPage),listInventorySpend(actor,month),listStockSkuRules(actor)]);
   const { warehouses, items, balances, movements, reservations, tires, movementCount,reservationCount } = inventory;
-  if(movementPage>lastRecordPage(movementCount)||reservationPage>lastRecordPage(reservationCount))redirect(href(Math.min(movementPage,lastRecordPage(movementCount)),Math.min(reservationPage,lastRecordPage(reservationCount))));
+  if(movementPage>lastRecordPage(movementCount)||reservationPage>lastRecordPage(reservationCount))redirect(href(Math.min(movementPage,lastRecordPage(movementCount)),Math.min(reservationPage,lastRecordPage(reservationCount)),"kardex",true));
   const alerts = balances.filter((balance) => Number(balance.quantity)-Number(balance.reserved) <= Number(balance.minimum_qty));
   const valuation = summarizeInventoryValuation(items, balances);
   const spendSummary=summarizeInventorySpend(spend.items);

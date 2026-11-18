@@ -74,10 +74,11 @@ try{
   const next=reservationForm(body);next.set("return_to","https://example.invalid/externo");response=await post(next);assert.equal(response.status,303);target=new URL(response.headers.get("location")!,base);assert.equal(target.origin,base);assert.equal(target.pathname,"/inventario");
   const denied=await request(inventoryPath,"conductor");
   if(denied.status===200){const deniedBody=await denied.text();assert.match(deniedBody,/NEXT_REDIRECT/);assert.ok(!deniedBody.includes("Artículo HTTP"));}else assert.equal(denied.status,307);
-  for(const path of ["/compras?estado=solicitada&pagina=999",inventoryPath.replace("pagina_kardex=3","pagina_kardex=999")]){
+  for(const path of ["/compras?estado=solicitada&pagina=999",inventoryPath.replace("pagina_kardex=3","pagina_kardex=999")+"&ok=1"]){
     const clamped=await request(path);const content=await clamped.text();
     if(clamped.status===200)assert.match(content,/NEXT_REDIRECT/);else assert.equal(clamped.status,307);
     assert.ok((clamped.headers.get("location")??content).includes(path.startsWith("/compras")?"pagina=3":"pagina_kardex=3"));
+    if(path.startsWith("/inventario"))assert.ok((clamped.headers.get("location")??content).includes("ok=1"),"la normalización conserva la confirmación del guardado");
   }
   const result={ok:true,purchasePagination:true,supplierPagination:true,receiptFourColumns:true,quantityAndUnit:true,kardexPagination:true,reservationPagination:true,returnKeepsFilters:true,duplicateProtected:true,externalReturnRejected:true,productionMutations:false,evidenceDirectory:work};
   await writeFile(join(work,"http-result.json"),JSON.stringify(result,null,2));console.log(JSON.stringify(result));
