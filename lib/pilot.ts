@@ -103,6 +103,7 @@ export type ReportService = {
   operating_company: Company | null;
   status: string; origin: string; destination: string; scheduled_for: Date | null; created_at: Date;
   asset_label: string | null; driver_name: string | null; estimated_kg: string | null; gross_kg: string | null; tare_kg: string | null;
+  created_at_cursor: string;
 };
 
 export function normalizeReportFilters(input: Partial<Record<keyof ReportFilters,string>>): ReportFilters {
@@ -119,27 +120,58 @@ export function normalizeReportFilters(input: Partial<Record<keyof ReportFilters
   };
 }
 
-export async function reportServices(actor: Actor, filters: ReportFilters) {
+const reportWhere=`s.deleted_at IS NULL
+  AND ($1::text='' OR (s.created_at AT TIME ZONE 'America/Santiago')::date >= NULLIF($1,'')::date)
+  AND ($2::text='' OR (s.created_at AT TIME ZONE 'America/Santiago')::date <= NULLIF($2,'')::date)
+  AND ($3::text='' OR s.status=$3)
+  AND ($4::text<>'cliente' OR s.client_id=$5::uuid)
+  AND ($4::text<>'conductor' OR s.driver_id=$6::uuid)
+  AND ($7::text='' OR s.client_id=NULLIF($7,'')::uuid)
+  AND ($8::text='' OR ($8='pendiente' AND s.operating_company IS NULL) OR s.operating_company=$8)`;
+const reportParams=(actor:Actor,filters:ReportFilters)=>[
+  filters.from,filters.to,filters.status,actor.role,actor.client_id,actor.id,filters.client_id,filters.company,
+];
+export async function serviceReportOverview(actor:Actor,filters:ReportFilters){
+  const [row]=await db.query<{total:string;completed:string;net_kg:string;weighed:string}>(`SELECT count(*)::text AS total,
+    count(*) FILTER (WHERE s.status='completada')::text AS completed,
+    count(*) FILTER (WHERE s.status='completada' AND s.gross_kg IS NOT NULL AND s.tare_kg IS NOT NULL)::text AS weighed,
+    COALESCE(sum(s.gross_kg-s.tare_kg) FILTER
+      (WHERE s.status='completada' AND s.gross_kg IS NOT NULL AND s.tare_kg IS NOT NULL),0)::text AS net_kg
+    FROM service_requests s WHERE ${reportWhere}`,reportParams(actor,filters));
+  return {total:Number(row.total),completed:Number(row.completed),netKg:Number(row.net_kg),weighed:Number(row.weighed)};
+}
+export type ServiceReportCursor={createdAt:string;folio:string};
+export async function reportServices(actor: Actor, filters: ReportFilters,
+  options:{limit?:number;offset?:number;before?:ServiceReportCursor}={}) {
+  const limit=z.number().int().min(1).max(1001).parse(options.limit??1001);
+  const offset=z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).parse(options.offset??0);
+  const before=options.before;
+  if(before&&(!/^[1-9]\d{0,18}$/.test(before.folio)||!Number.isFinite(Date.parse(before.createdAt))))reject("Cursor de reporte inválido.");
   return db.query<ReportService>(
-    `SELECT s.id,s.folio,s.operating_company,c.name AS client_name,cs.name AS site_name,s.service_type,s.waste_type,
-       s.status,s.origin,s.destination,s.scheduled_for,s.created_at,
+    `SELECT s.id,s.folio::text AS folio,s.operating_company,c.name AS client_name,cs.name AS site_name,s.service_type,s.waste_type,
+       s.status,s.origin,s.destination,s.scheduled_for,s.created_at,s.created_at::text AS created_at_cursor,
        CASE WHEN a.plate IS NOT NULL AND trim(a.plate)<>'' THEN a.plate || ' · ' || a.label ELSE a.label END AS asset_label,
        COALESCE(u.name,ed.name) AS driver_name,
        s.estimated_kg,s.gross_kg,s.tare_kg
      FROM service_requests s JOIN clients c ON c.id=s.client_id JOIN client_sites cs ON cs.id=s.site_id
      LEFT JOIN assets a ON a.id=s.assigned_asset_id LEFT JOIN users u ON u.id=s.driver_id
      LEFT JOIN external_drivers ed ON ed.id=s.external_driver_id
-     WHERE s.deleted_at IS NULL
-       AND ($1::text='' OR (s.created_at AT TIME ZONE 'America/Santiago')::date >= NULLIF($1,'')::date)
-       AND ($2::text='' OR (s.created_at AT TIME ZONE 'America/Santiago')::date <= NULLIF($2,'')::date)
-       AND ($3::text='' OR s.status=$3)
-       AND ($4::text<>'cliente' OR s.client_id=$5::uuid)
-       AND ($4::text<>'conductor' OR s.driver_id=$6::uuid)
-       AND ($7::text='' OR s.client_id=NULLIF($7,'')::uuid)
-       AND ($8::text='' OR ($8='pendiente' AND s.operating_company IS NULL) OR s.operating_company=$8)
-     ORDER BY s.created_at DESC,s.folio DESC LIMIT 1001`,
-    [filters.from,filters.to,filters.status,actor.role,actor.client_id,actor.id,filters.client_id,filters.company],
+     WHERE ${reportWhere}
+       AND ($11::timestamptz IS NULL OR (s.created_at,s.folio)<($11::timestamptz,$12::bigint))
+     ORDER BY s.created_at DESC,s.folio DESC LIMIT $9 OFFSET $10`,
+    [...reportParams(actor,filters),limit,offset,before?.createdAt??null,before?.folio??null],
   );
+}
+
+export async function* iterateReportServices(actor:Actor,filters:ReportFilters){
+  let before:ServiceReportCursor|undefined;
+  while(true){
+    const rows=await reportServices(actor,filters,{limit:500,before});
+    if(!rows.length)return;
+    yield rows;
+    if(rows.length<500)return;
+    const last=rows[rows.length-1];before={createdAt:last.created_at_cursor,folio:last.folio};
+  }
 }
 
 export async function getService(actor: Actor, id: string) {

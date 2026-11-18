@@ -1,5 +1,14 @@
 # Continuidad RERCHAR — 17 de noviembre de 2026
 
+## Recorrido y corrección de Reportes — 18/11
+
+- Roberto pidió seguir revisando/corrigiendo y entregar en la conversación la lista de pendientes y ampliaciones, sin actualizar la matriz en este bloque.
+- Se reprodujo el recorte del reporte/CSV a mil filas con 1.205 servicios; sus indicadores también omitían registros. El resumen convertía un pesaje ausente en cero.
+- Reportes ahora pagina de cien en cien, calcula los indicadores de todo el filtro y exporta el conjunto en lotes de quinientos. El neto del resumen exige bruto/tara presentes, conservando el cero explícito. Se mantiene orden por fecha/folio y las restricciones de cada perfil y empresa. No hay migraciones nuevas.
+- Ver `docs/REVISION_REPORTES_18-11-2026.md` para el caso reproducido y el alcance del recorrido HTTP.
+- Verificación final: **63 pruebas aprobadas**, TypeScript/compilación correctos y **83 comprobaciones HTTP de páginas** sin errores de carga. CSV completo de 1.205 servicios, trece páginas, neto correcto y separación por perfil/empresa comprobados con base temporal. No se actualizó la matriz ni se enviaron correos.
+- El bloque SII anterior sí se publicó en `c8dbfa1`: despliegue principal `dpl_CoFgDJW6K487SuUXbt9awWLhBP4w` READY y migración 070 aplicada. Esto actualiza la nota histórica de publicación pendiente que aparece más abajo. La consulta automática y sus avisos siguen pendientes dentro del alcance incluido.
+
 ## Preparación funcional SII y corrección de alcance — 18/11
 
 - Roberto confirmó que **SII está incluido** y que ambas empresas utilizan el facturador gratuito del SII. Prevalece sobre las clasificaciones históricas: son 78 observaciones incluidas y **seis ampliaciones**, números 52, 56 y 81–84. SII (65) no se recotiza ni se excluye por requerir conexión productiva.
