@@ -6,6 +6,7 @@
 - Se retiraron los recortes silenciosos de viajes/partes de la semana y de la agenda de cliente/conductor, manteniendo fechas acotadas y permisos. Los totales de pendientes/prioridades consideran la cola completa, aunque la lista breve muestre sesenta. Los enlaces de programación conservan empresa.
 - Se afinó la planilla con cabecera/columna fija, día actual destacado y acentos propios de cada empresa. No se agregan migraciones ni módulos.
 - **64 pruebas aprobadas**, TypeScript y recorrido HTTP de error/corrección/reintento para RERCHAR y E y J correctos. El recorrido repetible queda en `npm run test:request-form-http`. Ver `docs/REVISION_SOLICITUDES_AGENDA_18-11-2026.md`.
+- Se corrigió el empaquetado del verificador HTTP: las fixtures y scripts de verificación no se despliegan. La compilación pasó también sobre una copia con las exclusiones efectivas de producción (304 archivos). El primer intento de despliegue falló por esa dependencia de prueba; comprobar el despliegue del ajuste antes de darlo por publicado.
 - Se conservaron matriz, VB, datos operativos reales y clasificación de alcance. SII automático continúa incluido y pendiente.
 
 ## Experiencia visual y adaptación — 18/11

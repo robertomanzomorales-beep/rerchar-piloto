@@ -3,6 +3,7 @@
 node_modules/
 tmp/
 tests/
+scripts/verify-*.ts
 docs/
 .env
 .env.*
