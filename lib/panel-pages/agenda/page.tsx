@@ -61,7 +61,7 @@ export default async function Agenda({searchParams}:{searchParams:Promise<{inici
     <Notice error={query.error} ok={query.ok}/>
     <form action="/agenda" method="GET" className="filters"><input type="hidden" name="inicio" value={reference}/>{pendingView&&<input type="hidden" name="partes" value="pendientes"/>}<label>Empresa<select name="empresa" defaultValue={company}><option value="">Ambas empresas</option><option value="rerchar">RERCHAR</option><option value="e_y_j">E y J</option></select></label><button className="button button-outline" type="submit">Filtrar</button></form>
     <section className="agenda-navigation" aria-label="Navegación de agenda">
-      <form action="/agenda" method="get" className="form-grid agenda-month-jump">
+      <form key={reference} action="/agenda" method="get" className="form-grid agenda-month-jump">
         <input type="hidden" name="empresa" value={company}/>{pendingView&&<input type="hidden" name="partes" value="pendientes"/>}
         <label>Mes<select name="mes" defaultValue={String(selectedPeriod.month).padStart(2,"0")} required>{agendaMonths.map((month,index)=><option key={month} value={String(index+1).padStart(2,"0")}>{month}</option>)}</select></label>
         <label>Año<input name="anio" type="number" min="1900" max="2100" step="1" inputMode="numeric" required defaultValue={selectedPeriod.year}/></label>
