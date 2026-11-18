@@ -1,5 +1,13 @@
 # Continuidad RERCHAR — 17 de noviembre de 2026
 
+## Ajuste solicitado: selector compacto, color integrado y carga sobria — 18/11
+
+- Roberto aclaró que la presentación iba bien encaminada pero ocupaba demasiado espacio, y que el menú había perdido los colores que le gustaban. Solicitó elegancia, suavidad y un preloader corporativo fino. Añadió que la paleta debe provenir del logo de RERCHAR y formar un conjunto; prevalece sobre la decisión anterior de neutralizar iconos.
+- Se reduce el selector a 940 px, título más contenido, menos espacios interiores y procesos en una línea flexible. Se mantienen los dos accesos y las marcas proporcionadas. No se eliminan funciones ni se cambian destinos.
+- Se toma la paleta del logo original: esmeralda/verde hoja, azul y acentos cálidos discretos. Las categorías del menú recuperan color, fondos claros y transiciones suaves; se reduce la sangría para dar más espacio a los textos. RERCHAR conserva verde y E y J azul en sus estados activos.
+- Se retiran los cuadrados animados y bloques de esqueleto. La carga de página usa nombre de empresa, línea fina indeterminada y «Abriendo sección»; botones y enlaces usan un indicador circular pequeño. Respeta movimiento reducido y no introduce retardos artificiales ni porcentajes inventados.
+- Compilación local aprobada. Verificar tamaño real de las tarjetas, color del menú, navegación y carga en la publicación antes de cerrar este ajuste. No hay cambios de datos, matriz ni migraciones.
+
 ## Verificación visual del selector nuevo — 18/11
 
 - `0149a98` quedó READY. Se comprobaron ambos accesos, identidad de RERCHAR/E y J, búsqueda «flota», categoría actual abierta y Comercial cerrado al entrar a Recursos. La flota muestra ocho activos y sólo una HXHY-46; la carpeta PDF bloquea el envío sin archivo.
