@@ -473,3 +473,9 @@
 /* Maintenance forms keep the current asset visible and group only relevant fields. */
 .maintenance-fields { border: 0; padding: 0; margin: 0; min-width: 0; display: grid; gap: 12px; }
 .maintenance-fields:disabled { opacity: .65; }
+
+@media screen {
+  .app-shell .fuel-history-table { min-width:620px; }
+  .app-shell .fuel-history-table td:nth-child(n+3) { white-space:nowrap; overflow-wrap:normal; }
+  @media (min-width:991px) { .app-shell .fuel-layout { grid-template-columns:minmax(300px,.8fr) minmax(0,1.2fr); } }
+}
