@@ -1,9 +1,15 @@
 # Continuidad RERCHAR — 17 de noviembre de 2026
 
+## Cotización: conservación del formulario y continuidad por empresa — 18/11
+
+- En la revisión siguiente se detectó que crear una cotización fallida redirigía a un formulario nuevo, perdiendo título, presentación editada, objetivo, notas, fechas, IVA y clave de reintento. Se devuelve el error al mismo formulario con esos datos conservados, cliente/emisor/tipo y foco en el aviso. No se cambia la validación de negocio, el folio, el envío ni los permisos.
+- Se conserva también la decisión de vigencia automática de diez días o una fecha personalizada. El regreso a Cotizaciones desde una empresa mantiene el filtro de esa empresa.
+- Recorrido HTTP real con Next y base temporal aprobado en cuatro escenarios: RERCHAR servicios, RERCHAR compra de material, E y J y selección libre de emisor. Error de vigencia sin crear cotización, todos los campos conservados, corrección y repetición sin duplicar, restricciones de rol y retorno por empresa comprobados. Script `npm run test:quote-form-http`, excluido del despliegue. Cuatro regresiones de revisión de propuestas, OC/respaldos, correo y compras aprobadas. Compilación final aprobada; comprobar publicación. No se modifican matriz ni datos productivos y no se envían correos reales.
+
 ## Sustitución de cuadros por movimiento circular — 18/11
 
 - Roberto rechazó expresamente los cuadros y el efecto de opacidad apenas perceptible. La petición vigente es otro preloader con movimiento real, suave, sin texto ni barras. Se retiran los cuadros: tres puntos redondos verde, azul y dorado en una órbita de 34 px, giro continuo lineal de 2,4 s. No hay saltos, pulsos ni retardos añadidos a la navegación. Se conserva el nombre accesible y la preferencia de movimiento reducido.
-- Se comprobó que el navegador de revisión tiene movimiento reducido desactivado. Compilación local aprobada; comprobar giro real y publicación antes de cerrar este cambio. Continuar después la revisión operativa de cotizaciones. La matriz permanece intacta.
+- Se comprobó que el navegador de revisión tiene movimiento reducido desactivado. Compilación local aprobada y publicación `82f6ff2` confirmada READY. Se observó el preloader real y se midieron posiciones distintas de los tres puntos entre dos lecturas: la matriz de rotación cambió de (0,906; 0,423) a (0,819; 0,574), con duración calculada de 2,4 s. El giro está activo, no se infiere movimiento de una captura fija. La matriz de observaciones permanece intacta.
 
 ## Corrección explícita del preloader y revisión de entrega — 18/11
 
