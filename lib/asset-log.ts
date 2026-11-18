@@ -24,13 +24,23 @@ export type AssetRoute={id:string;source:"servicio"|"guia";event_at:Date|string;
   net_kg:string|null;href:string};
 export type AssetFault={id:string;asset_id:string;description:string;severity:string;status:string;
   observed_on:Date|string|null;reported_at:Date;resolved_at:Date|null;resolution:string|null;
-  source_service_id:string|null;reported_by_name:string};
+  source_service_id:string|null;reported_by_name:string;order_id:string|null;order_folio:string|null;order_status:string|null};
 export type AssetOrder={id:string;folio:string;kind:string;title:string;description:string|null;
   status:string;performed_on:Date|string|null;history_only:boolean;closed_at:Date|null;
   created_at:Date;reading_at_close:string|null;resolution:string|null};
 export type AssetPlan={id:string;title:string;next_due_date:Date|string|null;next_due_reading:string|null;
   current_reading:string;reading_unit:string;frequency_kind:string};
 export type AssetDocument={id:string;original_filename:string;size_bytes:number;created_at:Date;created_by_name:string};
+
+export async function consolidatedAssetTarget(actor:Actor,assetId:string){
+  guard(actor);
+  if(!uuid.safeParse(assetId).success)return null;
+  const [merge]=await db.query<{target_id:string}>(`SELECT e.entity_id AS target_id FROM audit_events e
+    JOIN assets a ON a.id=e.entity_id AND a.deleted_at IS NULL
+    WHERE e.action='asset_consolidated' AND e.entity_type='asset' AND e.next_value->>'source_id'=$1
+    ORDER BY e.created_at DESC,e.id DESC LIMIT 1`,[assetId]);
+  return merge?.target_id??null;
+}
 
 export async function getAssetLog(actor:Actor,assetId:string) {
   guard(actor);
@@ -50,10 +60,17 @@ export async function getAssetLog(actor:Actor,assetId:string) {
       g.guide_number,g.movement_type,g.origin,g.destination,c.name AS counterparty,
       'registrada' AS status,NULL::text AS net_kg
       FROM material_guides g JOIN clients c ON c.id=g.counterparty_id
-      WHERE ($1::text='camion' AND (upper(trim(g.truck_plate))=upper(trim($2::text)) OR upper(trim(g.truck_plate))=upper(trim($3::text))))
-        OR ($1::text='rampa' AND (upper(trim(g.trailer_plate))=upper(trim($2::text)) OR upper(trim(g.trailer_plate))=upper(trim($3::text))))
-      ORDER BY g.movement_on DESC,g.id DESC LIMIT 100`,[asset.kind,asset.plate,asset.code]),
-    db.query<AssetFault>(`SELECT i.*,u.name AS reported_by_name FROM fleet_incidents i JOIN users u ON u.id=i.reported_by
+      WHERE ($1::text='camion' AND (upper(trim(g.truck_plate))=upper(trim($2::text)) OR upper(trim(g.truck_plate))=upper(trim($3::text))
+        OR EXISTS (SELECT 1 FROM audit_events e WHERE e.action='asset_consolidated' AND e.entity_type='asset' AND e.entity_id=$4
+          AND upper(trim(g.truck_plate)) IN (upper(trim(e.previous_value->'source'->>'code')),upper(trim(e.previous_value->'source'->>'plate'))))))
+        OR ($1::text='rampa' AND (upper(trim(g.trailer_plate))=upper(trim($2::text)) OR upper(trim(g.trailer_plate))=upper(trim($3::text))
+        OR EXISTS (SELECT 1 FROM audit_events e WHERE e.action='asset_consolidated' AND e.entity_type='asset' AND e.entity_id=$4
+          AND upper(trim(g.trailer_plate)) IN (upper(trim(e.previous_value->'source'->>'code')),upper(trim(e.previous_value->'source'->>'plate'))))))
+      ORDER BY g.movement_on DESC,g.id DESC LIMIT 100`,[asset.kind,asset.plate,asset.code,assetId]),
+    db.query<AssetFault>(`SELECT i.*,u.name AS reported_by_name,w.id AS order_id,w.folio AS order_folio,w.status AS order_status
+      FROM fleet_incidents i JOIN users u ON u.id=i.reported_by
+      LEFT JOIN LATERAL (SELECT id,folio,status FROM work_orders WHERE incident_id=i.id AND status IN ('abierta','en_trabajo')
+        ORDER BY created_at DESC,id DESC LIMIT 1) w ON true
       WHERE i.asset_id=$1 ORDER BY COALESCE(i.observed_on::timestamp,i.reported_at) DESC,i.reported_at DESC LIMIT 100`,[assetId]),
     db.query<AssetOrder>(`SELECT id,folio,kind,title,description,status,performed_on,history_only,closed_at,created_at,reading_at_close,resolution
       FROM work_orders WHERE asset_id=$1 ORDER BY COALESCE(performed_on::timestamp,closed_at,created_at) DESC,id DESC LIMIT 100`,[assetId]),

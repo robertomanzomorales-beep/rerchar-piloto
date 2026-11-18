@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound,redirect } from "next/navigation";
 import { ArrowLeft,ArrowRight,ClipboardList,Route,ShieldAlert,Wrench } from "lucide-react";
 import { canManage,requireActor } from "@/lib/auth";
-import { AssetLogError,getAssetLog } from "@/lib/asset-log";
+import { AssetLogError,consolidatedAssetTarget,getAssetLog } from "@/lib/asset-log";
 import { addAssetEquipmentAction,recordAssetMaintenanceAction,removeAssetEquipmentAction,
   reportAssetIncidentAction,resolveAssetIncidentAction,updateAssetEquipmentAction,addAssetDocumentAction } from "@/app/asset-log-actions";
 import { Notice,chileDate } from "@/components/UI";
@@ -10,6 +10,8 @@ import { SubmitButton } from "@/components/Transition";
 
 const kindName:Record<string,string>={camion:"Camión",rampa:"Rampla",equipo:"Equipo"};
 const conditionName:Record<string,string>={operativo:"Operativo",por_revisar:"Por revisar",fuera_servicio:"Fuera de servicio"};
+const statusLabel:Record<string,string>={solicitada:"Solicitada",programada:"Programada",en_ruta:"En ruta",pendiente_revision:"En revisión",completada:"Completada",cancelada:"Cancelada",registrada:"Registrada",abierta:"Abierta",en_trabajo:"En trabajo",cerrada:"Cerrada"};
+const movementLabel:Record<string,string>={servicios:"Servicios",compra:"Compra",venta:"Venta",retiro:"Retiro",traslado:"Traslado",arriendo:"Arriendo",otro:"Otro",preventiva:"Preventiva",correctiva:"Correctiva",neumaticos:"Neumáticos"};
 const count=(value:string|number|null)=>value===null?"—":Number(value).toLocaleString("es-CL",{maximumFractionDigits:2});
 const inputDate=(value:Date|string|null)=>value?value instanceof Date?value.toISOString().slice(0,10):String(value).slice(0,10):"";
 const date=(value:Date|string|null,dateOnly=false)=>value?chileDate(dateOnly?`${inputDate(value)}T12:00:00Z`:value,false):"—";
@@ -19,13 +21,13 @@ export default async function AssetDetail({params,searchParams}:{params:Promise<
   if(!canManage(actor)) redirect("/");
   const {id}=await params;
   let detail;
-  try { detail=await getAssetLog(actor,id); } catch(error) { if(error instanceof AssetLogError) notFound();throw error; }
+  try { detail=await getAssetLog(actor,id); } catch(error) { if(error instanceof AssetLogError) { const target=await consolidatedAssetTarget(actor,id);if(target)redirect(`/flota/${target}`);notFound(); }throw error; }
   const {asset,routes,faults,orders,plans,equipment,documents}=detail;
   const openFaults=faults.filter((fault)=>fault.status==="abierta");
   const alerts=equipment.filter((item)=>item.warning);
   const today=new Intl.DateTimeFormat("sv-SE",{timeZone:"America/Santiago",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
   const query=await searchParams;
-  return <>
+  return <div className="fleet-page asset-detail-page">
     <Link className="back-link" href="/flota"><ArrowLeft size={16}/> Flota y averías</Link>
     <div className="page-title-row"><div><div className="eyebrow">FICHA OPERACIONAL · {kindName[asset.kind]??asset.kind}</div><h1>{asset.label}</h1>
       <p className="page-intro">{asset.code}{asset.plate?` · Patente ${asset.plate}`:""}{asset.brand?` · ${asset.brand}`:""}{asset.model?` ${asset.model}`:""}</p></div>
@@ -42,7 +44,7 @@ export default async function AssetDetail({params,searchParams}:{params:Promise<
       <p className="helper-text">Se muestran las solicitudes asignadas a este camión, rampla o equipo y las guías de material que coinciden con su patente registrada. Los registros históricos del Excel aún no están cargados.</p>
       {routes.length?<div className="table-wrap"><table className="data-table"><thead><tr><th>Fecha / guía</th><th>Movimiento</th><th>Ruta</th><th>Cliente / contraparte</th><th>Peso neto</th><th aria-label="Abrir"/></tr></thead><tbody>{routes.map((route)=><tr key={`${route.source}-${route.id}`}>
         <td><strong>{date(route.event_at)}</strong><span className="table-sub">{route.guide_number?`Guía ${route.guide_number}`:"Sin guía registrada"}</span></td>
-        <td className="capitalize">{route.movement_type}<span className="table-sub">{route.source==="guia"?"Control de Guía":route.status}</span></td>
+        <td className="capitalize">{movementLabel[route.movement_type]??route.movement_type}<span className="table-sub">{route.source==="guia"?"Control de Guía":statusLabel[route.status]??route.status}</span></td>
         <td>{route.origin} → {route.destination}</td><td>{route.counterparty}</td><td>{count(route.net_kg)}{route.net_kg!==null?" kg":""}</td>
         <td><Link href={route.href} className="table-arrow" aria-label="Ver registro"><ArrowRight size={17}/></Link></td></tr>)}</tbody></table></div>
         :<p className="muted">Aún no hay rutas vinculadas a este activo.</p>}
@@ -65,14 +67,14 @@ export default async function AssetDetail({params,searchParams}:{params:Promise<
 
     <section className="section-card"><div className="section-heading"><div><div className="eyebrow">AVERÍAS DEL ACTIVO</div><h2>Historial y estado</h2></div><span className="count-pill">{faults.length}</span></div>
       {faults.length?<div className="incident-grid">{faults.map((fault)=><article className="incident-card" key={fault.id}><div className="incident-head"><div><strong>{fault.description}</strong><span>{date(fault.observed_on??fault.reported_at,!!fault.observed_on)} · {fault.reported_by_name}{fault.source_service_id&&<> · <Link href={`/solicitudes/${fault.source_service_id}`}>Ver checklist</Link></>}</span></div><span className={fault.status==="abierta"?"inventory-low":"inventory-good"}>{fault.status==="abierta"?"X · Abierta":"OK · Resuelta"}</span></div>
-        {fault.status==="abierta"?<form action={resolveAssetIncidentAction} className="incident-resolve"><input type="hidden" name="asset_id" value={id}/><input type="hidden" name="incident_id" value={fault.id}/><label>Solución aplicada<textarea name="resolution" required minLength={5} maxLength={1000} rows={2}/></label><SubmitButton className="button button-outline">Resolver avería</SubmitButton></form>
+        {fault.status==="abierta"&&fault.order_id?<div className="fleet-incident-order"><div><strong>{fault.order_status==="en_trabajo"?"Reparación en curso":"Orden de trabajo abierta"}</strong><p>La avería se resuelve al cerrar su orden de trabajo.</p></div><Link className="button button-outline" href={`/mantenimiento/${fault.order_id}`}>Abrir OT-{String(fault.order_folio).padStart(5,"0")}</Link></div>:fault.status==="abierta"?<form action={resolveAssetIncidentAction} className="incident-resolve"><input type="hidden" name="asset_id" value={id}/><input type="hidden" name="incident_id" value={fault.id}/><label>Solución aplicada<textarea name="resolution" required minLength={5} maxLength={1000} rows={2}/></label><SubmitButton className="button button-outline">Resolver avería</SubmitButton></form>
           :<p className="helper-text">{fault.resolution} · resuelta {date(fault.resolved_at)}</p>}</article>)}</div>
         :<p className="muted">Sin averías registradas.</p>}
     </section>
 
     <section className="section-card"><div className="section-heading"><div><div className="eyebrow">BITÁCORA DE MANTENCIONES</div><h2>Trabajos y pautas</h2></div><Link href="/mantenimiento" className="text-link">Abrir Mantenimiento <ArrowRight size={15}/></Link></div>
       {plans.length>0&&<div className="table-wrap"><table className="data-table"><thead><tr><th>Pauta vigente</th><th>Próximo vencimiento</th></tr></thead><tbody>{plans.map((plan)=><tr key={plan.id}><td><strong>{plan.title}</strong></td><td>{plan.frequency_kind==="fecha"?date(plan.next_due_date,true):`${count(plan.next_due_reading)} ${plan.reading_unit} · actual ${count(plan.current_reading)}`}</td></tr>)}</tbody></table></div>}
-      {orders.length?<div className="table-wrap"><table className="data-table"><thead><tr><th>Fecha realizada</th><th>Trabajo</th><th>Tipo / estado</th><th>Lectura</th><th aria-label="Abrir"/></tr></thead><tbody>{orders.map((order)=><tr key={order.id}><td>{date(order.performed_on??order.closed_at??order.created_at,!!order.performed_on)}</td><td><Link className="table-main" href={`/mantenimiento/${order.id}`}>{order.title}</Link>{order.history_only&&<span className="table-sub">Registro histórico</span>}</td><td className="capitalize">{order.kind} · {order.status}</td><td>{count(order.reading_at_close)}{order.reading_at_close!==null?` ${asset.reading_unit}`:""}</td><td><Link href={`/mantenimiento/${order.id}`} className="table-arrow" aria-label="Ver orden"><ArrowRight size={17}/></Link></td></tr>)}</tbody></table></div>
+      {orders.length?<div className="table-wrap"><table className="data-table"><thead><tr><th>Fecha realizada</th><th>Trabajo</th><th>Tipo / estado</th><th>Lectura</th><th aria-label="Abrir"/></tr></thead><tbody>{orders.map((order)=><tr key={order.id}><td>{date(order.performed_on??order.closed_at??order.created_at,!!order.performed_on)}</td><td><Link className="table-main" href={`/mantenimiento/${order.id}`}>{order.title}</Link>{order.history_only&&<span className="table-sub">Registro histórico</span>}</td><td className="capitalize">{movementLabel[order.kind]??order.kind} · {statusLabel[order.status]??order.status}</td><td>{count(order.reading_at_close)}{order.reading_at_close!==null?` ${asset.reading_unit}`:""}</td><td><Link href={`/mantenimiento/${order.id}`} className="table-arrow" aria-label="Ver orden"><ArrowRight size={17}/></Link></td></tr>)}</tbody></table></div>
         :<p className="muted">Sin mantenciones registradas para este activo.</p>}
     </section>
 
@@ -94,5 +96,5 @@ export default async function AssetDetail({params,searchParams}:{params:Promise<
           <form action={removeAssetEquipmentAction}><input type="hidden" name="asset_id" value={id}/><input type="hidden" name="item_id" value={item.id}/><SubmitButton className="button button-outline">Quitar del activo</SubmitButton></form></details></td></tr>)}</tbody></table></div>
         :<p className="muted">Sin elementos registrados para este activo.</p>}
     </section>
-  </>;
+  </div>;
 }

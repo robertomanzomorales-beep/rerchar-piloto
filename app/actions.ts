@@ -19,7 +19,7 @@ const servicePath = (id: string) => `/solicitudes/${encodeURIComponent(id)}`;
 function message(error: unknown) {
   if (error instanceof PilotError || error instanceof MastersError || error instanceof PersonnelError || error instanceof FleetScheduleError || error instanceof ServiceDayError) return error.message;
   if (error instanceof ZodError) return "Revise los campos obligatorios y sus valores.";
-  if (typeof error === "object" && error && "code" in error && error.code === "23505") return "Ya existe un registro con este código o correo.";
+  if (typeof error === "object" && error && "code" in error && error.code === "23505") return "Ya existe un registro con este código, patente o correo.";
   console.error("Error en el piloto", error);
   return "No se pudo guardar el cambio. Revise la información e intente nuevamente.";
 }

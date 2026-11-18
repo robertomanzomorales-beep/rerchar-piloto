@@ -1,5 +1,15 @@
 # Continuidad RERCHAR — 17 de noviembre de 2026
 
+## Rampla HXHY-46 confirmada como una unidad — 18/11
+
+- Roberto confirmó que RAM-01 y RAM-001 son la misma unidad y pidió continuar. Se revisaron ambas fichas publicadas: RAM-001 · LIBERATO conserva cuatro servicios más una guía y una avería resuelta; RAM-01 conserva seis servicios más la misma guía. Se conserva RAM-001 como ficha principal.
+- La migración puntual 071 traslada las catorce referencias de trece tablas al activo principal, conserva IDs e historial, archiva lógicamente el duplicado y guarda en auditoría los valores previos de los activos y las claves/referencias modificadas. No borra documentos, movimientos, guías ni servicios; los importes y fechas de esos registros no se actualizan. Verifica IDs/códigos/patente/tipo/unidad y trabaja en una transacción. En bases sin la ficha de origen no modifica activos.
+- La auditoría identifica autorización de Roberto, fecha y ejecución por migración. El actor enlazado es el administrador activo responsable más antiguo del proyecto; no representa una sesión interactiva ejecutando el cambio. Si hay conflictos de posiciones, pautas o notas diarias, las restricciones revierten toda la operación.
+- La patente activa se protege mediante índice único normalizado y validación al crear/editar: separadores y mayúsculas no permiten volver a duplicar la unidad. El enlace antiguo de RAM-01 redirige al principal. Las guías originales que usan el código RAM-01 siguen visibles por el alias auditado, sin reescribirlas.
+- La ficha individual adopta la banda compacta de métricas. Las averías con OT activa abren la orden correspondiente y los estados muestran textos legibles, sin nombres internos como «en_ruta».
+- Pruebas: suite de **66 pruebas aprobadas**, incluyendo consolidación, archivo, alias, preservación de referencias, combustible e inventario, rechazo de duplicados, permisos y reversión completa ante colisión de notas. Se repite la regresión focalizada después del ajuste de guías por alias; comprobar compilación final y aplicación de 071 en el despliegue principal antes de afirmar la unificación real.
+- La matriz no se modifica. El lote anterior `3a4f95b` quedó READY y fue comprobado visualmente en RERCHAR/E y J y móvil (340 px sin desbordamiento). No se necesitan nuevas autorizaciones para esta consolidación ya confirmada.
+
 ## Acabado de flota y personal — 18/11
 
 - El lote previo de Mantenimiento/Combustible quedó publicado en `2aebc65`, despliegue principal READY. Se comprobaron ficha de activos, frecuencia de pautas y tabla de combustible en escritorio y anchos de 681/340 px. La tabla mantiene los números completos, admite teclado y desplaza dentro de su región; la página no se desborda.

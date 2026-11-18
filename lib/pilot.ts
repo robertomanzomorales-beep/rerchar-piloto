@@ -11,6 +11,7 @@ import type { Company } from "./companies";
 import {catalogName} from "./material-stock";
 import {requestTypesFromQuote} from "./request-kind";
 import {currentOrderDocumentSql} from "./quote-order";
+import {existingPlate,normalizedPlate} from "./asset-identity";
 
 const uuid = z.uuid();
 const required = (max = 180) => z.string().trim().min(2).max(max);
@@ -226,8 +227,11 @@ export async function createAsset(actor: Actor, input: unknown) {
   needManage(actor);
   const data = z.object({ code: required(30), label: optional(120), kind: z.enum(["camion", "rampa", "equipo"]), plate: optional(15) }).parse(input);
   if(!data.label&&!data.plate)reject("Indique una descripción o patente para identificar el activo.");
+  if(data.plate&&!normalizedPlate(data.plate))reject("Indique una patente válida o deje ese campo vacío.");
   const readingUnit = data.kind === "camion" ? "km" : "sin";
   return transaction(async (tx) => {
+    const duplicate=await existingPlate(tx,data.plate);
+    if(duplicate)reject(`La patente ya pertenece al activo ${duplicate.code}. Abra su ficha existente.`);
     const [row] = await tx.query<{ id: string }>(
       "INSERT INTO assets (code, label, kind, plate, reading_unit) VALUES ($1,$2,$3,NULLIF($4,''),$5) RETURNING id",
       [data.code.toUpperCase(), data.label||data.plate.toUpperCase(), data.kind, data.plate.toUpperCase(), readingUnit],
