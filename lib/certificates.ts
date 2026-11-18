@@ -3,6 +3,7 @@ import {z} from "zod";
 import {canManage,type Actor} from "./auth";
 import {db,transaction,type Db} from "./db";
 import type {CertificateSnapshot} from "./certificate-pdf";
+import {recordWindow} from "./record-pagination";
 
 const uuid=z.uuid();
 export class CertificateError extends Error {}
@@ -17,11 +18,18 @@ const certificateSelect=`SELECT x.id,x.service_id,x.version,x.code,x.status,x.sn
   FROM service_certificates x JOIN service_requests s ON s.id=x.service_id
   JOIN clients c ON c.id=s.client_id JOIN client_sites cs ON cs.id=s.site_id`;
 
-export async function listCertificates(actor:Actor){
+const certificateAccess=`s.deleted_at IS NULL AND ($1::text<>'cliente' OR (s.client_id=$2::uuid AND x.status='vigente'))`;
+export async function listCertificates(actor:Actor,limit=300,offset=0){
   if(actor.role==="conductor")reject("Este módulo no corresponde al perfil conductor.");
-  return db.query<Certificate>(`${certificateSelect} WHERE s.deleted_at IS NULL
-    AND ($1::text<>'cliente' OR (s.client_id=$2::uuid AND x.status='vigente'))
-    ORDER BY x.issued_at DESC,x.version DESC LIMIT 300`,[actor.role,actor.client_id]);
+  const window=recordWindow(limit,offset);
+  return db.query<Certificate>(`${certificateSelect} WHERE ${certificateAccess}
+    ORDER BY x.issued_at DESC,x.version DESC,x.id DESC LIMIT $3 OFFSET $4`,[actor.role,actor.client_id,window.limit,window.offset]);
+}
+export async function certificateHistoryCount(actor:Actor){
+  if(actor.role==="conductor")reject("Este módulo no corresponde al perfil conductor.");
+  const [row]=await db.query<{total:string}>(`SELECT count(*)::text AS total FROM service_certificates x
+    JOIN service_requests s ON s.id=x.service_id WHERE ${certificateAccess}`,[actor.role,actor.client_id]);
+  return Number(row.total);
 }
 
 export type CertificatePreparation={id:string;folio:string;client_name:string;site_name:string;
@@ -41,7 +49,7 @@ export async function listCertificatePreparation(actor:Actor):Promise<Certificat
     LEFT JOIN waste_records w ON w.service_id=s.id
     WHERE s.status='completada' AND s.operating_company='rerchar' AND s.deleted_at IS NULL
       AND NOT EXISTS (SELECT 1 FROM service_certificates x WHERE x.service_id=s.id AND x.status='vigente')
-    ORDER BY s.closed_at DESC LIMIT 100`);
+    ORDER BY s.closed_at DESC,s.id DESC`);
   return services.map(s=>{
     const base={id:s.id,folio:s.folio,client_name:s.client_name,site_name:s.site_name};
     if(!s.record_id)return {...base,ready:false,reason:"Falta preparar la ficha ambiental.",
@@ -81,7 +89,7 @@ export async function listCertificateDrafts(actor:Actor){
     JOIN service_requests s ON s.id=d.service_id JOIN clients c ON c.id=s.client_id
     JOIN client_sites cs ON cs.id=s.site_id WHERE s.deleted_at IS NULL
     AND NOT EXISTS (SELECT 1 FROM service_certificates x WHERE x.service_id=s.id AND x.status='vigente')
-    ORDER BY d.prepared_at DESC LIMIT 100`);
+    ORDER BY d.prepared_at DESC,d.service_id DESC`);
 }
 
 export function verificationBaseUrl(){
@@ -177,6 +185,7 @@ export async function issueCertificate(actor:Actor,serviceId:string,confirmation
   verificationBaseUrl();
   return transaction(async(tx)=>{
     // Se bloquea el servicio antes de comparar el borrador con el registro vigente.
+    await tx.query("SELECT id FROM service_requests WHERE id=$1 FOR UPDATE",[serviceId]);
     const [active]=await tx.query<{id:string}>("SELECT id FROM service_certificates WHERE service_id=$1 AND status='vigente'",[serviceId]);
     if(active)return active.id;
     const [draft]=await tx.query<{snapshot:CertificateSnapshot}>(
