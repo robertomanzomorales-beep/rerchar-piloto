@@ -2,6 +2,7 @@ import {z} from "zod";
 import type {Actor} from "./auth";
 import {canManage} from "./auth";
 import {db,transaction} from "./db";
+import {moduleReady} from "./schema-readiness";
 
 const uuid=z.uuid();
 export class OperationFileError extends Error {}
@@ -35,14 +36,24 @@ export async function addOperationFile(actor:Actor,target:"receipt"|"invoice",id
   const bytes=Buffer.from(await file.arrayBuffer());
   const type=mime(bytes);
   const filename=file.name.trim().replace(/[\r\n\\/]/g,"_").slice(0,160)||"archivo";
+  const closureReady=target==="receipt"&&["guia_valorizada","factura","certificado"].includes(documentKind)&&await moduleReady("receipt_closure");
   return transaction(async tx=>{
-    const [parent]=await tx.query(`SELECT id FROM ${target==="receipt"?"material_receipts":"supplier_invoices"} WHERE id=$1`,[id]);
+    const [parent]=await tx.query<{id:string;certificate_number?:string|null;closure_notified_on?:Date|string|null;
+      closure_recipient?:string|null;closure_note?:string|null}>(`SELECT ${closureReady?"id,certificate_number,closure_notified_on,closure_recipient,closure_note":"id"}
+      FROM ${target==="receipt"?"material_receipts":"supplier_invoices"} WHERE id=$1 FOR UPDATE`,[id]);
     if(!parent)reject("Registro no encontrado.");
     const [created]=await tx.query<{id:string}>(`INSERT INTO operation_files(receipt_id,invoice_id,kind,filename,mime_type,content,uploaded_by)
       VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id`,[target==="receipt"?id:null,target==="invoice"?id:null,
       documentKind,filename,type,bytes,actor.id]);
     await tx.query("INSERT INTO audit_events(actor_id,action,entity_type,entity_id,next_value) VALUES($1,'upload','operation_file',$2,$3)",
       [actor.id,created.id,JSON.stringify({target,id,kind:documentKind,filename})]);
+    if(closureReady&&parent.closure_notified_on&&(documentKind!=="certificado"||parent.certificate_number)){
+      await tx.query(`UPDATE material_receipts SET closure_notified_on=NULL,closure_recipient=NULL,closure_note=NULL,updated_at=now() WHERE id=$1`,[id]);
+      await tx.query(`INSERT INTO audit_events(actor_id,action,entity_type,entity_id,previous_value,next_value)
+        VALUES($1,'reopen_notice','material_receipt',$2,$3,$4)`,[actor.id,id,
+        JSON.stringify({notified_on:parent.closure_notified_on,recipient:parent.closure_recipient,note:parent.closure_note}),
+        JSON.stringify({notified_on:null,reason:"document_uploaded",document_kind:documentKind,operation_file_id:created.id})]);
+    }
     return created.id;
   });
 }

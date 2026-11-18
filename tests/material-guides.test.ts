@@ -88,6 +88,24 @@ test("Control de Guía registra una venta real con varios materiales y conserva 
     recipient:"cliente@demo.cl",note:"correo"}),/no puede preceder/);
   await materials.recordMaterialClosureNotification(actor,receipt,{notified_on:"2026-09-07",recipient:"cliente@demo.cl",note:"Correo confirmado"});
   assert.equal((await rercharReceiptClosureDashboard()).notice_pending,"0");
+  await assert.rejects(()=>addOperationFile(actor,"receipt",receipt,"factura",new File(["archivo inválido"],"factura.txt")),/Sólo PDF/);
+  assert.ok((await materials.getMaterialReceipt(actor,receipt)).closure_notified_on,"una carga fallida conserva el aviso anterior");
+  await addOperationFile(actor,"receipt",receipt,"foto_material",jpg());
+  assert.ok((await materials.getMaterialReceipt(actor,receipt)).closure_notified_on,"una foto operativa no reabre el aviso documental");
+  for(const kind of ["guia_valorizada","factura","certificado"]){
+    await addOperationFile(actor,"receipt",receipt,kind,jpg());
+    const reopened=await materials.getMaterialReceipt(actor,receipt);
+    assert.equal(reopened.closure_notified_on,null,`adjuntar ${kind} corregido reabre el aviso aunque conserve el número`);
+    assert.equal(reopened.closure_recipient,null);
+    assert.equal(reopened.closure_note,null);
+    assert.equal((await rercharReceiptClosureDashboard()).notice_pending,"1");
+    await materials.recordMaterialClosureNotification(actor,receipt,{notified_on:"2026-09-08",recipient:"cliente@demo.cl",note:"Documentos corregidos entregados"});
+  }
+  const reopenedEvents=await db.query<{previous_value:{notified_on:string;recipient:string};next_value:{document_kind:string;operation_file_id:string}}>(
+    "SELECT previous_value,next_value FROM audit_events WHERE entity_type='material_receipt' AND entity_id=$1 AND action='reopen_notice' ORDER BY created_at,id",[receipt]);
+  assert.equal(reopenedEvents.length,3,"cada reemplazo documental deja rastro del aviso anterior y el archivo nuevo");
+  assert.deepEqual(new Set(reopenedEvents.map(e=>e.next_value.document_kind)),new Set(["guia_valorizada","factura","certificado"]));
+  assert.ok(reopenedEvents.every(e=>e.previous_value.recipient==="cliente@demo.cl"&&e.previous_value.notified_on&&e.next_value.operation_file_id));
   await materials.updateMaterialReferences(actor,receipt,{entry_sheet:"H-13",invoice_number:"F-126",
     invoice_direction:"emitida",invoice_issued_on:"2026-09-04",certificate_number:"C-13"});
   assert.equal((await materials.getMaterialReceipt(actor,receipt)).closure_notified_on,null,"cambiar factura reabre el aviso");

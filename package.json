@@ -15,6 +15,7 @@
     "predev": "node scripts/prepare-document-reader.mjs",
     "prebuild": "node scripts/prepare-document-reader.mjs",
     "test:request-form-http": "node --import tsx scripts/verify-request-form.ts",
+    "test:material-followup-http": "node --import tsx scripts/verify-material-followup.ts",
     "test:material-receipt-form-http": "node --import tsx scripts/verify-material-receipt-form.ts",
     "test:supplier-invoice-form-http": "node --import tsx scripts/verify-supplier-invoice-form.ts",
     "test:supply-history-http": "node --import tsx scripts/verify-supply-history.ts",

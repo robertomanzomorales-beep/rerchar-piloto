@@ -11,6 +11,7 @@ import {LedgerError,saveGuideFollowup,saveCommercialDetails} from "@/lib/service
 import {OperationFileError,addOperationFile} from "@/lib/operation-files";
 import {supplierInvoiceDraft,type SupplierInvoiceFormState} from "@/lib/supplier-invoice-form-state";
 import {materialReceiptDraft,materialReceiptFields,type MaterialReceiptFormState} from "@/lib/material-receipt-form-state";
+import {materialFollowupAnchors,materialFollowupDraft,materialFollowupFields,type MaterialFollowupFormState,type MaterialFollowupKind} from "@/lib/material-followup-form-state";
 
 const val=(form:FormData,key:string)=>String(form.get(key)??"");
 function message(error:unknown){
@@ -30,26 +31,24 @@ export async function createMaterialAction(_previous:MaterialReceiptFormState,fo
   catch(e){return {error:message(e),values:materialReceiptDraft(form)};}
   revalidatePath("/","layout");redirect(`/ingresos/${id}?ok=1`);
 }
-export async function updateMaterialPaymentAction(form:FormData){
+async function saveMaterialFollowup(kind:MaterialFollowupKind,form:FormData):Promise<MaterialFollowupFormState>{
   const actor=await requireActor(),id=val(form,"id");
-  await run(`/ingresos/${encodeURIComponent(id)}`,()=>updateMaterialPayment(actor,id,{
-    payment_status:val(form,"payment_status"),paid_on:val(form,"paid_on"),payment_reference:val(form,"payment_reference")}));
+  const operations={guide:updateMaterialGuideFollowup,references:updateMaterialReferences,payment:updateMaterialPayment,notice:recordMaterialClosureNotification};
+  try{await operations[kind](actor,id,Object.fromEntries(materialFollowupFields[kind].map(field=>[field,val(form,field)])));}
+  catch(e){return {error:message(e),values:materialFollowupDraft(kind,form)};}
+  revalidatePath("/","layout");redirect(`/ingresos/${encodeURIComponent(id)}?ok=1#${materialFollowupAnchors[kind]}`);
 }
-export async function updateMaterialReferencesAction(form:FormData){
-  const actor=await requireActor(),id=val(form,"id");
-  await run(`/ingresos/${encodeURIComponent(id)}`,()=>updateMaterialReferences(actor,id,{
-    entry_sheet:val(form,"entry_sheet"),invoice_number:val(form,"invoice_number"),certificate_number:val(form,"certificate_number"),
-    invoice_direction:val(form,"invoice_direction"),invoice_issued_on:val(form,"invoice_issued_on")}));
+export async function updateMaterialPaymentAction(_previous:MaterialFollowupFormState,form:FormData):Promise<MaterialFollowupFormState>{
+  return saveMaterialFollowup("payment",form);
 }
-export async function recordMaterialClosureNotificationAction(form:FormData){
-  const actor=await requireActor(),id=val(form,"id");
-  await run(`/ingresos/${encodeURIComponent(id)}`,()=>recordMaterialClosureNotification(actor,id,{
-    notified_on:val(form,"notified_on"),recipient:val(form,"recipient"),note:val(form,"note")}));
+export async function updateMaterialReferencesAction(_previous:MaterialFollowupFormState,form:FormData):Promise<MaterialFollowupFormState>{
+  return saveMaterialFollowup("references",form);
 }
-export async function updateMaterialGuideFollowupAction(form:FormData){
-  const actor=await requireActor(),id=val(form,"id");
-  await run(`/ingresos/${encodeURIComponent(id)}`,()=>updateMaterialGuideFollowup(actor,id,{
-    requested_on:val(form,"requested_on"),received_on:val(form,"received_on"),valued_guide:val(form,"valued_guide")}));
+export async function recordMaterialClosureNotificationAction(_previous:MaterialFollowupFormState,form:FormData):Promise<MaterialFollowupFormState>{
+  return saveMaterialFollowup("notice",form);
+}
+export async function updateMaterialGuideFollowupAction(_previous:MaterialFollowupFormState,form:FormData):Promise<MaterialFollowupFormState>{
+  return saveMaterialFollowup("guide",form);
 }
 export async function createSupplierInvoiceAction(_previous:SupplierInvoiceFormState,form:FormData):Promise<SupplierInvoiceFormState>{
   const actor=await requireActor();let id:string;
