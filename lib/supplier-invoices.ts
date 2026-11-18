@@ -157,14 +157,16 @@ export async function createSupplierInvoice(actor:Actor,input:unknown){
       if(!profile||profile.status!=="verificada"||profile.kind==="cliente")reject("Seleccione una ficha de proveedor verificada.");
       supplierTaxId=profile.tax_id;supplierName=profile.legal_name;
     }
+    supplierTaxId=supplierTaxId.replace(/[.\s]/g,"").toUpperCase();
     if(supplierTaxId.length<5||supplierName.length<2)reject("Indique el proveedor o seleccione una ficha verificada.");
     if(purchase?.supplier_tax_id&&purchase.supplier_tax_id.replace(/[.\s]/g,"").toUpperCase()!==supplierTaxId.replace(/[.\s]/g,"").toUpperCase())
       reject("El RUT del proveedor en la factura no coincide con la solicitud u orden de compra.");
     if(data.service_id){const [service]=await tx.query<{operating_company:string|null}>("SELECT operating_company FROM service_requests WHERE id=$1 AND deleted_at IS NULL",[data.service_id]);
       if(!service||service.operating_company!==data.issuer)reject("El servicio debe tener confirmada la misma empresa receptora.");}
-    const [duplicate]=await tx.query("SELECT id FROM supplier_invoices WHERE issuer=$1 AND supplier_tax_id=$2 AND invoice_number=$3",
+    const [duplicate]=await tx.query(`SELECT id FROM supplier_invoices WHERE issuer=$1
+      AND upper(regexp_replace(supplier_tax_id,'[.[:space:]]','','g'))=$2 AND invoice_number=$3`,
       [data.issuer,supplierTaxId,data.invoice_number]);
-    if(duplicate)reject("Esta factura del proveedor ya está registrada para la empresa emisora.");
+    if(duplicate)reject("Esta factura del proveedor ya está registrada para la empresa receptora.");
     const [row]=await tx.query<{id:string}>(`INSERT INTO supplier_invoices(issuer,supplier_tax_id,supplier_name,invoice_number,issued_on,due_on,
       description,net_clp,vat_clp,total_clp,cost_area,purchase_id,service_id,notes,recorded_by${profilesReady?",supplier_profile_id":""})
       VALUES($1,$2,$3,$4,$5,NULLIF($6,'')::date,$7,NULLIF($8::text,'')::numeric,NULLIF($9::text,'')::numeric,

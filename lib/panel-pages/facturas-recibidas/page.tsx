@@ -5,10 +5,10 @@ import {requireActor} from "@/lib/auth";
 import {db} from "@/lib/db";
 import {listSupplierInvoices,parseSupplierInvoiceFilter,supplierInvoiceOverview,supplierInvoiceCount} from "@/lib/supplier-invoices";
 import {chileCsvDay} from "@/lib/chile-csv";
-import {createSupplierInvoiceAction} from "@/app/operation-actions";
 import {Notice} from "@/components/UI";
-import {SubmitButton} from "@/components/Transition";
-import {serviceFolio,type Company} from "@/lib/companies";
+import {type Company} from "@/lib/companies";
+import SupplierInvoiceForm from "@/components/SupplierInvoiceForm";
+import type {SupplierInvoicePurchase,SupplierInvoiceService} from "@/lib/supplier-invoice-form-state";
 import {moduleReady} from "@/lib/schema-readiness";
 import {listVerifiedSuppliers} from "@/lib/counterparties";
 import RecordsPagination from "@/components/RecordsPagination";
@@ -22,10 +22,10 @@ export default async function SupplierInvoices({searchParams}:{searchParams:Prom
   const filter=parseSupplierInvoiceFilter(query.estado),today=chileCsvDay();
   const page=recordPage(query.pagina);
   const href=(next:number)=>`/facturas-recibidas?${new URLSearchParams({empresa:company,estado:filter,pagina:String(next)})}#facturas-proveedores`;
-  const profilesReady=await moduleReady("counterparty_profiles");
+  const [profilesReady,purchaseProfilesReady]=await Promise.all([moduleReady("counterparty_profiles"),moduleReady("purchase_supplier_profile")]);
   const [rows,overview,purchases,services,suppliers,total]=await Promise.all([listSupplierInvoices(actor,company,filter,today,recordsPerPage,(page-1)*recordsPerPage),supplierInvoiceOverview(actor,company,today),
-    db.query<{id:string;folio:string;title:string;issuer:Company;order_reference:string|null}>("SELECT id,folio,title,issuer,order_reference FROM purchase_requests WHERE ($1::text='' OR issuer=$1) AND status<>'cancelada' ORDER BY created_at DESC LIMIT 250",[company]),
-    db.query<{id:string;folio:string;operating_company:Company}>("SELECT id,folio,operating_company FROM service_requests WHERE operating_company IS NOT NULL AND ($1::text='' OR operating_company=$1) AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 250",[company]),
+    db.query<SupplierInvoicePurchase>(`SELECT id,folio,title,issuer,order_reference,${purchaseProfilesReady?"supplier_profile_id":"NULL::uuid AS supplier_profile_id"} FROM purchase_requests WHERE status<>'cancelada' ORDER BY created_at DESC,id DESC`),
+    db.query<SupplierInvoiceService>("SELECT id,folio,operating_company FROM service_requests WHERE operating_company IS NOT NULL AND deleted_at IS NULL ORDER BY created_at DESC,id DESC"),
     profilesReady?listVerifiedSuppliers(actor):Promise.resolve([]),supplierInvoiceCount(actor,company,filter,today)]);
   if(page>lastRecordPage(total))redirect(href(lastRecordPage(total)));
   const inSeven=new Date(`${today}T12:00:00Z`);inSeven.setUTCDate(inSeven.getUTCDate()+7);
@@ -44,11 +44,7 @@ export default async function SupplierInvoices({searchParams}:{searchParams:Prom
       <button className="button button-outline" type="submit">Aplicar filtros</button></form>
     <div className="supply-summary"><div><strong>{overview.overdue}</strong><span>Vencidas con saldo</span></div><div><strong>{overview.upcoming}</strong><span>Vencen en 7 días</span></div><div><strong>{overview.undated}</strong><span>Con saldo sin vencimiento</span></div><div><strong>${Number(overview.outstanding).toLocaleString("es-CL",{maximumFractionDigits:2})}</strong><span>Saldo por pagar</span></div></div>
     <section className="section-card"><div className="section-heading"><div><div className="eyebrow">REGISTRAR</div><h2>Factura de proveedor</h2></div></div>
-      <form action={createSupplierInvoiceAction} className="form-grid"><label>Empresa receptora<select name="issuer" defaultValue={company||"rerchar"}><option value="rerchar">RERCHAR CHILE SPA</option><option value="e_y_j">E y J Limitada</option></select></label><label>Fecha emisión<input name="issued_on" type="date" required/></label>
-        {profilesReady&&<label>Ficha de proveedor verificada<select name="supplier_profile_id" defaultValue=""><option value="">Ingreso manual (sin cuenta verificada)</option>{suppliers.map(s=><option value={s.id} key={s.id}>{s.legal_name} · {s.tax_id}</option>)}</select></label>}
-        <label>RUT proveedor (si es manual)<input name="supplier_tax_id" maxLength={25}/></label><label>Razón social (si es manual)<input name="supplier_name" maxLength={180}/></label>
-        {profilesReady&&<p className="field-full helper-text">Al seleccionar una ficha se toman la razón social y el RUT verificados. Para solicitar transferencia se exige una ficha verificada, incluso si la factura se registró manualmente. <Link href="/fichas/nueva" className="text-link">Crear ficha de proveedor →</Link></p>}
-        <label>Número factura<input name="invoice_number" required maxLength={80}/></label><label>Vencimiento<input name="due_on" type="date"/></label><label className="field-full">Descripción<input name="description" required maxLength={500}/></label><label>Neto ($)<input name="net_clp" type="number" min="0" step="0.01"/></label><label>IVA ($)<input name="vat_clp" type="number" min="0" step="0.01"/></label><label>Total ($)<input name="total_clp" type="number" min="0" step="0.01" required/></label><label>Centro de costo<input name="cost_area" maxLength={160}/></label><label>Solicitud / orden de compra<select name="purchase_id" defaultValue=""><option value="">No aplica</option>{purchases.map(p=><option key={p.id} value={p.id}>{p.issuer==="rerchar"?"RERCHAR":"E y J"} · {p.order_reference??`SC-${String(p.folio).padStart(5,"0")} (sin OC emitida)`} · {p.title}</option>)}</select></label><label>Servicio<select name="service_id" defaultValue=""><option value="">No aplica</option>{services.map(s=><option key={s.id} value={s.id}>{serviceFolio(s)}</option>)}</select></label><p className="field-full helper-text">La solicitud y el servicio deben pertenecer a la misma empresa receptora. Si la OC tiene una ficha verificada, la factura tomará esa ficha y comprobará el RUT.</p><label className="field-full">Observaciones<textarea name="notes" rows={2} maxLength={1000}/></label><div className="field-full form-footer"><SubmitButton className="button button-primary">Registrar factura</SubmitButton></div></form></section>
+      <SupplierInvoiceForm company={company} profilesReady={profilesReady} suppliers={suppliers} purchases={purchases} services={services}/></section>
     <section className="section-card" id="facturas-proveedores"><div className="section-heading"><div><div className="eyebrow">VENCIMIENTOS</div><h2>Facturas y saldo</h2></div><span className="count-pill">{total}</span></div>
       <p className="helper-text">Las facturas con saldo se ordenan por vencimiento. La tabla muestra 100 por página; los indicadores incluyen todos los registros de la empresa seleccionada.</p>
       <div className="table-wrap"><table className="data-table"><thead><tr><th>Factura / empresa</th><th>Proveedor</th><th>Vence</th><th>Total</th><th>Saldo</th><th>Estado</th></tr></thead><tbody>{rows.map(r=>{

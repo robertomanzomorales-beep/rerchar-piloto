@@ -15,6 +15,7 @@
     "predev": "node scripts/prepare-document-reader.mjs",
     "prebuild": "node scripts/prepare-document-reader.mjs",
     "test:request-form-http": "node --import tsx scripts/verify-request-form.ts",
+    "test:supplier-invoice-form-http": "node --import tsx scripts/verify-supplier-invoice-form.ts",
     "test:supply-history-http": "node --import tsx scripts/verify-supply-history.ts",
     "test:quote-form-http": "node --import tsx scripts/verify-quote-form.ts",
     "test:statement-form-http": "node --import tsx scripts/verify-statement-form.ts",

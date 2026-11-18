@@ -5,9 +5,10 @@ import {type Company} from "@/lib/companies";
 import {moduleReady} from "@/lib/schema-readiness";
 import {listSupplierTransfers,supplierTransferOverview,type TransferStatus} from "@/lib/supplier-transfers";
 import ModuleUnavailable from "@/components/ModuleUnavailable";
+import {chileCsvDateTime} from "@/lib/chile-csv";
 
 const money=(v:string|number)=>`$${Number(v).toLocaleString("es-CL",{maximumFractionDigits:2})}`;
-const date=(v:Date|string|null)=>v?(v instanceof Date?v.toISOString().slice(0,10):String(v).slice(0,10)):"—";
+const date=(v:Date|string|null)=>v?chileCsvDateTime(v).slice(0,10):"—";
 const labels={solicitada:"Por aprobar",aprobada:"Por ejecutar",ejecutada:"Por verificar",verificada:"Verificada",rechazada:"Rechazada"};
 export default async function Transfers({searchParams}:{searchParams:Promise<{empresa?:string;estado?:string;pagina?:string}>}){
   const actor=await requireActor();if(actor.role!=="admin")redirect("/");

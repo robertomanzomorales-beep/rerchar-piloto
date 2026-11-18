@@ -9,6 +9,7 @@ import {MaterialStockError} from "@/lib/material-stock";
 import {SupplierInvoiceError,createSupplierInvoice,registerSupplierPayment,updateSupplierInvoiceDueDate,reviewSupplierInvoice} from "@/lib/supplier-invoices";
 import {LedgerError,saveGuideFollowup,saveCommercialDetails} from "@/lib/service-ledger";
 import {OperationFileError,addOperationFile} from "@/lib/operation-files";
+import {supplierInvoiceDraft,type SupplierInvoiceFormState} from "@/lib/supplier-invoice-form-state";
 
 const val=(form:FormData,key:string)=>String(form.get(key)??"");
 function message(error:unknown){
@@ -53,12 +54,12 @@ export async function updateMaterialGuideFollowupAction(form:FormData){
   await run(`/ingresos/${encodeURIComponent(id)}`,()=>updateMaterialGuideFollowup(actor,id,{
     requested_on:val(form,"requested_on"),received_on:val(form,"received_on"),valued_guide:val(form,"valued_guide")}));
 }
-export async function createSupplierInvoiceAction(form:FormData){
+export async function createSupplierInvoiceAction(_previous:SupplierInvoiceFormState,form:FormData):Promise<SupplierInvoiceFormState>{
   const actor=await requireActor();let id:string;
   const fields=["issuer","supplier_profile_id","supplier_tax_id","supplier_name","invoice_number","issued_on","due_on","description",
     "net_clp","vat_clp","total_clp","cost_area","purchase_id","service_id","notes"];
   try{id=await createSupplierInvoice(actor,Object.fromEntries(fields.map(field=>[field,val(form,field)])));}
-  catch(e){redirect(`/facturas-recibidas?error=${encodeURIComponent(message(e))}`);}
+  catch(e){return {error:message(e),values:supplierInvoiceDraft(form)};}
   revalidatePath("/","layout");redirect(`/facturas-recibidas/${id}?ok=1`);
 }
 export async function registerSupplierPaymentAction(form:FormData){
