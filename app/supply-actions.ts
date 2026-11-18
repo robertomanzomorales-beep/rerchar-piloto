@@ -2,8 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { ZodError } from "zod";
+import { ZodError,z } from "zod";
 import { requireActor } from "@/lib/auth";
+import {recordPage} from "@/lib/record-pagination";
 import {
   SupplyError, addPurchaseLine, adjustStock, approvePurchase, cancelPurchase, closeReservation,
   createPurchase, createStockItem, createStockSkuRule, createWarehouse, issuePurchaseDraft, receivePurchase, reserveStock, savePurchaseDraft, transferStock,
@@ -20,10 +21,23 @@ function message(error: unknown) {
   return "No se pudo registrar el cambio. Intente nuevamente.";
 }
 async function run(path: string, operation: () => Promise<unknown>): Promise<never> {
+  const [base,anchor]=path.split("#",2);
+  const target=(query:string)=>`${base}${base.includes("?")?"&":"?"}${query}${anchor?`#${anchor}`:""}`;
   try { await operation(); }
-  catch (error) { redirect(`${path}?error=${encodeURIComponent(message(error))}`); }
+  catch (error) { redirect(target(`error=${encodeURIComponent(message(error))}`)); }
   revalidatePath("/", "layout");
-  redirect(`${path}?ok=1`);
+  redirect(target("ok=1"));
+}
+function inventoryReturn(form:FormData){
+  try{
+    const url=new URL(value(form,"return_to"),"https://internal.invalid");
+    if(url.origin!=="https://internal.invalid"||url.pathname!=="/inventario")return "/inventario";
+    const query=new URLSearchParams();
+    for(const field of ["articulo","bodega"]){const id=url.searchParams.get(field);if(z.uuid().safeParse(id).success)query.set(field,id!);}
+    const month=url.searchParams.get("mes");if(month&&/^20\d\d-(0[1-9]|1[0-2])$/.test(month))query.set("mes",month);
+    for(const field of ["pagina_kardex","pagina_reservas"])query.set(field,String(recordPage(url.searchParams.get(field))));
+    return `/inventario?${query}#reservas-stock`;
+  }catch{return "/inventario";}
 }
 
 export async function createWarehouseAction(form: FormData) {
@@ -108,5 +122,5 @@ export async function reserveStockAction(form: FormData) {
 }
 export async function closeReservationAction(form: FormData) {
   const actor = await requireActor();
-  await run("/inventario", () => closeReservation(actor,value(form,"reservation_id"),value(form,"action") as "liberar" | "consumir"));
+  await run(inventoryReturn(form), () => closeReservation(actor,value(form,"reservation_id"),value(form,"action") as "liberar" | "consumir"));
 }

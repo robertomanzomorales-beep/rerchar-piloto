@@ -4,25 +4,31 @@ import { redirect } from "next/navigation";
 import { ClipboardList, ArrowUpRight, PackagePlus } from "lucide-react";
 import { canManage, requireActor } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { listPurchases, purchaseStatus, type StockItem } from "@/lib/supply";
+import { listPurchases, purchaseOverview, purchaseStatus, type StockItem } from "@/lib/supply";
 import { createPurchaseAction } from "@/app/supply-actions";
 import { Notice, chileDate } from "@/components/UI";
 import { SubmitButton } from "@/components/Transition";
+import RecordsPagination from "@/components/RecordsPagination";
+import {recordPage,recordsPerPage,lastRecordPage} from "@/lib/record-pagination";
 
-export default async function Purchases({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string; estado?: string }> }) {
+export default async function Purchases({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string; estado?: string;pagina?:string }> }) {
   const actor = await requireActor();
   if (!canManage(actor)) redirect("/");
   const query = await searchParams;
-  const [purchases, items] = await Promise.all([
-    listPurchases(actor, query.estado),
+  const status=Object.hasOwn(purchaseStatus,query.estado??"")?query.estado!:"";
+  const page=recordPage(query.pagina);
+  const href=(next:number)=>`/compras?${new URLSearchParams({estado:status,pagina:String(next)})}#solicitudes-compras`;
+  const [purchases, items,overview] = await Promise.all([
+    listPurchases(actor,status,recordsPerPage,(page-1)*recordsPerPage),
     db.query<StockItem>("SELECT id,code,name,unit,minimum_qty FROM stock_items WHERE active=true ORDER BY name"),
+    purchaseOverview(actor,status),
   ]);
-  const pending = purchases.filter((purchase) => purchase.status === "solicitada").length;
-  const delivery = purchases.filter((purchase) => ["ordenada","parcial"].includes(purchase.status)).length;
+  const total=Number(overview.total);
+  if(page>lastRecordPage(total))redirect(href(lastRecordPage(total)));
   return <>
     <div className="page-title-row"><div><div className="eyebrow">ABASTECIMIENTO</div><h1>Solicitudes de compra</h1><p className="page-intro">Desde la aprobación hasta la recepción trazable y el ingreso automático al inventario.</p></div><span className="title-icon"><ClipboardList size={23}/></span></div>
     <Notice error={query.error} ok={query.ok}/>
-    <div className="supply-summary"><div><strong>{pending}</strong><span>Por aprobar en esta vista</span></div><div><strong>{delivery}</strong><span>En espera de recepción</span></div><Link href="/inventario" className="button button-outline">Ver bodegas y Kardex <ArrowUpRight size={16}/></Link></div>
+    <div className="supply-summary"><div><strong>{overview.pending}</strong><span>Por aprobar en este filtro</span></div><div><strong>{overview.delivery}</strong><span>En espera de recepción en este filtro</span></div><Link href="/inventario" className="button button-outline">Ver bodegas y Kardex <ArrowUpRight size={16}/></Link></div>
     <div className="supply-columns">
       <section className="section-card"><div className="section-heading"><div><div className="eyebrow">NUEVA SOLICITUD</div><h2><PackagePlus size={19}/> Requerimiento</h2></div></div>
         <p className="helper-text">Registre el primer artículo. Podrá agregar más artículos antes de su aprobación.</p>
@@ -37,13 +43,14 @@ export default async function Purchases({ searchParams }: { searchParams: Promis
           <SubmitButton className="button button-primary" disabled={!items.length}>Crear solicitud</SubmitButton>
         </form>
       </section>
-      <section className="section-card"><div className="section-heading"><div><div className="eyebrow">SEGUIMIENTO</div><h2>Solicitudes registradas</h2></div><span className="count-pill">{purchases.length}</span></div>
+      <section className="section-card" id="solicitudes-compras"><div className="section-heading"><div><div className="eyebrow">SEGUIMIENTO</div><h2>Solicitudes registradas</h2></div><span className="count-pill">{total}</span></div>
         <form method="get" className="supply-filter"><label>Estado<select name="estado" defaultValue={Object.hasOwn(purchaseStatus,query.estado ?? "") ? query.estado : ""}><option value="">Todos</option>{Object.entries(purchaseStatus).map(([key, text]) => <option key={key} value={key}>{text}</option>)}</select></label><button className="button button-outline" type="submit">Filtrar</button></form>
         {purchases.length ? <div className="table-wrap"><table className="data-table"><thead><tr><th>Compra / artículo</th><th>Criticidad</th><th>Estado</th><th aria-label="Abrir"/></tr></thead><tbody>{purchases.map((purchase) =>
           <tr key={purchase.id}><td><Link className="table-main" href={`/compras/${purchase.id}`}>SC-{String(purchase.folio).padStart(5,"0")} · {purchase.title}</Link><span className="table-sub">{purchase.order_reference?`${purchase.order_reference} · `:""}{purchase.requested_name} · {chileDate(purchase.created_at)}</span></td>
             <td><span className={`priority priority-${purchase.priority}`}>{purchase.priority}</span></td><td><span className={`badge supply-status-${purchase.status}`}>{purchaseStatus[purchase.status]}</span></td>
             <td><Link href={`/compras/${purchase.id}`} className="table-arrow" aria-label={`Abrir solicitud de compra SC-${purchase.folio}`}><ArrowUpRight size={18}/></Link></td></tr>
         )}</tbody></table></div> : <p className="muted">No hay solicitudes de compra para este filtro.</p>}
+        <RecordsPagination page={page} total={total} href={href} label="Páginas de solicitudes de compra"/>
       </section>
     </div>
   </>;

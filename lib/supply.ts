@@ -4,6 +4,7 @@ import type { Actor } from "./auth";
 import { canManage } from "./auth";
 import { db, transaction, type Db } from "./db";
 import {moduleReady} from "./schema-readiness";
+import {recordPage,recordsPerPage,recordWindow} from "./record-pagination";
 
 const uuid = z.uuid();
 const label = (max = 180) => z.string().trim().min(2).max(max);
@@ -134,15 +135,25 @@ export type Purchase = {
   approved_name: string | null; created_at: Date; updated_at: Date;
 };
 export type PurchaseLine = { id: string; item_id: string; code: string; name: string; unit: string; quantity: string; received_qty: string;unit_price_clp:string|null;discount_clp:string };
-export type PurchaseReceipt = { id: string; item_name: string; warehouse_name: string; quantity: string; guide_number: string; invoice_number: string | null; document_kind:"guia"|"factura"; payment_status: string; recorded_name: string; created_at: Date };
+export type PurchaseReceipt = { id: string; item_name: string; warehouse_name: string; quantity: string; unit:string; guide_number: string; invoice_number: string | null; document_kind:"guia"|"factura"; payment_status: string; recorded_name: string; created_at: Date };
 export type PurchaseEvent = { id: string; kind: string; description: string; actor_name: string; created_at: Date };
 const purchaseSelect = `SELECT p.*, u.name AS requested_name, a.name AS approved_name FROM purchase_requests p
  JOIN users u ON u.id=p.requested_by LEFT JOIN users a ON a.id=p.approved_by`;
 
-export async function listPurchases(actor: Actor, status = "") {
+export async function listPurchases(actor: Actor, status = "",limit=150,offset=0) {
   requireOperations(actor);
   const filter = status === "" || Object.hasOwn(purchaseStatus, status) ? status : "";
-  return db.query<Purchase>(`${purchaseSelect} WHERE ($1::text='' OR p.status=$1) ORDER BY p.created_at DESC,p.folio DESC LIMIT 150`, [filter]);
+  const window=recordWindow(limit,offset);
+  return db.query<Purchase>(`${purchaseSelect} WHERE ($1::text='' OR p.status=$1) ORDER BY p.created_at DESC,p.folio DESC LIMIT $2 OFFSET $3`, [filter,window.limit,window.offset]);
+}
+export async function purchaseOverview(actor:Actor,status=""){
+  requireOperations(actor);
+  const filter=Object.hasOwn(purchaseStatus,status)?status:"";
+  const [row]=await db.query<{total:string;pending:string;delivery:string}>(`SELECT count(*)::text AS total,
+    count(*) FILTER (WHERE status='solicitada')::text AS pending,
+    count(*) FILTER (WHERE status IN ('ordenada','parcial'))::text AS delivery
+    FROM purchase_requests WHERE ($1::text='' OR status=$1)`,[filter]);
+  return row;
 }
 
 export async function getPurchase(actor: Actor, id: string) {
@@ -152,7 +163,7 @@ export async function getPurchase(actor: Actor, id: string) {
   if (!purchase) reject("Solicitud de compra no encontrada.");
   const [lines, receipts, events] = await Promise.all([
     db.query<PurchaseLine>(`SELECT l.*,i.code,i.name,i.unit FROM purchase_lines l JOIN stock_items i ON i.id=l.item_id WHERE l.request_id=$1 ORDER BY i.name`, [id]),
-    db.query<PurchaseReceipt>(`SELECT r.id,i.name AS item_name,w.name AS warehouse_name,r.quantity,r.guide_number,r.invoice_number,r.document_kind,r.payment_status,u.name AS recorded_name,r.created_at
+    db.query<PurchaseReceipt>(`SELECT r.id,i.name AS item_name,w.name AS warehouse_name,r.quantity,i.unit,r.guide_number,r.invoice_number,r.document_kind,r.payment_status,u.name AS recorded_name,r.created_at
       FROM purchase_receipts r JOIN purchase_lines l ON l.id=r.line_id JOIN stock_items i ON i.id=l.item_id
       JOIN warehouses w ON w.id=r.warehouse_id JOIN users u ON u.id=r.recorded_by
       WHERE r.request_id=$1 ORDER BY r.created_at DESC,r.id DESC`, [id]),
@@ -390,9 +401,10 @@ export async function listInventorySpend(actor: Actor, month: string) {
   return { items, movements };
 }
 
-export async function listInventory(actor: Actor, itemId = "", warehouseId = "") {
+export async function listInventory(actor: Actor, itemId = "", warehouseId = "",movementPage=1,reservationPage=1) {
   requireOperations(actor);
-  const [warehouses, items, balances, movements, reservations, tires] = await Promise.all([
+  const item=uuid.safeParse(itemId).success?itemId:"",warehouse=uuid.safeParse(warehouseId).success?warehouseId:"";
+  const [warehouses, items, balances, movements, reservations, tires,counts] = await Promise.all([
     db.query<Warehouse>("SELECT id,code,name FROM warehouses WHERE active=true ORDER BY name"),
     db.query<StockItem>("SELECT id,code,name,unit,minimum_qty,maximum_qty,category,unit_cost_clp FROM stock_items WHERE active=true ORDER BY name"),
     db.query<StockBalance>(`SELECT i.id AS item_id,w.id AS warehouse_id,i.code AS item_code,i.name AS item_name,i.unit,w.name AS warehouse_name,i.minimum_qty,
@@ -402,16 +414,22 @@ export async function listInventory(actor: Actor, itemId = "", warehouseId = "")
     db.query<InventoryMovement>(`SELECT m.id,i.name AS item_name,i.code,i.unit,w.name AS warehouse_name,m.kind,m.qty_delta,m.reserved_delta,m.note,u.name AS actor_name,m.created_at,m.document_reference,m.cost_center
        FROM inventory_movements m JOIN stock_items i ON i.id=m.item_id JOIN warehouses w ON w.id=m.warehouse_id
        JOIN users u ON u.id=m.created_by WHERE ($1::text='' OR m.item_id=NULLIF($1,'')::uuid)
-       AND ($2::text='' OR m.warehouse_id=NULLIF($2,'')::uuid) ORDER BY m.created_at DESC,m.id DESC LIMIT 150`,
-      [uuid.safeParse(itemId).success ? itemId : "",uuid.safeParse(warehouseId).success ? warehouseId : ""]),
+       AND ($2::text='' OR m.warehouse_id=NULLIF($2,'')::uuid) ORDER BY m.created_at DESC,m.id DESC LIMIT $3 OFFSET $4`,
+      [item,warehouse,recordsPerPage,(recordPage(movementPage)-1)*recordsPerPage]),
     db.query<Reservation>(`SELECT r.id,i.name AS item_name,w.name AS warehouse_name,i.unit,r.quantity,r.reason,u.name AS created_by_name,r.created_at
       FROM inventory_reservations r JOIN stock_items i ON i.id=r.item_id JOIN warehouses w ON w.id=r.warehouse_id
-      JOIN users u ON u.id=r.created_by WHERE r.status='activa' ORDER BY r.created_at DESC LIMIT 100`),
+      JOIN users u ON u.id=r.created_by WHERE r.status='activa' ORDER BY r.created_at DESC,r.id DESC LIMIT $1 OFFSET $2`,
+      [recordsPerPage,(recordPage(reservationPage)-1)*recordsPerPage]),
     db.query<SerializedTire>(`SELECT t.id,t.code,t.brand,t.size,t.status,w.name AS warehouse_name,a.label AS asset_label
       FROM tires t LEFT JOIN warehouses w ON w.id=t.warehouse_id LEFT JOIN assets a ON a.id=t.asset_id
-      ORDER BY CASE t.status WHEN 'disponible' THEN 0 ELSE 1 END,t.code LIMIT 300`),
+      ORDER BY CASE t.status WHEN 'disponible' THEN 0 ELSE 1 END,t.code`),
+    db.query<{movement_count:string;reservation_count:string}>(`SELECT
+      (SELECT count(*)::text FROM inventory_movements m WHERE ($1::text='' OR m.item_id=NULLIF($1,'')::uuid)
+        AND ($2::text='' OR m.warehouse_id=NULLIF($2,'')::uuid)) AS movement_count,
+      (SELECT count(*)::text FROM inventory_reservations WHERE status='activa') AS reservation_count`,[item,warehouse]),
   ]);
-  return { warehouses, items, balances, movements, reservations, tires };
+  return { warehouses, items, balances, movements, reservations, tires,
+    movementCount:Number(counts[0].movement_count),reservationCount:Number(counts[0].reservation_count) };
 }
 
 async function activePair(tx: Db, itemId: string, warehouseId: string) {

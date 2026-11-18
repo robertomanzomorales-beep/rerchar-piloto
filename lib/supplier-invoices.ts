@@ -4,6 +4,7 @@ import {db,transaction} from "./db";
 import type {Company} from "./companies";
 import {moduleReady} from "./schema-readiness";
 import {chileCsvDay} from "./chile-csv";
+import {recordWindow} from "./record-pagination";
 
 const uuid=z.uuid();
 const optional=(max:number)=>z.string().trim().max(max).optional().default("");
@@ -43,17 +44,23 @@ function invoiceQuery(actor:Actor,company:Company|"",filter:SupplierInvoiceFilte
   if(!/^\d{4}-\d{2}-\d{2}$/.test(on))reject("Fecha inválida.");
 }
 
-export async function listSupplierInvoices(actor:Actor,company:Company|""="",filter:SupplierInvoiceFilter="pendientes",on=chileCsvDay()){
-  invoiceQuery(actor,company,filter,on);
-  return db.query<SupplierInvoice>(`SELECT * FROM supplier_invoices
-    WHERE ($1::text='' OR issuer=$1)
+const invoiceFilter=`WHERE ($1::text='' OR issuer=$1)
       AND ($2::text='todas'
         OR $2='pendientes' AND paid_clp<total_clp
         OR $2='vencidas' AND paid_clp<total_clp AND due_on<$3::date
         OR $2='proximas' AND paid_clp<total_clp AND due_on>=$3::date AND due_on<=$3::date+7
         OR $2='sin_fecha' AND paid_clp<total_clp AND due_on IS NULL
-        OR $2='pagadas' AND paid_clp>=total_clp)
-    ORDER BY paid_clp>=total_clp,due_on NULLS LAST,issued_on DESC,created_at DESC LIMIT 400`,[company,filter,on]);
+        OR $2='pagadas' AND paid_clp>=total_clp)`;
+export async function listSupplierInvoices(actor:Actor,company:Company|""="",filter:SupplierInvoiceFilter="pendientes",on=chileCsvDay(),limit=400,offset=0){
+  invoiceQuery(actor,company,filter,on);
+  const window=recordWindow(limit,offset);
+  return db.query<SupplierInvoice>(`SELECT * FROM supplier_invoices ${invoiceFilter}
+    ORDER BY paid_clp>=total_clp,due_on NULLS LAST,issued_on DESC,created_at DESC,id DESC LIMIT $4 OFFSET $5`,[company,filter,on,window.limit,window.offset]);
+}
+export async function supplierInvoiceCount(actor:Actor,company:Company|""="",filter:SupplierInvoiceFilter="pendientes",on=chileCsvDay()){
+  invoiceQuery(actor,company,filter,on);
+  const [row]=await db.query<{total:string}>(`SELECT count(*)::text AS total FROM supplier_invoices ${invoiceFilter}`,[company,filter,on]);
+  return Number(row.total);
 }
 export async function supplierInvoiceOverview(actor:Actor,company:Company|"",on=chileCsvDay()){
   invoiceQuery(actor,company,"todas",on);

@@ -182,6 +182,9 @@
 .loading-orbit i:nth-child(2) { background:#0060a8; transform:rotate(120deg) translateX(12px); }
 .loading-orbit i:nth-child(3) { background:#e7b900; transform:rotate(240deg) translateX(12px); }
 @keyframes loading-orbit-turn { to { transform:rotate(360deg); } }
+@media screen {
+  .app-shell :is(#solicitudes-compras,#facturas-proveedores,#reservas-stock,#kardex) { scroll-margin-top:76px; }
+}
 @media (prefers-reduced-motion:reduce) {
   .loading-indicator,.loading-orbit { animation:none; }
   .app-shell .nav-group-panel,.app-shell .nav-group-toggle,.app-shell .nav-link { transition:none; }

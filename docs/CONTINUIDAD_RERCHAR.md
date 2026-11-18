@@ -1,5 +1,12 @@
 # Continuidad RERCHAR — 17 de noviembre de 2026
 
+## Revisión de compras, proveedores e historial de inventario — 18/11
+
+- Se reprodujeron dos fallos antes de corregir: la recepción no entregaba unidad para mostrar su cantidad, y Compras ignoraba la ventana solicitada devolviendo sólo las últimas 150 filas. La tabla de recepciones tenía cuatro encabezados pero tres celdas por fila: faltaba cantidad y desplazaba documento/fecha. Ahora muestra cantidad con tres decimales máximos y unidad, documento y fecha en sus columnas.
+- Compras pagina de cien en cien, mantiene estado y cuenta pendientes/recepciones sobre todo el filtro. Facturas recibidas pagina de cien en cien, mantiene empresa/estado y conserva indicadores completos; deja de ocultar lo anterior al registro 400. El orden incluye ID para resolver empates sin repetir/omitir registros.
+- Kardex y reservas tienen páginas independientes, conteos completos y enlaces que conservan artículo, bodega, mes y ambas posiciones. Los filtros no borran el contexto del otro bloque. Liberar/consumir una reserva conserva el contexto tanto al guardar como al rechazar un reintento. El retorno sólo permite la ruta interna y parámetros esperados. Una página fuera de rango vuelve a la última válida. Los neumáticos identificados ya no se recortan a 300 unidades. Los anclajes dejan espacio a la cabecera.
+- Cinco pruebas aprobadas, incluida regresión con 235 compras, 425 facturas RERCHAR más 37 E y J, 235 movimientos filtrados y 135 reservas, sin omisiones/duplicados, con totales y permisos. Recorrido HTTP real aprobado con Next/base temporal: cantidades y cuatro celdas, última página de compras/facturas, Kardex/reservas, guardado y error con filtros, rechazo de retorno externo, permisos y ajuste de páginas fuera de rango. Script `npm run test:supply-history-http`, excluido del despliegue. No hay migraciones, correos ni modificaciones de datos productivos en las pruebas. Compilación final aprobada; comprobar publicación y acabado visual antes de cerrar el lote. La matriz no se modifica.
+
 ## Cotización: conservación del formulario y continuidad por empresa — 18/11
 
 - En la revisión siguiente se detectó que crear una cotización fallida redirigía a un formulario nuevo, perdiendo título, presentación editada, objetivo, notas, fechas, IVA y clave de reintento. Se devuelve el error al mismo formulario con esos datos conservados, cliente/emisor/tipo y foco en el aviso. No se cambia la validación de negocio, el folio, el envío ni los permisos.

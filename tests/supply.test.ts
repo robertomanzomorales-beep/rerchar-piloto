@@ -85,6 +85,7 @@ test("compra, recepción parcial, Kardex, bodegas y reservas mantienen los saldo
   const detail = await supply.getPurchase(owner,purchaseId);
   assert.equal(detail.purchase.status,"recibida");
   assert.equal(detail.receipts.length,3);
+  assert.equal(detail.receipts.find(receipt=>receipt.id===receiptId)?.unit,"un","la recepción conserva la unidad para mostrar su cantidad en la tabla");
   assert.equal(detail.events.length,8);
   let inventory = await supply.listInventory(ops);
   const balance = (itemId:string,warehouseId:string) => inventory.balances.find((row) => row.item_id===itemId && row.warehouse_id===warehouseId)!;
