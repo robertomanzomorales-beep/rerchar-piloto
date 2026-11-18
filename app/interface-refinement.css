@@ -526,3 +526,21 @@
   .app-shell .profile-fields { border:0; padding:0; margin:0; min-width:0; display:grid; gap:12px; }
   .app-shell .profile-fields:disabled { opacity:.65; }
 }
+
+@media screen {
+  .app-shell .asset-document-upload { display:flex; flex-wrap:wrap; align-items:flex-end; gap:12px; margin:16px 0 12px; }
+  .app-shell .asset-document-control { display:grid; gap:6px; flex:1; min-width:220px; }
+  .app-shell .asset-document-control>label { color:#526875; font-size:11px; font-weight:550; }
+  .app-shell .asset-document-picker { position:relative; display:flex; align-items:center; gap:12px; min-height:39px; padding:7px 10px; border:1px solid var(--surface-line); border-radius:5px; background:#fff; min-width:0; }
+  .app-shell .asset-document-picker:focus-within { outline:2px solid var(--company-accent); outline-offset:2px; }
+  .app-shell .asset-document-picker input[type=file] { position:absolute; inset:0; width:100%; height:100%; opacity:0; cursor:pointer; padding:0; }
+  .app-shell .asset-document-trigger { display:inline-flex; align-items:center; gap:7px; flex:none; color:var(--company-strong); font-size:11px; font-weight:600; }
+  .app-shell .asset-document-name { min-width:0; color:#74858e; font-size:10.5px; overflow-wrap:anywhere; }
+  .app-shell .asset-document-error { color:#a34136; margin:0; font-size:11px; }
+  @media (max-width:450px) {
+    .app-shell .asset-document-control { min-width:0; flex-basis:100%; }
+    .app-shell .asset-document-upload>.button { width:100%; }
+    .app-shell .asset-document-picker { flex-wrap:wrap; gap:6px; }
+    .app-shell .asset-document-name { flex-basis:100%; }
+  }
+}

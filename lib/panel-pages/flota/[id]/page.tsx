@@ -7,6 +7,7 @@ import { addAssetEquipmentAction,recordAssetMaintenanceAction,removeAssetEquipme
   reportAssetIncidentAction,resolveAssetIncidentAction,updateAssetEquipmentAction,addAssetDocumentAction } from "@/app/asset-log-actions";
 import { Notice,chileDate } from "@/components/UI";
 import { SubmitButton } from "@/components/Transition";
+import { AssetDocumentUpload } from "@/components/AssetDocumentUpload";
 
 const kindName:Record<string,string>={camion:"Camión",rampa:"Rampla",equipo:"Equipo"};
 const conditionName:Record<string,string>={operativo:"Operativo",por_revisar:"Por revisar",fuera_servicio:"Fuera de servicio"};
@@ -33,12 +34,13 @@ export default async function AssetDetail({params,searchParams}:{params:Promise<
       <p className="page-intro">{asset.code}{asset.plate?` · Patente ${asset.plate}`:""}{asset.brand?` · ${asset.brand}`:""}{asset.model?` ${asset.model}`:""}</p></div>
       <span className={`fleet-state ${asset.available?"available":"stopped"}`}>{asset.available?"Disponible":"Detenido"}</span></div>
     <Notice error={query.error} ok={query.ok}/>
+    <div className="fleet-stats"><div><strong>{openFaults.length}</strong><span>Averías abiertas</span></div><div><strong>{plans.length}</strong><span>Pautas activas</span></div><div><strong>{alerts.length}</strong><span>Elementos por revisar</span></div><div><strong>{asset.reading_unit==="sin"?"—":count(asset.current_reading)}</strong><span>Lectura actual {asset.reading_unit==="sin"?"":asset.reading_unit}</span></div></div>
     <section className="section-card"><div className="section-heading"><div><div className="eyebrow">CARPETA DEL VEHÍCULO</div><h2>Documentación PDF</h2></div><span className="count-pill">{documents.length}</span></div>
       <p className="helper-text">Adjunte varios certificados, permisos, revisión técnica, SOAP o resoluciones por camión o rampla. El nombre original del PDF identifica cada documento; máximo 4 MB por archivo.</p>
-      <form action={addAssetDocumentAction} className="form-grid supply-inline" encType="multipart/form-data"><input type="hidden" name="asset_id" value={id}/><label>Documento PDF<input type="file" name="file" accept="application/pdf,.pdf" required/></label><div className="field-full form-footer"><SubmitButton className="button button-outline">Agregar documento</SubmitButton></div></form>
+      <AssetDocumentUpload assetId={id}/>
       {documents.length?<ul className="record-list">{documents.map(doc=><li key={doc.id}><Link href={`/api/flota-documentos/${doc.id}`}>{doc.original_filename}</Link><small>{(doc.size_bytes/1024).toLocaleString("es-CL",{maximumFractionDigits:0})} KB · {doc.created_by_name} · {chileDate(doc.created_at)}</small></li>)}</ul>:<p className="muted">Sin documentos cargados para este activo.</p>}
     </section>
-    <div className="fleet-stats"><div><strong>{openFaults.length}</strong><span>Averías abiertas</span></div><div><strong>{plans.length}</strong><span>Pautas activas</span></div><div><strong>{alerts.length}</strong><span>Elementos por revisar</span></div><div><strong>{asset.reading_unit==="sin"?"—":count(asset.current_reading)}</strong><span>Lectura actual {asset.reading_unit==="sin"?"":asset.reading_unit}</span></div></div>
+
 
     <section className="section-card"><div className="section-heading"><div><div className="eyebrow">RUTEO DE LA PLANILLA</div><h2><Route size={19}/> Viajes y guías vinculados</h2></div><span className="count-pill">{routes.length}</span></div>
       <p className="helper-text">Se muestran las solicitudes asignadas a este camión, rampla o equipo y las guías de material que coinciden con su patente registrada. Los registros históricos del Excel aún no están cargados.</p>

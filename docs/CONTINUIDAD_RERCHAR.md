@@ -1,5 +1,18 @@
 # Continuidad RERCHAR — 17 de noviembre de 2026
 
+## Rediseño del selector y navegación — 18/11
+
+- Roberto aportó captura del selector y pidió rehacer la presentación y afinar el menú: logo sobredimensionado, mala proporción y acabado insuficiente. Se sustituye la composición anterior de franjas coloreadas por una entrada con dos espacios equilibrados, marcas contenidas, títulos claros, procesos y accesos explícitos.
+- Se conserva el logo original de RERCHAR y la marca tipográfica existente de E y J. No se generan logos nuevos. Verde/azul identifican cada destino, con superficies blancas y acentos contenidos. La nueva composición usa clases propias para no heredar las reglas incompatibles del selector anterior.
+- La barra lateral tiene 228 px en escritorio, marcas de tamaño acotado, iconos de tono uniforme, espaciado y lectura afinados. Conserva el estado activo verde/azul. Las categorías abiertas por defecto siguen la sección actual; en inicio se ofrece Comercial. Los botones de categoría enlazan su panel mediante aria-controls.
+- Se conserva navegación por perfil, empresa de los enlaces, búsqueda y cierre de sesión. El menú móvil mantiene foco y Escape, y abre el cambio de empresa inicialmente sólo cuando aún no se ha seleccionado una.
+- Compilación local aprobada. Verificar publicación, proporciones en escritorio, ambos accesos, búsqueda, categorías y menú móvil antes de dar el rediseño por cerrado. El ajuste pendiente de la carpeta PDF está incluido en este mismo lote; la consolidación de la rampla ya se aplicó en el lote anterior.
+
+## Confirmación de consolidación y carpeta de vehículo — 18/11
+
+- `fd5054d` quedó READY y el despliegue confirmó «Migración aplicada: 071_unificar_rampla_hxhy46.sql». Se recargó la URL publicada de RAM-01: redirige a RAM-001 · LIBERATO, con once registros de viajes/guías y su avería resuelta conservada. La consolidación ya está aplicada; no volver a ejecutar reparaciones manuales sobre estos registros.
+- En la revisión visual se refinó además la carpeta del vehículo: métricas antes de documentos, selección de PDF en español, nombre del archivo visible, avisos de archivo vacío/tipo/tamaño y envío deshabilitado sin archivo válido. Se conservan el límite de 4 MB y la validación del contenido en el servidor. Verificar compilación/publicación de este ajuste y la flota final de ocho activos, con una sola HXHY-46.
+
 ## Rampla HXHY-46 confirmada como una unidad — 18/11
 
 - Roberto confirmó que RAM-01 y RAM-001 son la misma unidad y pidió continuar. Se revisaron ambas fichas publicadas: RAM-001 · LIBERATO conserva cuatro servicios más una guía y una avería resuelta; RAM-01 conserva seis servicios más la misma guía. Se conserva RAM-001 como ficha principal.
