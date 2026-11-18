@@ -13,6 +13,7 @@ import {createExternalDriver,PersonnelError} from "@/lib/personnel";
 import {setFleetDay,FleetScheduleError} from "@/lib/fleet-schedule";
 import {reportServiceDay,ServiceDayError} from "@/lib/service-day";
 import {requestDraft,type RequestFormState} from "@/lib/request-form-state";
+import {serviceOperationAnchors,serviceOperationDraft,type ServiceOperationKind,type ServiceOperationState} from "@/lib/service-operation-state";
 
 const value = (form: FormData, key: string) => String(form.get(key) ?? "");
 const servicePath = (id: string) => `/solicitudes/${encodeURIComponent(id)}`;
@@ -109,19 +110,26 @@ export async function classifyServiceCompanyAction(form:FormData) {
   await run(servicePath(id),()=>classifyServiceCompany(actor,id,value(form,"operating_company")));
 }
 
-export async function scheduleRentalAction(form:FormData){
+async function serviceOperation(kind:ServiceOperationKind,id:string,form:FormData,operation:()=>Promise<unknown>):Promise<ServiceOperationState>{
+  try{await operation();}
+  catch(error){return {error:message(error),values:serviceOperationDraft(kind,form)};}
+  revalidatePath("/","layout");
+  const anchor=kind==="finish"?"cierre":kind==="cancel"?"":serviceOperationAnchors[kind];
+  redirect(`${servicePath(id)}?ok=1${anchor?"#"+anchor:""}`);
+}
+export async function scheduleRentalAction(_previous:ServiceOperationState,form:FormData):Promise<ServiceOperationState>{
   const actor=await requireActor(),id=value(form,"id");
-  await run(servicePath(id),()=>scheduleRental(actor,id,{asset_id:value(form,"asset_id")}));
+  return serviceOperation("rental",id,form,()=>scheduleRental(actor,id,{asset_id:value(form,"asset_id")}));
 }
 export async function completeRentalAction(form:FormData){
   const actor=await requireActor(),id=value(form,"id");
   await run(servicePath(id),()=>completeRental(actor,id));
 }
 
-export async function assignServiceAction(form: FormData) {
+export async function assignServiceAction(_previous:ServiceOperationState,form:FormData):Promise<ServiceOperationState> {
   const actor = await requireActor(); const id = value(form,"id");
   const selection=value(form,"driver_selection");
-  await run(servicePath(id), () => assignService(actor, id, {
+  return serviceOperation("plan",id,form,() => assignService(actor, id, {
     asset_id: value(form,"asset_id"), ramp_asset_id: value(form,"ramp_asset_id"),
     driver_id: selection.startsWith("cuenta:")?selection.slice(7):"",
     external_driver_id:selection.startsWith("tercero:")?selection.slice(8):"",
@@ -141,15 +149,15 @@ export async function setFleetDayAction(form:FormData){
   revalidatePath("/agenda");
   qs.set("ok","1");redirect(`/agenda?${qs.toString()}`);
 }
-export async function reportServiceDayAction(form:FormData){
+export async function reportServiceDayAction(_previous:ServiceOperationState,form:FormData):Promise<ServiceOperationState>{
   const actor=await requireActor(),id=value(form,"id");
-  await run(servicePath(id),()=>reportServiceDay(actor,id,{
+  return serviceOperation("day",id,form,()=>reportServiceDay(actor,id,{
     day:value(form,"day"),outcome:value(form,"outcome"),observation:value(form,"observation"),
   }));
 }
-export async function cancelServiceAction(form: FormData) {
+export async function cancelServiceAction(_previous:ServiceOperationState,form:FormData):Promise<ServiceOperationState> {
   const actor = await requireActor(); const id = value(form,"id");
-  await run(servicePath(id), () => cancelService(actor, id, value(form,"reason")));
+  return serviceOperation("cancel",id,form,() => cancelService(actor, id, value(form,"reason")));
 }
 function fleetReturnPath(form:FormData) {
   const page=Number(value(form,"page"));
@@ -165,9 +173,9 @@ export async function resolveFleetIncidentAction(form: FormData) {
   const actor = await requireActor();
   await run(fleetReturnPath(form), () => resolveFleetIncident(actor, value(form,"id"), value(form,"resolution")));
 }
-export async function saveChecklistAction(form: FormData) {
+export async function saveChecklistAction(_previous:ServiceOperationState,form:FormData):Promise<ServiceOperationState> {
   const actor = await requireActor(); const id = value(form,"id");
-  await run(servicePath(id), () => saveChecklist(actor, id, {
+  return serviceOperation("checklist",id,form,() => saveChecklist(actor, id, {
     vehicle_ok: form.get("vehicle_ok") === "on", documents_ok: form.get("documents_ok") === "on",
     containment_ok: form.get("containment_ok") === "on", ppe_ok: form.get("ppe_ok") === "on",
     vehicle_failure: form.get("vehicle_failure") === "on",
@@ -182,9 +190,9 @@ export async function handoffServiceAction(form:FormData){
   const actor=await requireActor(),id=value(form,"id");
   await run(servicePath(id),()=>handoffService(actor,id));
 }
-export async function finishServiceAction(form: FormData) {
+export async function finishServiceAction(_previous:ServiceOperationState,form:FormData):Promise<ServiceOperationState> {
   const actor = await requireActor(); const id = value(form,"id");
-  await run(servicePath(id), () => finishService(actor, id, {
+  return serviceOperation("finish",id,form,() => finishService(actor, id, {
     gross_kg: value(form,"gross_kg"), tare_kg: value(form,"tare_kg"), guide_number: value(form,"guide_number"),
     confirm_guide:form.get("confirm_guide")==="on",confirm_sheet:form.get("confirm_sheet")==="on",
     confirm_ticket:form.get("confirm_ticket")==="on",confirm_material:form.get("confirm_material")==="on",

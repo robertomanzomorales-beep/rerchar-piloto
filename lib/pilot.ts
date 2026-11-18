@@ -481,8 +481,8 @@ export async function assignService(actor: Actor, id: string, input: unknown) {
   if(Boolean(data.driver_id)===Boolean(data.external_driver_id)) reject("Seleccione un solo conductor, de la empresa o tercero.");
   const date = parseChileDate(data.scheduled_for);
   return transaction(async (tx) => {
-    const [service] = await tx.query<{ service_type:string;status: string; client_id:string; site_id:string; assigned_asset_id: string | null; ramp_asset_id: string | null; driver_id: string | null; external_driver_id:string|null;quote_id:string|null;request_category:string }>(
-      "SELECT service_type,status, client_id, site_id, assigned_asset_id, ramp_asset_id, driver_id, external_driver_id,quote_id,request_category FROM service_requests WHERE id = $1 AND deleted_at IS NULL FOR UPDATE", [id],
+    const [service] = await tx.query<{ service_type:string;status: string; client_id:string; site_id:string; assigned_asset_id: string | null; ramp_asset_id: string | null; driver_id: string | null; external_driver_id:string|null;quote_id:string|null;request_category:string;scheduled_for:Date|null }>(
+      "SELECT service_type,status, client_id, site_id, assigned_asset_id, ramp_asset_id, driver_id, external_driver_id,quote_id,request_category,scheduled_for FROM service_requests WHERE id = $1 AND deleted_at IS NULL FOR UPDATE", [id],
     );
     if (!service || !["solicitada", "programada"].includes(service.status)) reject("La solicitud no está disponible para planificación.");
     if(service.service_type==="arriendo")reject("Use la programación de arriendo, sin camión ni conductor.");
@@ -517,6 +517,14 @@ export async function assignService(actor: Actor, id: string, input: unknown) {
        ramp_asset_id=NULLIF($5,'')::uuid, external_driver_id=NULLIF($6,'')::uuid, status='programada', updated_at=now() WHERE id=$1`,
       [id, data.asset_id, data.driver_id, date, data.ramp_asset_id, data.external_driver_id],
     );
+    const changed=service.assigned_asset_id!==data.asset_id||service.ramp_asset_id!==(data.ramp_asset_id||null)
+      ||service.driver_id!==(data.driver_id||null)||service.external_driver_id!==(data.external_driver_id||null)
+      ||service.scheduled_for?.getTime()!==date.getTime();
+    if(changed){
+      const [previousCheck]=await tx.query("DELETE FROM service_checklists WHERE service_id=$1 RETURNING *",[id]);
+      if(previousCheck)await event(tx,id,actor,"checklist_invalidado",
+        "Planificación modificada: repita el checklist de los recursos y horario actuales antes de iniciar la ruta.",previousCheck,null);
+    }
     await event(tx, id, actor, "planificacion", "Recursos y fecha asignados", { status: service.status, asset_id: service.assigned_asset_id, ramp_asset_id: service.ramp_asset_id, driver_id: service.driver_id, external_driver_id:service.external_driver_id },
       { status: "programada", scheduled_for: date.toISOString(), asset_id: data.asset_id, ramp_asset_id: data.ramp_asset_id || null, driver_id: data.driver_id||null, external_driver_id:data.external_driver_id||null });
   });
@@ -646,6 +654,10 @@ export async function startService(actor: Actor, id: string) {
     if(service.service_type==="arriendo")reject("El arriendo se cierra con respaldo desde su propio control.");
     if (service.status !== "programada") reject("Sólo se puede iniciar un servicio programado.");
     if (!service.driver_id && !service.external_driver_id) reject("El servicio no tiene un conductor asignado.");
+    const [activeDriver]=service.driver_id
+      ?await tx.query("SELECT id FROM users WHERE id=$1 AND role='conductor' AND active=true FOR UPDATE",[service.driver_id])
+      :await tx.query("SELECT id FROM external_drivers WHERE id=$1 AND active=true FOR UPDATE",[service.external_driver_id]);
+    if(!activeDriver)reject("El conductor asignado ya no está activo. Revise la planificación antes de iniciar la ruta.");
     const missing=service.driver_id
       ? await findMissingRequirements(tx,service.driver_id,service.client_id,service.site_id)
       : await findMissingExternalRequirements(tx,service.external_driver_id!,service.client_id,service.site_id);

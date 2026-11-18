@@ -183,7 +183,7 @@
 .loading-orbit i:nth-child(3) { background:#e7b900; transform:rotate(240deg) translateX(12px); }
 @keyframes loading-orbit-turn { to { transform:rotate(360deg); } }
 @media screen {
-  .app-shell :is(#solicitudes-compras,#facturas-proveedores,#reservas-stock,#kardex,.material-followup-section,.material-guide-section,.certificate-section) { scroll-margin-top:76px; }
+  .app-shell :is(#solicitudes-compras,#facturas-proveedores,#reservas-stock,#kardex,.material-followup-section,.material-guide-section,.certificate-section,.service-operation-section) { scroll-margin-top:76px; }
 }
 @media (prefers-reduced-motion:reduce) {
   .loading-indicator,.loading-orbit { animation:none; }
