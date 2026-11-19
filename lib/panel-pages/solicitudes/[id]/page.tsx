@@ -12,7 +12,9 @@ import { Badge, Breadcrumb, chileDate, Notice } from "@/components/UI";
 import { SubmitButton } from "@/components/Transition";
 import ServiceDocuments from "@/components/ServiceDocuments";
 import ServiceOperationForm from "@/components/ServiceOperationForm";
-import {listServiceDays,resultLabel} from "@/lib/service-day";
+import {listServiceDays} from "@/lib/service-day";
+import ServiceDayHistory from "@/components/ServiceDayHistory";
+import type {ServiceDayQuery} from "@/lib/service-day-state";
 import ServiceExtraCharges from "@/components/ServiceExtraCharges";
 import type {ExtraChargeQuery} from "@/lib/extra-charge-state";
 import {listServiceContainerPhotos} from "@/lib/containers";
@@ -26,7 +28,7 @@ function localInput(value: Date | string | null) {
 const day=(value:Date|string|null)=>value instanceof Date?value.toISOString().slice(0,10):value?String(value).slice(0,10):"";
 const evidenceLabels:Record<string,string>={foto_area:"Foto del área de trabajo",foto_material:"Foto del material",checklist:"Checklist",ticket_pesaje:"Ticket de pesaje"};
 
-export default async function ServiceDetail({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ error?: string; ok?: string; formulario?:string }&ExtraChargeQuery> }) {
+export default async function ServiceDetail({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ error?: string; ok?: string; formulario?:string }&ExtraChargeQuery&ServiceDayQuery> }) {
   const actor = await requireActor();
   const { id } = await params;
   let service;
@@ -100,7 +102,7 @@ export default async function ServiceDetail({ params, searchParams }: { params: 
   return <>
     <Breadcrumb label={serviceFolio(service)}/>
     <div className="page-title-row detail-heading"><div><div className="eyebrow">SOLICITUD · {rental?"servicios / arriendo":service.service_type==="retiro"?"retiro de material":service.request_category} · {companyName(service.operating_company)}</div><h1>{serviceFolio(service)}</h1><p className="page-intro"><Link href={`/clientes/${service.client_id}`}>{service.client_name}</Link> · {service.site_name}</p></div><Badge status={service.status}/></div>
-    <Notice error={paramsQuery.error} ok={paramsQuery.formulario_cargo?undefined:paramsQuery.ok}/>
+    <Notice error={paramsQuery.error} ok={paramsQuery.formulario_cargo||paramsQuery.formulario==="day"?undefined:paramsQuery.ok}/>
     {serviceStages[service.status]&&<div className="service-guidance" role="status"><span className="service-guidance-label">ETAPA ACTUAL · {rental?"ARRIENDO":"SERVICIO"}</span><strong>{serviceStages[service.status].label}</strong><span>{serviceStages[service.status].instruction}</span>{(service.status!=="en_ruta"||canWork||canManage(actor))&&<a href={`#${serviceStages[service.status].target}`}>Ir a esta etapa ↓</a>}</div>}
     {!service.operating_company&&<section className="section-card"><p role="alert">Este registro anterior necesita confirmar la empresa operadora antes de emitir documentos o vincular facturas.</p>{actor.role==="admin"&&<form action={classifyServiceCompanyAction} className="form-grid"><input type="hidden" name="id" value={id}/><label>Empresa según respaldo de la operación<select name="operating_company" required defaultValue=""><option value="">Seleccione después de revisar</option><option value="rerchar">RERCHAR Chile SpA</option><option value="e_y_j">E y J Limitada</option></select></label><div className="form-footer"><SubmitButton className="button button-outline">Confirmar empresa</SubmitButton></div></form>}</section>}
     <div className="detail-grid">
@@ -148,11 +150,7 @@ export default async function ServiceDetail({ params, searchParams }: { params: 
           <ul className="record-list">{serviceContainers.map(c=><li key={c.container_id}><strong>{c.code} · {c.kind}</strong>{c.photo_filename?<small>Foto registrada: {canManage(actor)?<Link href={`/api/contenedores/movimientos/${c.movement_id}/foto`}>{c.photo_filename}</Link>:c.photo_filename}</small>:
             <form action={uploadServiceContainerPhotoAction} className="form-stack compact"><input type="hidden" name="service_id" value={id}/><input type="hidden" name="container_id" value={c.container_id}/><label>Foto JPG, PNG o WebP (máximo 4 MB)<input type="file" name="installation_photo" accept="image/jpeg,image/png,image/webp" required/></label><SubmitButton className="button button-outline">Adjuntar foto</SubmitButton></form>}</li>)}</ul>
         </section>}
-        {!rental&&(dayReports.length>0||canReport)&&<section id="parte-diario" className="section-card service-operation-section"><div className="section-heading"><div><div className="eyebrow">PARTE DIARIO DE CAMIONES</div><h2>Resultado en terreno</h2></div></div>
-          <p className="helper-text">Registre cada jornada como realizada, incompleta o suspendida, con la causa observada. Este parte no cierra el servicio ni reemplaza las guías y el pesaje.</p>
-          {dayReports.length>0&&<ul className="service-day-history">{dayReports.map(r=><li key={day(r.day)}><strong>{day(r.day)} · {resultLabel[r.outcome]}</strong><span>{r.driver_name||"Conductor sin informar"}</span>{r.observation&&<p>{r.observation}</p>}</li>)}</ul>}
-          {canReport&&<ServiceOperationForm key={`${id}:${dayReports.map(r=>r.updated_at.toISOString()).join(",")}`} kind="day" id={id} minDay={programmedDay} maxDay={todayChile} values={{day:todayChile,outcome:"completado"}}/>}
-        </section>}
+        {!rental&&(dayReports.length>0||canReport||canPlan(actor)&&paramsQuery.formulario==="day")&&<ServiceDayHistory id={id} reports={dayReports} company={service.operating_company} query={paramsQuery} today={todayChile} minDay={programmedDay} manage={canPlan(actor)} canCreate={Boolean(canReport&&service.assigned_asset_id)} canCorrect={canPlan(actor)&&["programada","en_ruta","pendiente_revision","completada"].includes(service.status)}/>}
         {canPlan(actor)&&<ServiceExtraCharges actor={actor} serviceId={id} company={service.operating_company} query={paramsQuery} today={todayChile}/>}
         {!rental&&canWork && service.status === "programada" && <section id="checklist" className="section-card service-operation-section"><div className="section-heading"><div><div className="eyebrow">CONTROL PREVIO</div><h2><ClipboardCheck size={19}/> Checklist antes de salir</h2></div></div><ServiceOperationForm key={`${id}:${checklist?.completed_at.toISOString()??""}`} kind="checklist" id={id} values={{vehicle_ok:checklist?.vehicle_ok?"on":"",documents_ok:checklist?.documents_ok?"on":"",containment_ok:checklist?.containment_ok?"on":"",ppe_ok:checklist?.ppe_ok?"on":"",comment:checklist?.comment??""}}/>
           {checklistIncidents.map(incident=><p key={incident.id} className="helper-text">Avería del checklist: <strong>{incident.status==="abierta"?"Abierta en Mantenimiento":"Resuelta"}</strong> · {incident.description}{canManage(actor)&&<> · <Link href="/mantenimiento">Ver mantenimiento</Link></>}</p>)}

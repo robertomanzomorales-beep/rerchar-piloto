@@ -12,6 +12,8 @@ import {updateAsset,updateClient,updateSite,MastersError} from "@/lib/masters";
 import {createExternalDriver,PersonnelError} from "@/lib/personnel";
 import {setFleetDay,FleetScheduleError} from "@/lib/fleet-schedule";
 import {reportServiceDay,ServiceDayError} from "@/lib/service-day";
+import {serviceDayAnchor,serviceDayContextFromForm,serviceDayHref} from "@/lib/service-day-state";
+import type {Company} from "@/lib/companies";
 import {requestDraft,type RequestFormState} from "@/lib/request-form-state";
 import {serviceOperationAnchors,serviceOperationDraft,type ServiceOperationKind,type ServiceOperationState} from "@/lib/service-operation-state";
 import {maintenanceAnchor,maintenanceContextFromForm,maintenanceDraft,maintenanceHref,type MaintenanceFormState} from "@/lib/maintenance-form-state";
@@ -121,6 +123,7 @@ async function serviceOperation(kind:ServiceOperationKind,id:string,form:FormDat
   try{await operation();}
   catch(error){return {error:message(error),values:serviceOperationDraft(kind,form)};}
   revalidatePath("/","layout");
+  if(kind==="day")redirect(serviceDayHref(id,{...serviceDayContextFromForm(form),parte:value(form,"day"),nuevo_parte:undefined},serviceDayAnchor(value(form,"day")),{ok:"1"}));
   const anchor=kind==="finish"?"cierre":kind==="cancel"?"":serviceOperationAnchors[kind];
   redirect(`${servicePath(id)}?ok=1${anchor?"#"+anchor:""}`);
 }
@@ -159,8 +162,8 @@ export async function setFleetDayAction(form:FormData){
 export async function reportServiceDayAction(_previous:ServiceOperationState,form:FormData):Promise<ServiceOperationState>{
   const actor=await requireActor(),id=value(form,"id");
   return serviceOperation("day",id,form,()=>reportServiceDay(actor,id,{
-    day:value(form,"day"),outcome:value(form,"outcome"),observation:value(form,"observation"),
-  }));
+    day:value(form,"day"),outcome:value(form,"outcome"),observation:value(form,"observation").replace(/\r\n?/g,"\n"),expected_revision:value(form,"expected_revision"),
+  },value(form,"parte_empresa")?value(form,"parte_empresa") as Company:undefined));
 }
 export async function cancelServiceAction(_previous:ServiceOperationState,form:FormData):Promise<ServiceOperationState> {
   const actor = await requireActor(); const id = value(form,"id");

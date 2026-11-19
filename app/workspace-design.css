@@ -303,6 +303,18 @@
   .app-shell .receivable-vencida { background:#fbefed; color:#9b5147; }
   .app-shell :is(.receivable-anulada,.transaction-salida) { background:#f0f2f4; color:#64727b; }
   .app-shell .transaction-amount { font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .app-shell .service-day-records { display:grid; gap:0; padding:0; margin:18px 0 0; list-style:none; }
+  .app-shell .service-day-records li { display:grid; gap:8px; padding:17px 0; border-top:1px solid var(--line); overflow-wrap:anywhere; }
+  .app-shell .service-day-records li p { margin:0; white-space:pre-wrap; font-size:13px; }
+  .app-shell .service-day-records li small { color:var(--muted); font-size:11px; }
+  .app-shell .service-day-assignment { color:var(--muted); font-size:12px; }
+  .app-shell .service-day-links { display:flex; flex-wrap:wrap; gap:8px 18px; font-size:12px; }
+  .app-shell .service-day-current { display:grid; gap:6px; margin:12px 0; padding:12px; background:var(--company-tint,#f5f8f7); border:1px solid var(--line); border-radius:7px; font-size:12px; }
+  .app-shell .service-day-current :is(span,small) { color:var(--muted); }
+  .app-shell .service-day-editor { margin-bottom:18px; }
+  .app-shell .day-completado { background:#eaf5ef; color:#27654b; }
+  .app-shell .day-incompleto { background:#fbf3e6; color:#866329; }
+  .app-shell .day-suspendido { background:#f0f2f4; color:#64727b; }
   .app-shell .extra-charge-records { display:grid; gap:16px; }
   .app-shell .charge-entry { padding:18px; border:1px solid var(--line); border-radius:8px; overflow-wrap:anywhere; }
   .app-shell .charge-record-date { margin:5px 0 0; font-size:12px; color:var(--muted); }

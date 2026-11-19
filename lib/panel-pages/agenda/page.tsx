@@ -1,4 +1,7 @@
 import Link from "next/link";
+import {redirect} from "next/navigation";
+import {lastRecordPage} from "@/lib/record-pagination";
+import {serviceDayHref} from "@/lib/service-day-state";
 import {AlertTriangle,CalendarDays,ChevronLeft,ChevronRight,Truck} from "lucide-react";
 import {canPlan,requireActor} from "@/lib/auth";
 import {listAgenda,type AgendaService} from "@/lib/pilot";
@@ -41,6 +44,7 @@ export default async function Agenda({searchParams}:{searchParams:Promise<{inici
     new Intl.DateTimeFormat("es-CL",{timeZone:"UTC",day:"numeric",month:"long",year:"numeric"}).format(days[6]);
   const href=(date:Date)=>`/agenda?${new URLSearchParams({inicio:iso(date),empresa:company,...(pendingView?{partes:"pendientes"}:{})})}${pendingView?"#partes-pendientes":""}`;
   const partsHref=(nextPage:number)=>`/agenda?${new URLSearchParams({inicio:reference,empresa:company,partes:"pendientes",pagina:String(nextPage)})}#partes-pendientes`;
+  if(managed&&page>lastRecordPage(openResults.total))redirect(partsHref(lastRecordPage(openResults.total)));
   const selected=(trip:ScheduledTrip)=>!company||trip.operating_company===company;
   const visible=board?.trips.filter(selected)??[];
   const open=visible.filter(t=>t.status==="programada"||t.status==="en_ruta").length;
@@ -80,13 +84,13 @@ export default async function Agenda({searchParams}:{searchParams:Promise<{inici
             const dayReports=reports(asset.id,date),extraReports=dayReports.filter(r=>!trips.some(t=>t.id===r.service_id)&&(!company||r.operating_company===company));
             const otherReports=dayReports.filter(r=>!trips.some(t=>t.id===r.service_id)&&company&&r.operating_company!==company).length;
             return <td key={date} className={note?.kind&&note.kind!=="nota"?"fleet-week-blocked":""}>{note&&<div className={`fleet-week-note ${note.kind}`}><strong>{kindLabel[note.kind]||note.kind}</strong><span>{note.detail}</span></div>}
-              {shown.map(trip=><Link className="fleet-week-trip" href={`/solicitudes/${trip.id}`} key={trip.id}>
+              {shown.map(trip=><Link className="fleet-week-trip" href={dayReports.some(r=>r.service_id===trip.id)?serviceDayHref(trip.id,{parte:date},"editar-parte"):`/solicitudes/${trip.id}`} key={trip.id}>
                 <strong>{serviceFolio(trip)} · {trip.client_name}</strong><span>{new Intl.DateTimeFormat("es-CL",{timeZone:"America/Santiago",hour:"2-digit",minute:"2-digit",hour12:false}).format(new Date(trip.scheduled_for))} · {trip.waste_type}</span>
                 <span>{trip.driver_name??"Conductor pendiente"}{trip.ramp_label?` · Rampla ${trip.ramp_label}`:""}</span>
                 <span>{companyName(trip.operating_company)} · {trip.status.replaceAll("_"," ")}</span>
                 {dayReports.filter(r=>r.service_id===trip.id).map(r=><em className={`service-day-result ${r.outcome}`} key={r.service_id}>{resultLabel[r.outcome]}{r.observation?` · ${r.observation}`:""}</em>)}
                 {trip.notes&&<small>{trip.notes}</small>}
-              </Link>)}{extraReports.map(r=><Link className="fleet-week-trip" href={`/solicitudes/${r.service_id}`} key={r.service_id}>
+              </Link>)}{extraReports.map(r=><Link className="fleet-week-trip" href={serviceDayHref(r.service_id,{parte:date},"editar-parte")} data-agenda-report={`${r.service_id}:${date}`} key={r.service_id}>
                 <strong>Parte {serviceFolio(r)} · {r.client_name}</strong><em className={`service-day-result ${r.outcome}`}>{resultLabel[r.outcome]}</em><small>{r.observation}</small>
               </Link>)}{other>0&&<span className="fleet-week-other">{other} {other===1?"asignación de otra empresa":"asignaciones de otra empresa"}</span>}
               {otherReports>0&&<span className="fleet-week-other">{otherReports} {otherReports===1?"parte de otra empresa":"partes de otra empresa"}</span>}
@@ -98,7 +102,7 @@ export default async function Agenda({searchParams}:{searchParams:Promise<{inici
       </section>
       {(openResults.total>0||pendingView)&&<section className="section-card" id="partes-pendientes"><div className="section-heading"><div><div className="eyebrow">SEGUIMIENTO DE TERRENO{company?` · ${companyName(company)}`:""}</div><h2>Viajes incompletos o suspendidos</h2></div><span className="count-pill">{openResults.total}</span></div>
         <p className="helper-text">Un nuevo parte realizado o el cierre del servicio quita la alerta. Revise la causa y el siguiente paso en la solicitud.</p>
-        {openResults.items.length?<ul className="fleet-week-pending">{openResults.items.map(r=><li key={r.service_id}><Link href={`/solicitudes/${r.service_id}`}><strong>{serviceFolio(r)} · {resultLabel[r.outcome]} · {r.client_name}</strong><span>{new Date(r.day).toISOString().slice(0,10)} · {r.waste_type} · {r.driver_name||"Sin conductor"}</span><small>{r.observation}</small></Link></li>)}</ul>:<p className="muted">No hay viajes pendientes en esta vista.</p>}
+        {openResults.items.length?<ul className="fleet-week-pending">{openResults.items.map(r=><li key={r.service_id} data-open-day-alert={r.service_id}><Link href={serviceDayHref(r.service_id,{parte:new Date(r.day).toISOString().slice(0,10)},"editar-parte")}><strong>{serviceFolio(r)} · {resultLabel[r.outcome]} · {r.client_name}</strong><span>{new Date(r.day).toISOString().slice(0,10)} · {r.waste_type} · {r.driver_name||"Sin conductor"}</span><small>{r.observation}</small></Link></li>)}</ul>:<p className="muted">No hay viajes pendientes en esta vista.</p>}
         {(page>1||page*100<openResults.total)&&<nav className="records-pagination" aria-label="Páginas de partes pendientes"><span>{page>1&&<Link className="button button-outline" href={partsHref(page-1)}>Anterior</Link>}</span><span>Página {page} · {openResults.total} pendientes</span><span>{page*100<openResults.total&&<Link className="button button-outline" href={partsHref(page+1)}>Siguiente</Link>}</span></nav>}
       </section>}
       <div className="fleet-week-lower"><section className="section-card"><div className="section-heading"><div><div className="eyebrow">DESPACHO</div><h2>Solicitudes sin asignación</h2></div><span className="count-pill">{board.pendingTotal}</span></div>

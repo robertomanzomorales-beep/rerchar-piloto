@@ -3,17 +3,19 @@
 import {useActionState,useEffect,useRef,useState,type ChangeEvent} from "react";
 import {assignServiceAction,scheduleRentalAction,cancelServiceAction,reportServiceDayAction,saveChecklistAction,finishServiceAction} from "@/app/actions";
 import {serviceOperationFields,serviceOperationAnchors,type ServiceOperationKind,type ServiceOperationValues,type ServiceOperationState} from "@/lib/service-operation-state";
+import {serviceDayHref,serviceDayContext,type ServiceDayContext} from "@/lib/service-day-state";
+import type {Company} from "@/lib/companies";
 import {DocumentReader,type DocumentSource} from "./DocumentReader";
 import {SubmitButton} from "./Transition";
 
 export type ServiceResourceChoice={value:string;label:string};
 const actions={plan:assignServiceAction,rental:scheduleRentalAction,cancel:cancelServiceAction,day:reportServiceDayAction,checklist:saveChecklistAction,finish:finishServiceAction};
 const labels={plan:"Programar servicio",rental:"Programar arriendo",cancel:"Confirmar cancelación",day:"Guardar parte del día",checklist:"Guardar checklist",finish:"Validar y cerrar servicio"};
-export default function ServiceOperationForm({kind,id,values={},assets=[],ramps=[],drivers=[],externalDrivers=[],updating=false,purchase=false,ticketReady=false,disabled=false,minDay,maxDay,sources=[]}:{
+export default function ServiceOperationForm({kind,id,values={},assets=[],ramps=[],drivers=[],externalDrivers=[],updating=false,purchase=false,ticketReady=false,disabled=false,minDay,maxDay,sources=[],dayContext={},company}:{
   kind:ServiceOperationKind;id:string;values?:ServiceOperationValues;assets?:ServiceResourceChoice[];ramps?:ServiceResourceChoice[];drivers?:ServiceResourceChoice[];externalDrivers?:ServiceResourceChoice[];
-  updating?:boolean;purchase?:boolean;ticketReady?:boolean;disabled?:boolean;minDay?:string;maxDay?:string;sources?:DocumentSource[];
+  updating?:boolean;purchase?:boolean;ticketReady?:boolean;disabled?:boolean;minDay?:string;maxDay?:string;sources?:DocumentSource[];dayContext?:ServiceDayContext;company?:Company|null;
 }){
-  const permalink=`/solicitudes/${encodeURIComponent(id)}?formulario=${kind}#${serviceOperationAnchors[kind]}`;
+  const permalink=kind==="day"?serviceDayHref(id,dayContext,"parte-diario",{formulario:"day"}):`/solicitudes/${encodeURIComponent(id)}?formulario=${kind}#${serviceOperationAnchors[kind]}`;
   const [state,action]=useActionState<ServiceOperationState,FormData>(actions[kind],{error:"",values:{}},permalink);
   const [fields,setFields]=useState<ServiceOperationValues>(()=>Object.fromEntries(serviceOperationFields[kind].map(key=>[key,state.values[key]??values[key]??""])));
   const input=(name:keyof ServiceOperationValues)=>({name,value:fields[name]??"",onChange:(event:ChangeEvent<HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement>)=>setFields(previous=>({...previous,[name]:event.target.value}))});
@@ -25,7 +27,8 @@ export default function ServiceOperationForm({kind,id,values={},assets=[],ramps=
   const gross=Number(fields.gross_kg),tare=Number(fields.tare_kg),hasWeights=Boolean(fields.gross_kg&&fields.tare_kg)&&Number.isFinite(gross)&&Number.isFinite(tare);
   return <form action={action} className={`${stacked?"form-stack":"form-grid detail-form"} service-operation-form`} data-service-operation={kind}>
     <input type="hidden" name="id" value={id}/>
-    {state.error&&<div ref={errorRef} tabIndex={-1} role="alert" className="notice notice-error request-form-error"><strong>No se pudo guardar el cambio.</strong><span>{state.error}</span><small>Los datos ingresados se conservan. Revise la información e intente nuevamente.</small></div>}
+    {kind==="day"&&<><input type="hidden" name="expected_revision" value={fields.expected_revision??""}/><input type="hidden" name="parte_empresa" value={company??""}/>{Object.entries(serviceDayContext(dayContext)).map(([name,value])=><input key={name} type="hidden" name={name} value={value}/>)}</>}
+    {state.error&&<div ref={errorRef} tabIndex={-1} role="alert" className="notice notice-error request-form-error"><strong>No se pudo guardar el cambio.</strong><span>{state.error}</span><small>Los datos ingresados se conservan. Revise la información e intente nuevamente.</small>{kind==="day"&&<a href={serviceDayHref(id,{...dayContext,parte:fields.day,nuevo_parte:undefined},"editar-parte")} onClick={event=>{const target=new URL(event.currentTarget.href);if(target.pathname===window.location.pathname&&target.search===window.location.search){event.preventDefault();window.location.hash=target.hash;window.location.reload();}}}>Reabrir el parte guardado</a>}</div>}
     {kind==="plan"&&<>
       <label>Fecha y hora (Chile)<input {...input("scheduled_for")} type="datetime-local" required/></label>
       <label>Camión<select {...input("asset_id")} required><option value="">Seleccione un camión</option>{unavailable("asset_id",assets)}{assets.map(item=><option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
@@ -36,7 +39,8 @@ export default function ServiceOperationForm({kind,id,values={},assets=[],ramps=
     {kind==="rental"&&<label>Equipo propio (opcional)<select {...input("asset_id")}><option value="">Equipo descrito en la solicitud</option>{unavailable("asset_id",assets)}{assets.map(item=><option key={item.value} value={item.value}>{item.label}</option>)}</select></label>}
     {kind==="cancel"&&<label>Motivo de la cancelación<textarea {...input("reason")} rows={2} minLength={5} maxLength={500} required placeholder="Explique por qué no continuará el servicio"/></label>}
     {kind==="day"&&<>
-      <label>Fecha del trabajo<input {...input("day")} type="date" min={minDay} max={maxDay} required/></label>
+      <p className="helper-text field-full">{updating?"Está corrigiendo un parte existente. Se conservan su fecha, camión y conductor originales.":"Registre el resultado de una fecha sin parte. Para corregir una fecha ya registrada, ábrala desde el historial."}</p>
+      <label>Fecha del trabajo<input {...input("day")} type="date" min={minDay} max={maxDay} readOnly={updating} required/></label>
       <label>Resultado<select {...input("outcome")}><option value="completado">Realizado</option><option value="incompleto">Incompleto</option><option value="suspendido">Suspendido</option></select></label>
       <label className="field-full">Observación o causa<textarea {...input("observation")} rows={3} maxLength={1000} minLength={fields.outcome!=="completado"?5:undefined} required={fields.outcome!=="completado"} placeholder="Explique lo pendiente o el motivo de suspensión"/></label>
     </>}
@@ -64,6 +68,6 @@ export default function ServiceOperationForm({kind,id,values={},assets=[],ramps=
       {hasWeights&&<p className="helper-text field-full" role="status">{gross>=tare?`Peso neto calculado: ${(gross-tare).toLocaleString("es-CL",{maximumFractionDigits:2})} kg.`:"El peso bruto debe ser igual o mayor que la tara."}</p>}
       <label className="field-full">Número de guía recibido<input {...input("guide_number")} data-document-controlled maxLength={50} required={purchase}/></label>
     </>}
-    <div className={stacked?"form-footer":"field-full form-footer"}><SubmitButton className={"button "+(["plan","rental","finish"].includes(kind)?"button-primary":"button-outline")} disabled={disabled}>{updating&&kind==="plan"?"Actualizar planificación":updating&&kind==="rental"?"Actualizar reserva":labels[kind]}</SubmitButton></div>
+    <div className={stacked?"form-footer":"field-full form-footer"}><SubmitButton className={"button "+(["plan","rental","finish"].includes(kind)?"button-primary":"button-outline")} disabled={disabled}>{updating&&kind==="plan"?"Actualizar planificación":updating&&kind==="rental"?"Actualizar reserva":updating&&kind==="day"?"Guardar corrección del parte":labels[kind]}</SubmitButton></div>
   </form>;
 }

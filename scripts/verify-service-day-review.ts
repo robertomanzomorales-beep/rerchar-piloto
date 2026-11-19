@@ -1,0 +1,89 @@
+import assert from "node:assert/strict";
+import {spawn,type ChildProcess} from "node:child_process";
+import {createHash,randomBytes,randomUUID} from "node:crypto";
+import {mkdtemp,readdir,readFile,writeFile} from "node:fs/promises";
+import {createServer} from "node:net";
+import {tmpdir} from "node:os";
+import {join} from "node:path";
+
+async function main(){
+  const work=await mkdtemp(join(tmpdir(),"rerchar-service-day-review-http-"));
+  Object.assign(process.env,{DATABASE_URL:"",NODE_ENV:"development",VERCEL:"",SMTP_HOST:"",PGLITE_DATA_DIR:join(work,"db")});
+  const {db,transaction}=await import("../lib/db");let server:ChildProcess|undefined,logs="";
+  const clean=(s:string)=>s.replace(/<!--[\s\S]*?-->/g,"");
+  const decode=(s:string)=>s.replace(/&amp;/g,"&").replace(/&quot;/g,'"').replace(/&#x27;/g,"'").replace(/&lt;/g,"<").replace(/&gt;/g,">");
+  const actions=new WeakMap<FormData,string>();
+  function formFrom(body:string,marker:string,source?:string){
+    const forms=body.match(/<form\b[\s\S]*?<\/form>/g)||[];
+    const form=forms.find(x=>x.includes(marker)&&(source===undefined||(source?x.includes(`data-source-id="${source}"`):!x.includes('data-source-id='))));assert.ok(form,marker+":"+source);const data=new FormData();
+    for(const tag of form.match(/<input\b[^>]*>/g)||[]){const name=tag.match(/\bname="([^"]*)"/)?.[1];if(name&&!(/type="checkbox"/.test(tag)&&!tag.includes('checked=""')))data.set(decode(name),decode(tag.match(/\bvalue="([^"]*)"/)?.[1]??(/type="checkbox"/.test(tag)?"on":"")));}
+    for(const tag of form.match(/<select\b[\s\S]*?<\/select>/g)||[]){const name=tag.match(/\bname="([^"]*)"/)?.[1];if(name){const options=tag.match(/<option\b[^>]*>/g)||[],selected=options.find(x=>x.includes('selected=""'))??options[0];data.set(name,decode(selected?.match(/\bvalue="([^"]*)"/)?.[1]??""));}}
+    for(const tag of form.match(/<textarea\b[\s\S]*?<\/textarea>/g)||[]){const name=tag.match(/\bname="([^"]*)"/)?.[1];if(name)data.set(name,decode(tag.slice(tag.indexOf(">")+1,tag.indexOf("</textarea>"))));}
+    const action=decode(form.match(/\baction="([^"]*)"/)?.[1]??"");if(action)actions.set(data,action);return {form,data};
+  }
+  const fill=(data:FormData,values:Record<string,string>)=>{for(const [key,value]of Object.entries(values))data.set(key,value);};
+  function retained(body:string,marker:string,values:Record<string,string>,source?:string){const result=formFrom(body,marker,source);for(const [key,value]of Object.entries(values))assert.equal(String(result.data.get(key)??""),value,key);assert.match(body,/Los datos ingresados se conservan/);return result;}
+  try{
+    for(const name of (await readdir("db")).filter(x=>/^\d+.*\.sql$/.test(x)).sort()){
+      const sql=await readFile(join("db",name),"utf8");await transaction(async tx=>{for(const part of sql.split(/;\s*(?:\n|$)/).map(x=>x.trim()).filter(Boolean))await tx.query(part);});
+    }
+    const [client,otherClient]=await db.query<{id:string}>("INSERT INTO clients(name) VALUES('Cliente partes HTTP'),('Otro cliente partes HTTP') RETURNING id"),[site]=await db.query<{id:string}>("INSERT INTO client_sites(client_id,name) VALUES($1,'Faena revisión HTTP') RETURNING id",[client.id]);
+    const tokens:Record<string,string>={},users:Record<string,{id:string}>={};
+    for(const role of ["admin","operaciones","conductor","cliente","ajeno"] as const){
+      const actual=role==="ajeno"?"cliente":role,[user]=await db.query<{id:string}>("INSERT INTO users(email,name,password_hash,role,client_id) VALUES($1,$2,'h',$3,CASE WHEN $3='cliente' THEN $4::uuid ELSE NULL END) RETURNING id",[role+"@parts.example.invalid","Revisión "+role,actual,role==="ajeno"?otherClient.id:client.id]);users[role]=user;
+      const token=randomBytes(32).toString("hex");tokens[role]=token;await db.query("INSERT INTO sessions(token_hash,user_id,expires_at) VALUES($1,$2,now()+interval '1 hour')",[createHash("sha256").update(token).digest("hex"),user.id]);
+    }
+    const parts=await import("../lib/service-day"),actor={...users.admin,name:"Admin HTTP",email:"admin@parts.example.invalid",role:"admin" as const,client_id:null},today=new Intl.DateTimeFormat("sv-SE",{timeZone:"America/Santiago",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
+    const fixtures:Record<string,{service:string;dates:string[];alerts:string[];oldTruck:string;newTruck:string}>={};
+    for(const company of ["rerchar","e_y_j"] as const){
+      const [oldTruck,newTruck]=await db.query<{id:string}>("INSERT INTO assets(code,label,kind) VALUES($1,'Camión histórico HTTP','camion'),($2,'Camión actual HTTP','camion') RETURNING id",["OLD-PART-"+company,"NEW-PART-"+company]);
+      const [service]=await db.query<{id:string}>(`INSERT INTO service_requests(submission_key,client_id,site_id,operating_company,service_type,waste_type,origin,destination,status,scheduled_for,assigned_asset_id,driver_id,created_by)
+        VALUES(gen_random_uuid(),$1,$2,$3,'traslado','Material','Faena','Patio','programada','2020-01-01T15:00:00Z',$4,$5,$6) RETURNING id`,[client.id,site.id,company,newTruck.id,users.conductor.id,actor.id]);
+      await db.query(`INSERT INTO service_day_reports(service_id,day,asset_id,driver_name,outcome,observation,recorded_by)
+        SELECT $1,'2020-01-01'::date+n,$2,'Conductor histórico HTTP','incompleto','Antecedente original de terreno HTTP '||n,$3 FROM generate_series(0,216) n`,[service.id,oldTruck.id,actor.id]);
+      await db.query(`INSERT INTO service_extra_charges(submission_key,service_id,service_day,kind,reason,source_outcome,source_observation,amount_clp,created_by)
+        SELECT gen_random_uuid(),$1,'2020-01-01','sobrestadia','Cargo de prueba HTTP '||n,'incompleto','Antecedente original de terreno HTTP',1.25,$2 FROM generate_series(1,205) n`,[service.id,actor.id]);
+      await db.query(`WITH added AS (INSERT INTO service_requests(submission_key,client_id,site_id,operating_company,service_type,waste_type,origin,destination,status,scheduled_for,assigned_asset_id,created_by)
+        SELECT gen_random_uuid(),$1,$2,$3,'traslado','Material','Faena','Patio','programada','2020-01-01T15:00:00Z',$4,$5 FROM generate_series(1,100) RETURNING id)
+        INSERT INTO service_day_reports(service_id,day,asset_id,outcome,observation,recorded_by)
+        SELECT id,'2020-08-04',$4,'incompleto','Pendiente de terreno HTTP',$5 FROM added`,[client.id,site.id,company,oldTruck.id,actor.id]);
+      const dates=(await parts.listServiceDays(actor,service.id)).map(r=>r.day instanceof Date?r.day.toISOString().slice(0,10):String(r.day).slice(0,10)),alerts=[...(await parts.listOpenDayAlerts(actor,company,1)).items,...(await parts.listOpenDayAlerts(actor,company,2)).items].map(r=>r.service_id);assert.equal(dates.length,217);assert.equal(alerts.length,101);fixtures[company]={service:service.id,dates,alerts,oldTruck:oldTruck.id,newTruck:newTruck.id};
+    }
+    console.log(JSON.stringify({phase:"fixtures",companies:2,partsPerService:217,chargesPerService:205,alertsPerCompany:101}));
+    await (globalThis as typeof globalThis&{__rercharDb:{local:{close:()=>Promise<void>}}}).__rercharDb.local.close();delete (globalThis as typeof globalThis&{__rercharDb?:unknown}).__rercharDb;
+    const listener=createServer();await new Promise<void>(r=>listener.listen(0,"127.0.0.1",r));const address=listener.address();assert.ok(address&&typeof address!=="string");const port=address.port;await new Promise<void>(r=>listener.close(()=>r()));const base=`http://127.0.0.1:${port}`;
+    server=spawn(process.execPath,["node_modules/next/dist/bin/next","dev","--webpack","--hostname","127.0.0.1","--port",String(port)],{env:{...process.env},stdio:["ignore","pipe","pipe"],detached:true});server.stdout!.on("data",d=>logs+=d);server.stderr!.on("data",d=>logs+=d);
+    const request=(path:string,options:RequestInit={},role="admin")=>fetch(base+path,{...options,redirect:"manual",headers:{...options.headers,...(role?{Cookie:`rerchar_session=${tokens[role]}`}:{})},signal:AbortSignal.timeout(120000)});
+    const html=async(path:string,role="admin")=>{const r=await request(path,{},role);assert.equal(r.status,200,path);const body=clean(await r.text());assert.ok(!body.includes("NEXT_HTTP_ERROR_FALLBACK;500"));return body;};
+    const post=(path:string,data:FormData,role="admin")=>request(actions.get(data)||path,{method:"POST",body:data,headers:{Origin:base}},role);
+    const form=(body:string)=>formFrom(body,'data-service-operation="day"'),keep=(body:string,values:Record<string,string>)=>retained(body,'data-service-operation="day"',values),ids=(body:string,attribute:string)=>[...body.matchAll(new RegExp(`${attribute}="([^"]+)"`,"g"))].map(x=>x[1]);
+    const part=(body:string,day:string)=>body.match(new RegExp(`<li\\b[^>]*data-service-day="${day}"[\\s\\S]*?<\\/li>`))?.[0]??"";
+    const target=(r:Response,path:string,day:string)=>{assert.equal(r.status,303);const url=new URL(r.headers.get("location")!,base);assert.equal(url.pathname,path);assert.equal(url.searchParams.get("parte"),day);assert.equal(url.searchParams.get("pagina_partes"),"3");assert.equal(url.searchParams.get("pagina_cargos"),"3");assert.equal(url.searchParams.get("nuevo_parte"),null);assert.equal(url.searchParams.get("formulario"),null);assert.equal(url.hash,"#parte-"+day);return url.pathname+url.search+url.hash;};
+    const clamp=async(path:string,param:string,last:string)=>{const r=await request(path),body=await r.text(),location=r.headers.get("location")??decode(body.match(/<meta\b[^>]*http-equiv="refresh"[^>]*content="[^;]*;url=([^"]*)"/)?.[1]??"");assert.ok(location,"redirect "+path);const url=new URL(location,base);assert.equal(url.searchParams.get(param),last);return url;};
+    await new Promise<void>((r,j)=>{const timer=setTimeout(()=>j(new Error("Next no inició: "+logs.slice(-1000))),45000);server!.stdout!.on("data",d=>{if(String(d).includes("Ready")){clearTimeout(timer);r();}});server!.once("exit",code=>{clearTimeout(timer);j(new Error("Next terminó "+code));});});
+    const outcomes=[];
+    for(const company of ["rerchar","e_y_j"] as const){
+      const f=fixtures[company],servicePath="/solicitudes/"+f.service,dates:string[]=[],clientDates:string[]=[],alertIds:string[]=[],agendaPath=`/agenda?inicio=2020-08-03&empresa=${company}&partes=pendientes`;
+      for(let page=1;page<=3;page++){dates.push(...ids(await html(servicePath+"?pagina_partes="+page),"data-service-day"));clientDates.push(...ids(await html(servicePath+"?pagina_partes="+page,"cliente"),"data-service-day"));}
+      for(let page=1;page<=2;page++)alertIds.push(...ids(await html(agendaPath+"&pagina="+page),"data-open-day-alert"));assert.deepEqual(dates,f.dates);assert.deepEqual(clientDates,f.dates);assert.deepEqual(alertIds,f.alerts);
+      await clamp(servicePath+"?pagina_partes=999","pagina_partes","3");const agendaClamped=await clamp(agendaPath+"&pagina=999","pagina","2");assert.equal(agendaClamped.searchParams.get("empresa"),company);assert.equal(agendaClamped.searchParams.get("inicio"),"2020-08-03");
+      const agenda=await html(agendaPath);assert.ok(agenda.includes(decode(servicePath+"?parte=2020-08-04#editar-parte")));assert.ok(!agenda.includes(fixtures[company==="rerchar"?"e_y_j":"rerchar"].service+"?parte="));
+      console.log(JSON.stringify({phase:"histories",company,parts:dates.length,alerts:alertIds.length,clientScope:true}));
+      const context={pagina_partes:"3",pagina_cargos:"3"},edit=(day:string)=>servicePath+"?"+new URLSearchParams({...context,parte:day}),path=edit("2020-01-01"),role=company==="rerchar"?"operaciones":"admin";
+      let body=await html(path,role),current=form(body);assert.match(current.form,/<input\b(?=[^>]*name="day")(?=[^>]*readOnly="")[^>]*>/i);assert.equal(current.data.get("observation"),"Antecedente original de terreno HTTP 0");assert.equal(current.data.get("parte_empresa"),company);assert.ok(String(current.data.get("expected_revision")));
+      const values={day:"2020-01-01",outcome:"suspendido",observation:"ab",expected_revision:String(current.data.get("expected_revision")),parte_empresa:company};fill(current.data,values);let r=await post(path,current.data,role);assert.equal(r.status,200);current=keep(clean(await r.text()),values);current.data.set("observation",'Corrección & respaldo "cliente"\nSegundo antecedente '+company);const saved=target(await post(path,current.data,role),servicePath,values.day),savedBody=await html(saved);assert.ok(part(savedBody,values.day).includes("Conductor histórico HTTP"));assert.ok(part(savedBody,values.day).includes("OLD-PART-"+company));assert.ok(!part(savedBody,values.day).includes("NEW-PART-"+company));
+      const oldPath=edit("2020-01-02"),first=form(await html(oldPath)),stale=form(await html(oldPath)),oldRevision=String(first.data.get("expected_revision"));fill(first.data,{outcome:"suspendido",observation:"Primera corrección HTTP de administración"});target(await post(oldPath,first.data),servicePath,"2020-01-02");fill(stale.data,{outcome:"completado",observation:"Formulario anterior que no debe reemplazar"});r=await post(oldPath,stale.data,role);assert.equal(r.status,200);body=clean(await r.text());keep(body,{day:"2020-01-02",outcome:"completado",observation:"Formulario anterior que no debe reemplazar",expected_revision:oldRevision});assert.match(body,/cambió después de abrirlo/);assert.ok(part(body,"2020-01-02").includes("Primera corrección HTTP de administración"));assert.ok(body.includes("Reabrir el parte guardado"));
+      const reopened=form(await html(oldPath));assert.notEqual(reopened.data.get("expected_revision"),oldRevision);assert.equal(reopened.data.get("observation"),"Primera corrección HTTP de administración");target(await post(oldPath,first.data),servicePath,"2020-01-02");
+      const newPath=servicePath+"?"+new URLSearchParams({...context,nuevo_parte:"1"});current=form(await html(newPath));fill(current.data,{day:"2020-01-01",outcome:"completado",observation:"Intento de reemplazo desde un parte nuevo"});r=await post(newPath,current.data,role);assert.equal(r.status,200);current=keep(clean(await r.text()),{day:"2020-01-01",outcome:"completado",observation:"Intento de reemplazo desde un parte nuevo",expected_revision:""});assert.equal(form(await html(path)).data.get("outcome"),"suspendido");
+      fill(current.data,{day:"2099-01-01",observation:""});r=await post(newPath,current.data,role);assert.equal(r.status,200);current=keep(clean(await r.text()),{day:"2099-01-01",outcome:"completado",observation:"",expected_revision:""});current.data.set("day","2020-09-01");current.data.set("parte_empresa",company==="rerchar"?"e_y_j":"rerchar");r=await post(newPath,current.data,role);assert.equal(r.status,200);current=keep(clean(await r.text()),{day:"2020-09-01",outcome:"completado",observation:"",expected_revision:""});current.data.set("parte_empresa",company);
+      const newSaved=target(await post(newPath,current.data,role),servicePath,"2020-09-01"),newBody=await html(newSaved);assert.ok(part(newBody,"2020-09-01").includes("NEW-PART-"+company));assert.ok(part(newBody,"2020-09-01").includes("Revisión conductor"));assert.ok(newBody.includes("Parte seleccionado fuera de esta página"));target(await post(newPath,current.data,role),servicePath,"2020-09-01");assert.equal(ids(await html(servicePath+"?pagina_partes=3"),"data-service-day").length,18);
+      const resolved=await clamp(agendaPath+"&pagina=2","pagina","1");assert.ok(!ids(await html(resolved.pathname+resolved.search),"data-open-day-alert").includes(f.service));
+      const focused=await html(edit("2020-08-04"));assert.ok(focused.includes("Parte seleccionado fuera de esta página"));const focusedForm=form(focused);assert.equal(focusedForm.data.get("day"),"2020-08-04");const links=[...focused.matchAll(/href="([^"]+)"/g)].map(x=>decode(x[1]));assert.ok(links.some(link=>link.startsWith(servicePath+"?")&&link.includes("pagina_partes=3")&&link.includes("pagina_cargos=2")&&link.includes("parte=2020-08-04")));
+      const staleNew=form(await html(newPath)),cancel=formFrom(await html(servicePath),'data-service-operation="cancel"');cancel.data.set("reason","Cancelación documentada de revisión HTTP");assert.equal((await post(servicePath,cancel.data)).status,303);fill(staleNew.data,{day:"2020-09-02",outcome:"incompleto",observation:"Borrador abierto antes de cancelar"});r=await post(newPath,staleNew.data,role);assert.equal(r.status,200);assert.ok(keep(clean(await r.text()),{day:"2020-09-02",outcome:"incompleto",observation:"Borrador abierto antes de cancelar",expected_revision:""}).form.includes('disabled=""'));
+      for(const reader of ["cliente","conductor"]){const source=await html(servicePath,reader);assert.ok(!source.includes('data-service-operation="day"')&&!source.includes('name="expected_revision"'));}const foreign=await request(servicePath,{},"ajeno"),foreignBody=await foreign.text();assert.ok(foreign.status===404||foreignBody.includes("NEXT_HTTP_ERROR_FALLBACK;404"));assert.ok(!foreignBody.includes("data-service-day=")&&!foreignBody.includes("data-service-operation="));
+      outcomes.push({company,historyBeyond120:true,contextAndDraftRetained:true,explicitCorrection:true,staleUpdateRejected:true,replaysSafe:true,historicalAssignmentRetained:true,currentAssignmentForNewDay:true,agendaLinksExactPart:true,resolvedAlertsClamp:true,cancelledServiceKeepsDraft:true,rolesScoped:true});console.log(JSON.stringify({phase:"forms",company,ok:true}));
+    }
+    const result={ok:true,cases:outcomes,historiesPerCompany:{parts:217,charges:205,alerts:101},productionMutations:false,emailsSent:false,evidenceDirectory:work};await writeFile(join(work,"http-result.json"),JSON.stringify(result,null,2));console.log(JSON.stringify(result));
+  }finally{if(server?.pid){try{process.kill(-server.pid,"SIGTERM");}catch{}}await writeFile(join(work,"server.log"),logs);}
+}
+main().catch(error=>{console.error(error);process.exitCode=1;});
