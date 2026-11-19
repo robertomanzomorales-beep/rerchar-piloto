@@ -14,7 +14,11 @@ export function ContainerForm({kind,context,containers=[],sites=[],services=[],t
   const [state,action]=useActionState<ContainerFormState,FormData>(actions[kind],{error:"",values:{}},containerHref(context,containerAnchors[kind]));
   const [fields,setFields]=useState<ContainerValues>(()=>({kind:kind==="create"?"tolva":"kilometraje",max_stay_days:"14",record_date:today,container_id:context.unidad??"",action:containerActions(containers.find(x=>x.id===context.unidad)?.status)[0]??"",...state.values}));
   const notice=useRef<HTMLDivElement>(null),photo=useRef<HTMLInputElement>(null);
-  useEffect(()=>{if(state.error){setFields(previous=>({...previous,...state.values}));notice.current?.focus();}},[state]);
+  useEffect(()=>{
+    if(!state.error)return;
+    if(state.values.photo_retry==="on")setFields(previous=>previous.container_id===state.values.container_id&&previous.action===state.values.action?{...previous,photo_retry:"on"}:previous);
+    notice.current?.focus();
+  },[state]);
   const input=(name:keyof ContainerValues)=>({name,value:fields[name]??"",onChange:(event:ChangeEvent<HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement>)=>{const value=event.target.value;setFields(previous=>({...previous,[name]:value}));}});
   const unit=containers.find(x=>x.id===fields.container_id),allowed=containerActions(unit?.status);
   const installing=kind==="move"&&["instalar","reubicar"].includes(fields.action??"");
