@@ -13,7 +13,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   return new Response(new Uint8Array(file.data),{
     headers:{
       "Content-Type":file.mime,
-      "Content-Disposition":`attachment; filename="archivo"; filename*=UTF-8''${encodeURIComponent(filename)}`,
+      "Content-Disposition":`attachment; filename="archivo"; filename*=UTF-8''${encodeURIComponent(filename).replace(/['()*]/g,character=>"%"+character.charCodeAt(0).toString(16).toUpperCase())}`,
       "Cache-Control":"private, no-store",
       "X-Content-Type-Options":"nosniff",
     },

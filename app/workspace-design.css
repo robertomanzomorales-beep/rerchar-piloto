@@ -303,6 +303,18 @@
   .app-shell .receivable-vencida { background:#fbefed; color:#9b5147; }
   .app-shell :is(.receivable-anulada,.transaction-salida) { background:#f0f2f4; color:#64727b; }
   .app-shell .transaction-amount { font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .app-shell .evidence-upload-form { min-width:0; }
+  .app-shell .evidence-upload-form :is(label,.helper-text) { overflow-wrap:anywhere; }
+  .app-shell .evidence-upload-form .request-form-error { margin:0 0 8px; }
+  .app-shell .document-latest { display:block; margin-top:8px; font-size:12px; overflow-wrap:anywhere; }
+  .app-shell .document-optional { margin-top:16px; }
+  .app-shell .document-optional > summary { cursor:pointer; font-size:13px; color:var(--company-accent); }
+  .app-shell .evidence-history-section .evidence-history { max-height:none; overflow:visible; }
+  .app-shell .evidence-history li { padding:12px 0; border-bottom:1px solid var(--line); }
+  .app-shell .evidence-history li:last-child { border-bottom:0; }
+  .app-shell .evidence-history li > div { gap:5px; }
+  .app-shell .evidence-history-section .records-pagination { flex-wrap:wrap; gap:8px; }
+  .app-shell .evidence-history-section .records-pagination .button { padding:7px 9px; font-size:11px; }
   .app-shell .service-day-records { display:grid; gap:0; padding:0; margin:18px 0 0; list-style:none; }
   .app-shell .service-day-records li { display:grid; gap:8px; padding:17px 0; border-top:1px solid var(--line); overflow-wrap:anywhere; }
   .app-shell .service-day-records li p { margin:0; white-space:pre-wrap; font-size:13px; }

@@ -14,9 +14,9 @@ import {chileCalendarDate} from "./UI";
 import {ExtraChargeForm} from "./ExtraChargeForm";
 export default async function ServiceExtraCharges({actor,serviceId,company,query,today}:{actor:Actor;serviceId:string;company:Company|null;query:ExtraChargeQuery;today:string}){
   const [charges,reports]=await Promise.all([serviceExtraCharges(actor,serviceId),extraChargeDays(actor,serviceId)]),days=reports.filter(r=>day(r.day)<=today).map(r=>({day:day(r.day),label:`${chileCalendarDate(r.day)} · ${resultLabel[r.outcome as keyof typeof resultLabel]??r.outcome}`,observation:r.observation}));
-  if(!charges.length&&!reports.length&&!query.formulario_cargo)return null;
+  if(!charges.length&&!reports.length&&!query.formulario_cargo&&!query.documento_form)return null;
   const page=recordPage(query.pagina_cargos),last=lastRecordPage(charges.length),context={...serviceDayContext(query),empresa:company??"rerchar",...(page>1?{pagina_cargos:String(page)}:{})};
-  if(page>last&&!query.formulario_cargo&&!query.formulario)redirect(serviceChargeHref(serviceId,{...context,pagina_cargos:String(last)},"cargos-adicionales",query));
+  if(page>last&&!query.formulario_cargo&&!query.formulario&&!query.documento_form)redirect(serviceChargeHref(serviceId,{...context,pagina_cargos:String(last)},"cargos-adicionales",query));
   const rows=charges.slice((page-1)*100,page*100),selected=isFinanceId(query.cargo)?charges.find(c=>c.id===query.cargo):undefined,extra=selected&&!rows.some(c=>c.id===selected.id)?selected:undefined;if(extra)rows.unshift(extra);
   const version=createHash("sha256").update(JSON.stringify([charges.map(c=>c.id),company])).digest("hex").slice(0,16);
   return <section id="cargos-adicionales" className="section-card service-operation-section extra-charges-service"><div className="section-heading"><div><div className="eyebrow">EXCEPCIONES COMERCIALES</div><h2>Flete falso y sobreestadía</h2></div><Link href={extraChargeBoardHref({empresa:company??"rerchar"})}>Ver control</Link></div>

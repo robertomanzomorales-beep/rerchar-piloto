@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdir, unlink, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { z } from "zod";
@@ -767,18 +767,22 @@ function detectMime(bytes: Buffer) {
   reject("Adjunte un archivo PDF, PNG, JPG o WebP válido.");
 }
 
-export async function addEvidence(actor: Actor, id: string, description: string, file: File, documentKind="evidencia") {
+export async function addEvidence(actor: Actor, id: string, description: string, file: File, documentKind="evidencia",options:{submissionKey?:string;company?:Company}={}) {
+  const submissionKey=options.submissionKey===undefined?undefined:z.uuid().parse(options.submissionKey),expectedCompany=options.company===undefined?undefined:z.enum(["rerchar","e_y_j"]).parse(options.company);
   const documentKindSafe=z.enum(["evidencia","guia_traslado","guia_valorizada","hoja_servicio","ticket_pesaje","foto_material","foto_area","checklist","factura","certificado","resumen_retiros","otro"]).parse(documentKind);
   if(actor.role==="conductor"&&!(["evidencia","guia_traslado","hoja_servicio","ticket_pesaje","foto_material","foto_area","checklist"] as string[]).includes(documentKindSafe))
     reject("El conductor sólo puede cargar documentos y fotografías de su operación.");
   const descriptionSafe=z.string().trim().max(500).parse(description) || ({guia_traslado:"Guía de Traslado",hoja_servicio:"Hoja de Servicio",ticket_pesaje:"Ticket de pesaje",foto_material:"Fotografía del material",foto_area:"Fotografía del área de trabajo",checklist:"Checklist de faena"} as Record<string,string>)[documentKindSafe] || "Respaldo del servicio";
   const maxMb=process.env.VERCEL?4:5;
-  if (!file || file.size < 1 || file.size > maxMb * 1024 * 1024) reject(`El archivo debe pesar entre 1 byte y ${maxMb} MB.`);
+  if (!file || typeof file.arrayBuffer!=="function" || typeof file.name!=="string" || !Number.isSafeInteger(file.size) || file.size < 1 || file.size > maxMb * 1024 * 1024) reject(`El archivo debe pesar entre 1 byte y ${maxMb} MB.`);
   const bytes = Buffer.from(await file.arrayBuffer());
+  if(bytes.length!==file.size)reject("El archivo no se recibió completo. Selecciónelo e intente nuevamente.");
+  const fingerprint=createHash("sha256").update(bytes).digest("hex"),filename=file.name.slice(0,160);
   const kind = detectMime(bytes);
   if(documentKindSafe==="foto_area"&&!kind.mime.startsWith("image/"))
     reject("La foto del área debe ser JPG, PNG o WebP.");
   const service = await getService(actor, id);
+  if(expectedCompany&&service.operating_company!==expectedCompany)reject("La empresa del servicio cambió. Vuelva a consultar la ficha.");
   if(service.operating_company==="e_y_j"&&documentKindSafe==="guia_valorizada")
     reject("E y J no utiliza guías valorizadas. Adjunte la guía de despacho u otro respaldo del servicio.");
   if (!(canManage(actor) ? service.status!=="cancelada" : canWorkService(actor,service) && ["programada","en_ruta"].includes(service.status)))
@@ -790,27 +794,37 @@ export async function addEvidence(actor: Actor, id: string, description: string,
     reject("Configure almacenamiento persistente: EVIDENCE_STORAGE=database o un volumen privado.");
   const dir=databaseStorage?null:resolve(process.cwd(),process.env.STORAGE_DIR||".local/archivos");
   const key = `${randomUUID()}${kind.extension}`;
-  if(dir){
-    await mkdir(dir,{recursive:true,mode:0o700});
-    await writeFile(resolve(dir,key),bytes,{flag:"wx",mode:0o600});
-  }
+  let wrote=false;
   try {
     return await transaction(async (tx) => {
-      const [current] = await tx.query<{ status: string; driver_id: string | null }>(
-        "SELECT status, driver_id FROM service_requests WHERE id=$1 AND deleted_at IS NULL FOR UPDATE", [id],
+      const [currentUser]=await tx.query<{role:Actor["role"];client_id:string|null}>("SELECT role,client_id FROM users WHERE id=$1 AND active=true FOR SHARE",[actor.id]);
+      if(!currentUser)reject("Su acceso para adjuntar documentos ya no está activo.");
+      const liveActor={...actor,...currentUser};
+      const [current] = await tx.query<{ status: string; driver_id: string | null; operating_company:Company|null }>(
+        "SELECT status,driver_id,to_jsonb(s)->>'operating_company' AS operating_company FROM service_requests s WHERE id=$1 AND deleted_at IS NULL FOR UPDATE", [id],
       );
-      if (!current || !(canManage(actor) ? current.status!=="cancelada" : canWorkService(actor,current) && ["programada","en_ruta"].includes(current.status)))
-        reject("El servicio cambió de estado. Intente nuevamente.");
+      if (!current || !(canManage(liveActor) ? current.status!=="cancelada" : canWorkService(liveActor,current) && ["programada","en_ruta"].includes(current.status)))
+        reject("El servicio o sus permisos cambiaron. Consulte nuevamente la ficha.");
+      if(liveActor.role==="conductor"&&!(["evidencia","guia_traslado","hoja_servicio","ticket_pesaje","foto_material","foto_area","checklist"] as string[]).includes(documentKindSafe))reject("El conductor sólo puede cargar documentos y fotografías de su operación.");
+      if(expectedCompany&&current.operating_company!==expectedCompany)reject("La empresa del servicio cambió. Vuelva a consultar la ficha.");
+      if(current.operating_company==="e_y_j"&&documentKindSafe==="guia_valorizada")reject("E y J no utiliza guías valorizadas.");
+      if(submissionKey){
+        const [old]=await tx.query<{id:string;service_id:string;description:string;document_kind:string;original_filename:string;fingerprint:string}>(`SELECT e.id,e.service_id,e.description,e.document_kind,e.original_filename,a.next_value->>'file_sha256' AS fingerprint
+          FROM audit_events a JOIN service_evidence e ON e.id::text=a.next_value->>'evidence_id'
+          WHERE a.actor_id=$1 AND a.entity_type='service_request' AND a.action='evidencia' AND a.next_value->>'submission_key'=$2 ORDER BY a.created_at,a.id LIMIT 1`,[actor.id,submissionKey]);
+        if(old){if(old.service_id!==id||old.description!==descriptionSafe||old.document_kind!==documentKindSafe||old.original_filename!==filename||old.fingerprint!==fingerprint)reject("Este envío ya guardó otro documento. Recargue la ficha para adjuntar uno nuevo.");return old.id;}
+      }
+      if(dir){await mkdir(dir,{recursive:true,mode:0o700});await writeFile(resolve(dir,key),bytes,{flag:"wx",mode:0o600});wrote=true;}
       const [evidence] = await tx.query<{ id: string }>(
         `INSERT INTO service_evidence (service_id,description,document_kind,storage_key,original_filename,mime_type,size_bytes,created_by,file_content)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
-        [id,descriptionSafe,documentKindSafe,key,file.name.slice(0,160),kind.mime,file.size,actor.id,databaseStorage?bytes:null],
+        [id,descriptionSafe,documentKindSafe,key,filename,kind.mime,file.size,actor.id,databaseStorage?bytes:null],
       );
-      await event(tx, id, actor, "evidencia", `Documento incorporado: ${descriptionSafe}`, null, { evidence_id: evidence.id,document_kind:documentKindSafe });
+      await event(tx, id, actor, "evidencia", `Documento incorporado: ${descriptionSafe}`, null, { evidence_id: evidence.id,document_kind:documentKindSafe,...(submissionKey?{submission_key:submissionKey,file_sha256:fingerprint}:{}) });
       return evidence.id;
     });
   } catch (error) {
-    if(dir)await unlink(resolve(dir,key)).catch(()=>undefined);
+    if(dir&&wrote)await unlink(resolve(dir,key)).catch(()=>undefined);
     throw error;
   }
 }

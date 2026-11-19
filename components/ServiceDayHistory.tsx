@@ -9,7 +9,7 @@ import {chileCalendarDate,chileDate} from "./UI";
 import ServiceOperationForm from "./ServiceOperationForm";
 export default function ServiceDayHistory({id,reports,company,query,today,minDay,manage,canCreate,canCorrect}:{id:string;reports:ServiceDayEntry[];company:Company|null;query:ServiceDayQuery;today:string;minDay:string;manage:boolean;canCreate:boolean;canCorrect:boolean}){
   const context=serviceDayContext(query),page=recordPage(context.pagina_partes),last=lastRecordPage(reports.length),newPart=context.nuevo_parte==="1",chosen=serviceDayDate(context.parte)?context.parte:today,current=newPart?undefined:reports.find(r=>day(r.day)===chosen);
-  if(page>last&&!query.formulario&&!query.formulario_cargo)redirect(serviceDayHref(id,{...context,pagina_partes:String(last)}));
+  if(page>last&&!query.formulario&&!query.formulario_cargo&&!query.documento_form)redirect(serviceDayHref(id,{...context,pagina_partes:String(last)}));
   const rows=reports.slice((page-1)*100,page*100),extra=context.parte&&current&&!rows.some(r=>day(r.day)===chosen)?current:undefined;if(extra)rows.unshift(extra);
   const canWrite=current?canCorrect:canCreate,showForm=manage&&(canWrite||query.formulario==="day"),href=(page:number)=>serviceDayHref(id,{...context,pagina_partes:String(page)});
   return <section id="parte-diario" className="section-card service-operation-section service-day-section"><div className="section-heading"><div><div className="eyebrow">PARTE DIARIO DE CAMIONES</div><h2>Resultado en terreno</h2></div><span className="count-pill">{reports.length}</span></div>

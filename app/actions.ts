@@ -12,6 +12,7 @@ import {updateAsset,updateClient,updateSite,MastersError} from "@/lib/masters";
 import {createExternalDriver,PersonnelError} from "@/lib/personnel";
 import {setFleetDay,FleetScheduleError} from "@/lib/fleet-schedule";
 import {reportServiceDay,ServiceDayError} from "@/lib/service-day";
+import {evidenceAnchor,evidenceContextFromForm,evidenceDraft,evidenceHref,type EvidenceFormState} from "@/lib/evidence-form-state";
 import {serviceDayAnchor,serviceDayContextFromForm,serviceDayHref} from "@/lib/service-day-state";
 import type {Company} from "@/lib/companies";
 import {requestDraft,type RequestFormState} from "@/lib/request-form-state";
@@ -212,7 +213,9 @@ export async function finishServiceAction(_previous:ServiceOperationState,form:F
     missing_ticket_reason:value(form,"missing_ticket_reason"),review_note:value(form,"review_note"),
   }));
 }
-export async function addEvidenceAction(form: FormData) {
-  const actor = await requireActor(); const id = value(form,"id");
-  await run(servicePath(id), () => addEvidence(actor, id, value(form,"description"), form.get("file") as File,value(form,"document_kind")||"evidencia"));
+export async function addEvidenceAction(_previous:EvidenceFormState,form:FormData):Promise<EvidenceFormState> {
+  const actor=await requireActor(),id=value(form,"id"),file=form.get("file");let created:string;
+  try{created=await addEvidence(actor,id,value(form,"description").replace(/\r\n?/g,"\n"),file as File,value(form,"document_kind")||"evidencia",{submissionKey:value(form,"submission_key"),company:value(form,"documento_empresa")?value(form,"documento_empresa") as Company:undefined});}
+  catch(error){return {error:message(error),values:evidenceDraft(form),filename:file&&typeof file!=="string"?file.name.slice(0,160):undefined};}
+  revalidatePath("/","layout");redirect(evidenceHref(id,evidenceContextFromForm(form),evidenceAnchor(created),{ok:"1",archivo:created}));
 }

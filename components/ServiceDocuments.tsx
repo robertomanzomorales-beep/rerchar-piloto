@@ -1,31 +1,17 @@
+import {createHash,randomUUID} from "node:crypto";
+import Link from "next/link";
 import {Upload} from "lucide-react";
-import {addEvidenceAction} from "@/app/actions";
-import {SubmitButton} from "@/components/Transition";
-
+import {evidenceHref,evidenceLabels,isEvidenceSlot,operationalEvidenceKinds,type EvidenceKind,type EvidenceQuery,type EvidenceSlot} from "@/lib/evidence-form-state";
+import {serviceDayContext} from "@/lib/service-day-state";
+import EvidenceUploadForm from "./EvidenceUploadForm";
 type Evidence={id:string;document_kind:string;storage_key:string|null;original_filename:string|null};
-const driverDocuments=[
-  {kind:"guia_traslado",label:"Guía de Traslado",required:true},
-  {kind:"ticket_pesaje",label:"Ticket de pesaje",required:false},
-  {kind:"hoja_servicio",label:"Hoja de Servicio",required:true},
-  {kind:"foto_material",label:"Foto del material cargado",required:false},
-  {kind:"foto_area",label:"Foto del área de trabajo",required:false},
-  {kind:"checklist",label:"Checklist firmado o respaldo",required:false},
-] as const;
-
-export default function ServiceDocuments({id,evidence,driver,purchase,company}:{id:string;evidence:Evidence[];driver:boolean;purchase:boolean;company:string|null}){
-  const limit=process.env.VERCEL?4:5;
-  const documentCard=(document:(typeof driverDocuments)[number])=>{
-    const files=evidence.filter(item=>item.document_kind===document.kind&&item.storage_key);
-    return <div key={document.kind} className="document-card"><div className="document-card-title"><strong>{document.label}{document.required?" *":""}</strong><span className={files.length?"document-done":"document-pending"}>{files.length?`${files.length} cargado${files.length===1?"":"s"}`:document.required?"Pendiente":"Opcional"}</span></div>
-      {files.length>0&&<small>Último archivo: {files[0].original_filename||"Respaldo guardado"}</small>}
-      <form action={addEvidenceAction} className="form-stack compact"><input type="hidden" name="id" value={id}/><input type="hidden" name="document_kind" value={document.kind}/><label>Observaciones<input name="description" maxLength={500} placeholder="Ej. Cliente no entregó ticket"/></label><label>Archivo<input name="file" type="file" accept={document.kind==="foto_area"?".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp":".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"} required/></label><SubmitButton className="button button-outline">{files.length?"Agregar otro archivo":"Cargar archivo"}</SubmitButton></form>
-    </div>;
-  };
-  return <section id="documentacion" className="section-card"><div className="section-heading"><div><div className="eyebrow">RESPALDO</div><h2><Upload size={19}/> Documentos del servicio</h2></div></div>
-    <p className="helper-text">PDF, JPG, PNG o WebP; hasta {limit} MB por archivo. La foto del área de trabajo debe ser una imagen. Cada respaldo se guarda por separado con fecha y responsable.</p>
-    {purchase&&<><p className="document-guidance">Para entregar el servicio, cargue la guía y la hoja de servicio. El ticket se adjunta si fue entregado por el cliente.</p><div className="document-card-grid">{driverDocuments.slice(0,3).map(documentCard)}</div>
-      <details className="document-optional"><summary>Fotografías y respaldos complementarios</summary><div className="document-card-grid">{driverDocuments.slice(3).map(documentCard)}</div></details></>}
-    {!purchase&&<form action={addEvidenceAction} className="form-stack"><input type="hidden" name="id" value={id}/><label>Tipo de documento<select name="document_kind" defaultValue="evidencia">{driver?<><option value="evidencia">Evidencia general</option><option value="guia_traslado">Guía de Traslado</option><option value="ticket_pesaje">Ticket de pesaje</option><option value="hoja_servicio">Hoja de Servicio</option><option value="foto_material">Foto del material</option><option value="foto_area">Foto del área de trabajo</option><option value="checklist">Checklist</option></>:<><option value="evidencia">Evidencia</option><option value="guia_traslado">Guía de Traslado</option><option value="ticket_pesaje">Ticket de pesaje</option><option value="hoja_servicio">Hoja de Servicio</option><option value="foto_material">Foto del material</option><option value="foto_area">Foto del área de trabajo</option><option value="checklist">Checklist</option>{company!=="e_y_j"&&<option value="guia_valorizada">Guía valorizada</option>}<option value="factura">Factura adjunta</option><option value="certificado">Certificado externo</option><option value="resumen_retiros">Resumen de retiros</option><option value="otro">Otro</option></>}</select></label><label>Observaciones<input name="description" maxLength={500} placeholder="Detalle del respaldo"/></label><label>Archivo<input name="file" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp" required/></label><SubmitButton className="button button-outline">Guardar documento</SubmitButton></form>}
-    {purchase&&!driver&&<details className="cancel-control"><summary>Agregar otro documento administrativo</summary><form action={addEvidenceAction} className="form-stack compact"><input type="hidden" name="id" value={id}/><label>Tipo<select name="document_kind"><option value="guia_valorizada">Guía valorizada</option><option value="factura">Factura adjunta</option><option value="certificado">Certificado externo</option><option value="resumen_retiros">Resumen de retiros</option><option value="otro">Otro</option></select></label><label>Observaciones<input name="description" maxLength={500}/></label><label>Archivo<input name="file" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp" required/></label><SubmitButton className="button button-outline">Guardar documento</SubmitButton></form></details>}
+const fieldDocuments=[{kind:"guia_traslado",required:true},{kind:"ticket_pesaje",required:false},{kind:"hoja_servicio",required:true},{kind:"foto_material",required:false},{kind:"foto_area",required:false},{kind:"checklist",required:false}] as const;
+export default function ServiceDocuments({id,evidence,driver,purchase,company,query={},disabled=false}:{id:string;evidence:Evidence[];driver:boolean;purchase:boolean;company:string|null;query?:EvidenceQuery;disabled?:boolean}){
+  const limit=process.env.VERCEL?4:5,context=serviceDayContext(query),version=createHash("sha256").update(evidence.map(e=>e.id).sort().join(",")).digest("hex").slice(0,16),slot=isEvidenceSlot(query.documento_form)?query.documento_form:undefined;
+  const administrative:EvidenceKind[]=[...(company!=="e_y_j"?["guia_valorizada"] as EvidenceKind[]:[]),"factura","certificado","resumen_retiros","otro"];
+  const upload=(slot:EvidenceSlot,kinds:EvidenceKind[],hasFiles=false)=><EvidenceUploadForm key={`${slot}:${version}`} id={id} slot={slot} kinds={kinds} nonce={randomUUID()} company={company} context={context} limit={limit} disabled={disabled} hasFiles={hasFiles}/>;
+  const card=(document:(typeof fieldDocuments)[number])=>{const files=evidence.filter(e=>e.document_kind===document.kind&&e.storage_key);return <div key={document.kind} className="document-card"><div className="document-card-title"><strong>{evidenceLabels[document.kind]}{document.required?" *":""}</strong><span className={files.length?"document-done":"document-pending"}>{files.length?`${files.length} cargado${files.length===1?"":"s"}`:document.required?"Pendiente":"Opcional"}</span></div>{files[0]&&<Link className="document-latest" href={`/api/evidencia/${files[0].id}`}>Descargar {files[0].original_filename||"último archivo"}</Link>}{upload(document.kind,[document.kind],files.length>0)}</div>;};
+  return <section id="documentacion" className="section-card service-document-section"><div className="section-heading"><div><div className="eyebrow">RESPALDO</div><h2><Upload size={19}/> Documentos del servicio</h2></div><Link href={evidenceHref(id,context,"documentos-guardados")}>Ver archivos guardados</Link></div><p className="helper-text">Hasta {limit} MB por archivo. Cada respaldo conserva su fecha y responsable.</p>
+    {purchase?<><p className="document-guidance">Para entregar el servicio, cargue la guía y la hoja de servicio. Adjunte el ticket si fue entregado por el cliente.</p><div className="document-card-grid">{fieldDocuments.slice(0,3).map(card)}</div><details className="document-optional" open={slot==="foto_material"||slot==="foto_area"||slot==="checklist"}><summary>Fotografías y respaldos complementarios</summary><div className="document-card-grid">{fieldDocuments.slice(3).map(card)}</div></details>{!driver&&<details className="document-optional" open={slot==="administrativo"}><summary>Agregar documento administrativo</summary>{upload("administrativo",administrative)}</details>}</>:upload("general",driver?operationalEvidenceKinds:[...operationalEvidenceKinds,...administrative])}
   </section>;
 }
