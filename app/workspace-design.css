@@ -303,6 +303,12 @@
   .app-shell .receivable-vencida { background:#fbefed; color:#9b5147; }
   .app-shell :is(.receivable-anulada,.transaction-salida) { background:#f0f2f4; color:#64727b; }
   .app-shell .transaction-amount { font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .app-shell .audit-table-wrap { max-height:none; }
+  .app-shell .audit-table { min-width:800px; }
+  .app-shell .audit-table th { white-space:nowrap; }
+  .app-shell .audit-time { white-space:nowrap; font-variant-numeric:tabular-nums; }
+  .app-shell .audit-record-id { display:block; max-width:260px; font-size:11px; line-height:1.6; overflow-wrap:anywhere; color:var(--muted); }
+  .app-shell .audit-filters { margin-bottom:16px; }
   .app-shell .evidence-upload-form { min-width:0; }
   .app-shell .evidence-upload-form :is(label,.helper-text) { overflow-wrap:anywhere; }
   .app-shell .evidence-upload-form .request-form-error { margin:0 0 8px; }

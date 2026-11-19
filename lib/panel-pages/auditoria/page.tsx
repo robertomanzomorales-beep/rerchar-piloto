@@ -1,20 +1,19 @@
 import Link from "next/link";
+import {redirect} from "next/navigation";
 import {Download,ScrollText} from "lucide-react";
 import {requireActor} from "@/lib/auth";
-import {auditFilter,auditKinds,auditReport} from "@/lib/audit-report";
-import {chileDate} from "@/components/UI";
-
-export default async function AuditPage({searchParams}:{searchParams:Promise<{from?:string;to?:string;kind?:string}>}){
-  const actor=await requireActor();
-  if(actor.role!=="admin")return <p>La auditoría está reservada a administración.</p>;
-  const filters=auditFilter(await searchParams);
-  const [rows,kinds]=await Promise.all([auditReport(actor,filters),auditKinds(actor)]);
-  const query=new URLSearchParams(filters);
-  return <>
-    <div className="page-title-row"><div><div className="eyebrow">CONTROL TRANSVERSAL</div><h1>Auditoría</h1><p className="page-intro">Cambios registrados por persona, módulo y fecha. Consulte el detalle de cada registro en su módulo.</p></div><span className="title-icon"><ScrollText size={23}/></span></div>
-    <section className="section-card"><form method="GET" action="/auditoria" className="report-filters"><label>Desde<input name="from" type="date" defaultValue={filters.from}/></label><label>Hasta<input name="to" type="date" defaultValue={filters.to}/></label><label>Entidad<select name="kind" defaultValue={filters.kind}><option value="">Todas</option>{kinds.map(kind=><option value={kind.entity_type} key={kind.entity_type}>{kind.entity_type.replaceAll("_"," ")}</option>)}</select></label><button className="button button-outline" type="submit">Filtrar</button><Link href={`/api/reportes/auditoria?${query}`} className="button button-primary"><Download size={16}/> Exportar CSV</Link></form>
-      <p className="helper-text">Se muestran los últimos {rows.length} eventos con estos filtros, hasta un máximo de 300 en pantalla.</p>
-      <div className="table-wrap"><table className="data-table"><thead><tr><th>Fecha y hora</th><th>Persona</th><th>Acción</th><th>Entidad</th><th>ID de registro</th></tr></thead><tbody>{rows.map(row=><tr key={row.id}><td>{chileDate(row.created_at)}</td><td>{row.actor_name}</td><td>{row.action}</td><td>{row.entity_type.replaceAll("_"," ")}</td><td><code>{row.entity_id.slice(0,8)}</code></td></tr>)}</tbody></table>{!rows.length&&<p className="report-empty">No hay eventos con esos filtros.</p>}</div>
-    </section>
-  </>;
+import {AuditAccessError,auditActionLabel,auditEntityLabel,auditFilter,auditFilterIssue,auditKinds,auditOverview,auditReport,type AuditRow} from "@/lib/audit-report";
+import {lastRecordPage,recordPage} from "@/lib/record-pagination";
+import {chileDate,Empty} from "@/components/UI";
+export default async function AuditPage({searchParams}:{searchParams:Promise<{from?:string;to?:string;kind?:string;pagina?:string}>}){
+  const actor=await requireActor();if(actor.role!=="admin")redirect("/");
+  const input=await searchParams,filters=auditFilter(input),issue=auditFilterIssue(input),requested=recordPage(input.pagina);let kinds:{entity_type:string}[]=[],overview={total:0,people:0,entities:0},rows:AuditRow[]=[],page=1;
+  try{[kinds,overview]=await Promise.all([auditKinds(actor),issue?Promise.resolve(overview):auditOverview(actor,filters)]);page=Math.min(requested,lastRecordPage(overview.total));if(!issue)rows=await auditReport(actor,filters,100,(page-1)*100);}catch(error){if(error instanceof AuditAccessError)redirect("/");throw error;}
+  const pages=lastRecordPage(overview.total),href=(number:number)=>`/auditoria?${new URLSearchParams({...filters,pagina:String(number)})}#eventos-auditoria`,query=new URLSearchParams(filters);
+  return <div className="audit-page"><div className="page-title-row"><div><div className="eyebrow">CONTROL TRANSVERSAL</div><h1>Auditoría</h1><p className="page-intro">Historial de cambios de ambas empresas, ordenado por fecha y responsable.</p></div><span className="title-icon"><ScrollText size={23}/></span></div>
+    <section className="section-card"><form key={`${filters.from}:${filters.to}:${filters.kind}`} method="GET" action="/auditoria" className="report-filters audit-filters"><label>Desde<input name="from" type="date" max={filters.to||undefined} defaultValue={filters.from}/></label><label>Hasta<input name="to" type="date" min={filters.from||undefined} defaultValue={filters.to}/></label><label>Tipo de registro<select name="kind" defaultValue={filters.kind}><option value="">Todos</option>{filters.kind&&!kinds.some(k=>k.entity_type===filters.kind)&&<option value={filters.kind}>{auditEntityLabel(filters.kind)} · sin registros</option>}{kinds.map(kind=><option value={kind.entity_type} key={kind.entity_type}>{auditEntityLabel(kind.entity_type)}</option>)}</select></label><button className="button button-outline" type="submit">Aplicar filtros</button>{(input.from||input.to||input.kind)&&<Link className="text-link" href="/auditoria">Limpiar filtros</Link>}</form>
+      {issue?<div className="notice notice-error" role="alert"><strong>Revise el período y los filtros.</strong><span>{issue}</span></div>:<><div className="report-summary"><div><strong data-audit-total={overview.total}>{overview.total.toLocaleString("es-CL")}</strong><span>Eventos del filtro</span></div><div><strong>{overview.people}</strong><span>Personas con actividad</span></div><div><strong>{overview.entities}</strong><span>Tipos de registro</span></div><Link href={`/api/reportes/auditoria?${query}`} className="button button-primary"><Download size={16}/> Exportar CSV</Link></div><p className="helper-text">Fechas y horas de Chile. El CSV incluye todos los eventos del filtro, aunque ocupen varias páginas.</p>
+      <div id="eventos-auditoria" className="finance-section">{rows.length?<div className="table-wrap audit-table-wrap" role="region" aria-label="Eventos de auditoría" tabIndex={0}><table className="data-table audit-table"><thead><tr><th>Fecha y hora</th><th>Persona</th><th>Acción</th><th>Tipo de registro</th><th>Identificador del registro</th></tr></thead><tbody>{rows.map(row=><tr key={row.id} data-audit-event={row.id}><td className="audit-time">{chileDate(row.created_at)}</td><td><strong>{row.actor_name}</strong></td><td>{auditActionLabel(row.action)}</td><td>{auditEntityLabel(row.entity_type)}</td><td><code className="audit-record-id">{row.entity_id}</code></td></tr>)}</tbody></table></div>:<Empty title="Sin eventos para estos filtros" detail="Cambie el período o el tipo de registro para consultar otros resultados."/>}</div>
+      {pages>1&&<nav className="records-pagination" aria-label="Páginas de auditoría"><span>{page>1&&<Link className="button button-outline" href={href(page-1)}>Anterior</Link>}</span><span>Página {page} de {pages} · {overview.total.toLocaleString("es-CL")} eventos</span><span>{page<pages&&<Link className="button button-outline" href={href(page+1)}>Siguiente</Link>}</span></nav>}</>}
+    </section></div>;
 }
