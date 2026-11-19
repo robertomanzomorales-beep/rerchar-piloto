@@ -303,6 +303,15 @@
   .app-shell .receivable-vencida { background:#fbefed; color:#9b5147; }
   .app-shell :is(.receivable-anulada,.transaction-salida) { background:#f0f2f4; color:#64727b; }
   .app-shell .transaction-amount { font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .app-shell .service-history-timeline { max-height:none; overflow:visible; }
+  .app-shell .service-history-timeline li { gap:6px; padding-bottom:20px; overflow-wrap:anywhere; }
+  .app-shell .service-history-timeline strong { white-space:pre-wrap; font-weight:600; font-size:12px; }
+  .app-shell .service-history-day { margin:2px 0 5px; color:var(--text); font-size:11px; font-weight:700; }
+  .app-shell .service-history-kind { color:var(--company-accent); font-size:10px; font-weight:600; }
+  .app-shell .service-history-timeline small { color:var(--muted); font-size:11px; line-height:1.6; }
+  .app-shell .service-history-section .records-pagination { flex-wrap:wrap; gap:8px; }
+  .app-shell .service-history-section .records-pagination .button { padding:7px 9px; font-size:11px; }
+  .app-shell .service-history-latest { display:inline-block; margin-top:12px; font-size:12px; }
   .app-shell .audit-table-wrap { max-height:none; }
   .app-shell .audit-table { min-width:800px; }
   .app-shell .audit-table th { white-space:nowrap; }

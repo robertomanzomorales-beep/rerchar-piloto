@@ -37,7 +37,8 @@
     "test:extra-charge-workflow-http": "node --import tsx scripts/verify-extra-charge-workflow.ts",
     "test:service-day-review-http": "node --import tsx scripts/verify-service-day-review.ts",
     "test:service-evidence-review-http": "node --import tsx scripts/verify-service-evidence-review.ts",
-    "test:audit-review-http": "node --import tsx scripts/verify-audit-review.ts"
+    "test:audit-review-http": "node --import tsx scripts/verify-audit-review.ts",
+    "test:service-history-review-http": "node --import tsx scripts/verify-service-history-review.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.3.13",

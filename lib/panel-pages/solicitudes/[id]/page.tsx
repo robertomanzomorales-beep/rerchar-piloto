@@ -12,6 +12,8 @@ import { Badge, Breadcrumb, chileDate, Notice } from "@/components/UI";
 import { SubmitButton } from "@/components/Transition";
 import ServiceEvidenceHistory from "@/components/ServiceEvidenceHistory";
 import type {EvidenceQuery} from "@/lib/evidence-form-state";
+import ServiceHistory from "@/components/ServiceHistory";
+import {listServiceHistory,ServiceHistoryError} from "@/lib/service-history";
 import ServiceDocuments from "@/components/ServiceDocuments";
 import ServiceOperationForm from "@/components/ServiceOperationForm";
 import {listServiceDays} from "@/lib/service-day";
@@ -36,11 +38,9 @@ export default async function ServiceDetail({ params, searchParams }: { params: 
   let service;
   try { service = await getService(actor, id); }
   catch (error) { if (error instanceof PilotError) notFound(); throw error; }
+  const paramsQuery = await searchParams;
   const [timeline, evidence, checks, assets, ramps, drivers, externalDrivers, containerMoves, wasteRecord, certificate, sourceQuotes, sourceLines, requestMaterials, checklistIncidents, dayReports, purchaseReviews, receiptEntries] = await Promise.all([
-    db.query<{ id: string; description: string; kind: string; created_at: Date; actor_name: string }>(
-      `SELECT e.id,e.description,e.kind,e.created_at,u.name AS actor_name FROM service_events e
-       LEFT JOIN users u ON u.id=e.actor_id WHERE e.service_id=$1 ORDER BY e.created_at DESC,e.id DESC`, [id],
-    ),
+    listServiceHistory(actor,id,paramsQuery.pagina_historial),
     db.query<{ id: string; description: string; document_kind:string;storage_key:string|null;original_filename: string | null; created_at: Date;actor_name:string;size_bytes:number|null }>(
       `SELECT e.id,e.description,e.document_kind,e.storage_key,e.original_filename,e.created_at,e.size_bytes,u.name AS actor_name
        FROM service_evidence e JOIN users u ON u.id=e.created_by WHERE e.service_id=$1 ORDER BY e.created_at DESC,e.id DESC`, [id],
@@ -70,9 +70,8 @@ export default async function ServiceDetail({ params, searchParams }: { params: 
        FROM purchase_closure_reviews r JOIN users u ON u.id=r.reviewed_by WHERE r.service_id=$1`,[id]):Promise.resolve([]),
     service.operating_company==="rerchar"&&service.request_category==="compra"&&service.status==="completada"?
       db.query<{id:string}>("SELECT id FROM material_receipts WHERE service_id=$1 ORDER BY created_at DESC LIMIT 1",[id]):Promise.resolve([]),
-  ]);
+  ]).catch(error=>{if(error instanceof ServiceHistoryError)notFound();throw error;});
   const checklist = checks[0];
-  const paramsQuery = await searchParams;
   const canWork = canWorkService(actor, service);
   const rental=service.service_type==="arriendo";
   const serviceContainers=canWork&&!rental?await listServiceContainerPhotos(actor,id):[];
@@ -181,7 +180,7 @@ export default async function ServiceDetail({ params, searchParams }: { params: 
         <section className="section-card side-card"><div className="eyebrow">RECORRIDO · {rental?"ARRIENDO":"SERVICIO"}</div><div className="progress-list" role="list" aria-label="Etapas del servicio">{(rental?["solicitada","programada","completada"]:["solicitada","programada","en_ruta","pendiente_revision","completada"]).map((state, index, all) => <div role="listitem" className={`progress-step ${all.indexOf(service.status)>index ? "done" : ""} ${service.status===state?"current":""}`} aria-current={service.status===state?"step":undefined} key={state}><span className="progress-number">{String(index + 1).padStart(2,"0")}</span><span>{state === "en_ruta" ? "En ruta" : state === "pendiente_revision"?"Revisión administrativa":state.charAt(0).toUpperCase() + state.slice(1)}</span>{service.status===state&&<small className="progress-state">{state==="completada"?"Cerrado":"Actual"}</small>}</div>)}</div>{service.status==="cancelada"&&<p className="progress-cancelled">Servicio cancelado; consulte el motivo en el historial.</p>}</section>
         <ServiceEvidenceHistory id={id} evidence={evidence} query={paramsQuery}/>
         {containerMoves.length>0&&<section className="section-card side-card"><div className="eyebrow">CONTENEDORES</div><h2>Movimientos asociados</h2><ol className="timeline">{containerMoves.map((move)=><li key={move.id}><span className="timeline-marker"/><strong>{move.code} · {move.kind.replaceAll("_"," ")}</strong><small>{move.previous_location?`${move.previous_location} → `:""}{move.next_location} · {chileDate(move.created_at)}</small></li>)}</ol></section>}
-        <section className="section-card side-card"><div className="eyebrow">TRAZABILIDAD</div><h2>Historial</h2><ol className="timeline">{timeline.map((item) => <li key={item.id}><span className="timeline-marker"/><strong>{item.description}</strong><small>{item.actor_name ?? "Sistema"} · {chileDate(item.created_at)}</small></li>)}</ol></section>
+        <ServiceHistory id={id} history={timeline} query={paramsQuery}/>
         <Link className="back-link" href="/solicitudes"><ArrowLeft size={16}/> Volver a solicitudes</Link>
       </aside>
     </div>

@@ -1,0 +1,33 @@
+import assert from "node:assert/strict";
+import {readdir,readFile} from "node:fs/promises";
+import test from "node:test";
+import type {Actor} from "../lib/auth";
+test("el historial de cada servicio permanece completo, paginado y limitado al acceso actual",async t=>{
+  process.env.PGLITE_DATA_DIR="memory://";
+  const {db,transaction}=await import("../lib/db"),history=await import("../lib/service-history");
+  for(const name of (await readdir("db")).filter(n=>/^\d+.*\.sql$/.test(n)).sort()){const sql=await readFile("db/"+name,"utf8");await transaction(async tx=>{for(const part of sql.split(/;\s*(?:\n|$)/).map(x=>x.trim()).filter(Boolean))await tx.query(part);});}
+  const [client,other]=await db.query<{id:string}>("INSERT INTO clients(name) VALUES('Cliente historial revisión'),('Otro cliente historial') RETURNING id"),[site]=await db.query<{id:string}>("INSERT INTO client_sites(client_id,name) VALUES($1,'Faena') RETURNING id",[client.id]);
+  const users=await db.query<{id:string;role:Actor['role'];client_id:string|null}>("INSERT INTO users(email,name,password_hash,role,client_id) VALUES('admin@history.example.invalid','Admin','h','admin',NULL),('ops@history.example.invalid','Operaciones','h','operaciones',NULL),('driver@history.example.invalid','Conductor','h','conductor',NULL),('other-driver@history.example.invalid','Otro conductor','h','conductor',NULL),('client@history.example.invalid','Cliente','h','cliente',$1),('foreign@history.example.invalid','Ajeno','h','cliente',$2) RETURNING id,role,client_id",[client.id,other.id]),[admin,ops,driver,otherDriver,portal,foreign]=users.map(u=>({...u,name:"Revisión",email:"user@example.invalid"}));
+  const services:Record<string,string>={},expected:Record<string,string[]>={};let empty="";
+  for(const company of ["rerchar","e_y_j"]){const [service]=await db.query<{id:string}>("INSERT INTO service_requests(submission_key,client_id,site_id,operating_company,service_type,waste_type,origin,destination,status,driver_id,created_by) VALUES(gen_random_uuid(),$1,$2,$3,'traslado','Material','Faena','Patio','programada',$4,$5) RETURNING id",[client.id,site.id,company,driver.id,admin.id]);services[company]=service.id;await db.query(`INSERT INTO service_events(service_id,kind,description,actor_id,previous_value,next_value,created_at)
+    SELECT $1,'planificacion','Antecedente de terreno '||n,$2,'{"private_marker":"HISTORIAL-PRIVADO"}'::jsonb,'{"private_marker":"HISTORIAL-PRIVADO"}'::jsonb,'2026-09-29T02:30:00.123456Z' FROM generate_series(1,217) n`,[service.id,ops.id]);expected[company]=(await db.query<{id:string}>("SELECT id FROM service_events WHERE service_id=$1 ORDER BY created_at DESC,id DESC",[service.id])).map(r=>r.id);}
+  const [blank]=await db.query<{id:string}>("INSERT INTO service_requests(submission_key,client_id,site_id,operating_company,service_type,waste_type,origin,destination,status,created_by) VALUES(gen_random_uuid(),$1,$2,'rerchar','traslado','Material','Faena','Patio','solicitada',$3) RETURNING id",[client.id,site.id,admin.id]);empty=blank.id;
+  await t.test("más de doscientos eventos se recorren en páginas compactas sin omisiones",async()=>{
+    for(const company of ["rerchar","e_y_j"]){const ids:string[]=[];for(let page=1;page<=11;page++){const result=await history.listServiceHistory(admin,services[company],page);assert.equal(result.total,217);assert.equal(result.pages,11);assert.equal(result.page,page);assert.ok(result.items.length<=20);assert.ok(result.items.every(r=>!("previous_value" in r)&&!("next_value" in r)));ids.push(...result.items.map(r=>r.id));}assert.deepEqual(ids,expected[company]);assert.equal(new Set(ids).size,217);}
+  });
+  await t.test("cada perfil consulta únicamente los servicios de su alcance",async()=>{
+    for(const actor of [admin,ops,driver,portal])assert.equal((await history.listServiceHistory(actor,services.rerchar)).total,217);for(const actor of [foreign,otherDriver])await assert.rejects(()=>history.listServiceHistory(actor,services.rerchar),/no disponible/);await assert.rejects(()=>history.listServiceHistory(admin,"------------------------------------"),/no disponible/);
+  });
+  await t.test("cambiar empresa, rol o estado de acceso invalida un perfil antiguo",async()=>{
+    await db.query("UPDATE users SET client_id=$2 WHERE id=$1",[portal.id,other.id]);await assert.rejects(()=>history.listServiceHistory(portal,services.rerchar),/no disponible/);await db.query("UPDATE users SET client_id=$2 WHERE id=$1",[portal.id,client.id]);await db.query("UPDATE users SET role='cliente',client_id=$2 WHERE id=$1",[ops.id,other.id]);await assert.rejects(()=>history.listServiceHistory(ops,services.rerchar),/no disponible/);await db.query("UPDATE users SET role='operaciones',client_id=NULL WHERE id=$1",[ops.id]);await db.query("UPDATE users SET active=false WHERE id=$1",[admin.id]);await assert.rejects(()=>history.listServiceHistory(admin,services.rerchar),/no disponible/);await db.query("UPDATE users SET active=true WHERE id=$1",[admin.id]);
+  });
+  await t.test("las páginas fuera de rango y los historiales vacíos no pierden acceso al último registro",async()=>{
+    const last=await history.listServiceHistory(admin,services.rerchar,999);assert.equal(last.page,11);assert.deepEqual(last.items.map(r=>r.id),expected.rerchar.slice(200));assert.equal((await history.listServiceHistory(admin,services.rerchar,-2)).page,1);assert.deepEqual(await history.listServiceHistory(admin,empty),{items:[],total:0,page:1,pages:1});
+  });
+  await t.test("los movimientos sin usuario y las novedades nuevas conservan orden y total",async()=>{
+    const [system]=await db.query<{id:string}>("INSERT INTO service_events(service_id,kind,description,created_at) VALUES($1,'sistema','Novedad automática de revisión','2026-09-29T03:01:00Z') RETURNING id",[services.rerchar]);const newest=await history.listServiceHistory(portal,services.rerchar);assert.equal(newest.total,218);assert.equal(newest.items[0].id,system.id);assert.equal(newest.items[0].actor_name,null);assert.equal(history.serviceHistoryLabel("planificacion"),"Planificación");
+  });
+  await t.test("archivar un servicio o retirar al conductor impide consultar su historial",async()=>{
+    await db.query("UPDATE service_requests SET driver_id=$2 WHERE id=$1",[services.rerchar,otherDriver.id]);await assert.rejects(()=>history.listServiceHistory(driver,services.rerchar),/no disponible/);assert.equal((await history.listServiceHistory(otherDriver,services.rerchar)).total,218);await db.query("UPDATE service_requests SET deleted_at=now() WHERE id=$1",[services.rerchar]);await assert.rejects(()=>history.listServiceHistory(admin,services.rerchar),/no disponible/);
+  });
+});

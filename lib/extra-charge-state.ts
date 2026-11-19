@@ -14,14 +14,14 @@ export type ExtraChargeQuery=ExtraChargeContext&ExtraChargeFlags;
 export function extraChargeContext(input:ExtraChargeContext):ExtraChargeContext{
   const page=recordPage(input.pagina),servicePage=recordPage(input.pagina_cargos);return {...serviceDayContext(input),empresa:input.empresa==="e_y_j"?"e_y_j":"rerchar",estado:input.estado==="propuestos"||input.estado==="aprobados"?input.estado:"todos",...(page>1?{pagina:String(page)}:{}),...(servicePage>1?{pagina_cargos:String(servicePage)}:{})};
 }
-export function extraChargeContextFromForm(form:FormData){return extraChargeContext(Object.fromEntries(["empresa","estado","pagina","pagina_cargos","pagina_partes","pagina_documentos","parte","nuevo_parte"].map(key=>[key,String(form.get(key)??"")])));}
+export function extraChargeContextFromForm(form:FormData){return extraChargeContext(Object.fromEntries(["empresa","estado","pagina","pagina_cargos","pagina_partes","pagina_documentos","pagina_historial","parte","nuevo_parte"].map(key=>[key,String(form.get(key)??"")])));}
 export const extraChargeAnchor=(id="")=>isFinanceId(id)?`cargo-${id}`:"cargos-parte";
 function flags(query:URLSearchParams,input:ExtraChargeFlags){
   for(const key of ["formulario_cargo","origen_cargo"] as const)if(input[key]&&Object.hasOwn(extraChargeFields,input[key]!))query.set(key,input[key]!);
   if(isFinanceId(input.cargo))query.set("cargo",input.cargo!);if(input.ok)query.set("ok",input.ok);if(input.error)query.set("error",input.error);
 }
 export function extraChargeBoardHref(context:ExtraChargeContext,anchor="cargos-parte",input:ExtraChargeFlags={}){
-  const {pagina_cargos,pagina_partes,pagina_documentos,parte,nuevo_parte,...normalized}=extraChargeContext(context);void pagina_cargos;void pagina_partes;void pagina_documentos;void parte;void nuevo_parte;const query=new URLSearchParams(normalized as Record<string,string>);flags(query,input);return `/cobros-extraordinarios?${query}${anchor?"#"+anchor:""}`;
+  const normalized=extraChargeContext(context),query=new URLSearchParams({empresa:normalized.empresa!,estado:normalized.estado!,...(normalized.pagina?{pagina:normalized.pagina}:{})});flags(query,input);return `/cobros-extraordinarios?${query}${anchor?"#"+anchor:""}`;
 }
 export function serviceChargeHref(id:string,context:ExtraChargeContext,anchor="cargos-adicionales",input:ExtraChargeFlags={}){
   if(!isFinanceId(id))return "/solicitudes";const query=new URLSearchParams(),page=recordPage(context.pagina_cargos);for(const [key,value]of Object.entries(serviceDayContext(context)))query.set(key,value);if(page>1)query.set("pagina_cargos",String(page));if(input.formulario==="day")query.set("formulario","day");flags(query,input);return `/solicitudes/${id}${query.size?"?"+query:""}${anchor?"#"+anchor:""}`;
