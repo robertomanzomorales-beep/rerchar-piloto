@@ -3,9 +3,9 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { ZodError } from "zod";
-import { requireActor, signIn, signOut } from "@/lib/auth";
+import { requireActor, signIn, signOut,type Actor } from "@/lib/auth";
 import {
-  PilotError, addEvidence, assignService, cancelService, classifyServiceCompany, completeRental, createAsset, createClient, createService, createSite, createUser,
+  PilotError, addEvidence, assignService, cancelService, classifyServiceCompany, completeRental, createAsset, createClient, createService, createSite, createUser,getService,
   finishService, handoffService, reportFleetIncident, resolveFleetIncident, saveChecklist, scheduleRental, startService,
 } from "@/lib/pilot";
 import {updateAsset,updateClient,updateSite,MastersError} from "@/lib/masters";
@@ -19,6 +19,7 @@ import {requestDraft,type RequestFormState} from "@/lib/request-form-state";
 import {serviceOperationAnchors,serviceOperationDraft,type ServiceOperationKind,type ServiceOperationState} from "@/lib/service-operation-state";
 import {maintenanceAnchor,maintenanceContextFromForm,maintenanceDraft,maintenanceHref,type MaintenanceFormState} from "@/lib/maintenance-form-state";
 import {masterAnchor,masterContextFromForm,masterDraft,masterHref,type MasterFormKind,type MasterFormState} from "@/lib/master-form-state";
+import {serviceDriverDraft,serviceDriverHref,type ServiceDriverKind,type ServiceDriverState} from "@/lib/service-driver-state";
 
 const value = (form: FormData, key: string) => String(form.get(key) ?? "");
 const servicePath = (id: string) => `/solicitudes/${encodeURIComponent(id)}`;
@@ -81,19 +82,23 @@ export async function updateAssetAction(_previous:MasterFormState,form:FormData)
     label:value(form,"label"),plate:value(form,"plate"),
   }));
 }
-export async function createDriverForServiceAction(form: FormData) {
-  const actor = await requireActor();
-  const id = value(form, "id");
-  await run(servicePath(id), () => createUser(actor, {
-    name: value(form, "name"), email: value(form, "email"), password: value(form, "password"),
-    role: "conductor", client_id: "",
-  }));
+async function serviceDriverRegistration(kind:ServiceDriverKind,actor:Actor,form:FormData):Promise<ServiceDriverState>{
+  const id=value(form,"id");let created:string;
+  try{
+    const service=await getService(actor,id);
+    if(service.service_type==="arriendo"||!["solicitada","programada"].includes(service.status))throw new PilotError("El servicio cambió de etapa. Revise su estado antes de registrar recursos desde despacho.");
+    created=kind==="account"?await createUser(actor,{name:value(form,"name"),email:value(form,"email").trim(),password:value(form,"password"),role:"conductor",client_id:""}):await createExternalDriver(actor,{name:value(form,"name"),tax_id:value(form,"tax_id"),company_name:value(form,"company_name"),phone:value(form,"phone")});
+  }catch(error){
+    const duplicate=typeof error==="object"&&error&&"code" in error&&error.code==="23505";
+    return {error:duplicate?kind==="account"?"Ya existe una cuenta con este correo. Revísela en Usuarios o seleccione el conductor si ya está registrado.":"Ya existe un conductor con este RUT. Revise el selector de conductores o su ficha en Personal.":message(error),values:serviceDriverDraft(kind,form)};
+  }
+  revalidatePath("/","layout");redirect(serviceDriverHref(id,kind,serviceDayContextFromForm(form),created));
 }
-export async function createExternalDriverForServiceAction(form: FormData) {
-  const actor=await requireActor(),id=value(form,"id");
-  await run(servicePath(id),()=>createExternalDriver(actor,{
-    name:value(form,"name"),tax_id:value(form,"tax_id"),company_name:value(form,"company_name"),phone:value(form,"phone"),
-  }));
+export async function createDriverForServiceAction(_previous:ServiceDriverState,form:FormData):Promise<ServiceDriverState>{
+  return serviceDriverRegistration("account",await requireActor(),form);
+}
+export async function createExternalDriverForServiceAction(_previous:ServiceDriverState,form:FormData):Promise<ServiceDriverState>{
+  return serviceDriverRegistration("external",await requireActor(),form);
 }
 export async function createServiceAction(_previous:RequestFormState,form:FormData):Promise<RequestFormState> {
   const actor = await requireActor();

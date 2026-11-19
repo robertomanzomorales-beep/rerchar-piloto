@@ -4,7 +4,7 @@ import { ArrowLeft, CalendarDays, CheckCircle2, ClipboardCheck, FileText, MapPin
 import { requireActor, canManage, canPlan, canWorkService } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getService, PilotError } from "@/lib/pilot";
-import { classifyServiceCompanyAction, completeRentalAction, createDriverForServiceAction, createExternalDriverForServiceAction, handoffServiceAction, startServiceAction } from "@/app/actions";
+import { classifyServiceCompanyAction, completeRentalAction, handoffServiceAction, startServiceAction } from "@/app/actions";
 import {listExternalDrivers} from "@/lib/personnel";
 import {companyName,serviceFolio,quoteFolio} from "@/lib/companies";
 import type {Company} from "@/lib/companies";
@@ -16,6 +16,8 @@ import ServiceHistory from "@/components/ServiceHistory";
 import {listServiceHistory,ServiceHistoryError} from "@/lib/service-history";
 import ServiceDocuments from "@/components/ServiceDocuments";
 import ServiceOperationForm from "@/components/ServiceOperationForm";
+import ServiceDriverForm from "@/components/ServiceDriverForm";
+import {serviceOrderWeight,serviceOrderNet} from "@/lib/service-order";
 import {listServiceDays} from "@/lib/service-day";
 import ServiceDayHistory from "@/components/ServiceDayHistory";
 import type {ServiceDayQuery} from "@/lib/service-day-state";
@@ -32,7 +34,7 @@ function localInput(value: Date | string | null) {
 const day=(value:Date|string|null)=>value instanceof Date?value.toISOString().slice(0,10):value?String(value).slice(0,10):"";
 const evidenceLabels:Record<string,string>={foto_area:"Foto del área de trabajo",foto_material:"Foto del material",checklist:"Checklist",ticket_pesaje:"Ticket de pesaje"};
 
-export default async function ServiceDetail({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ error?: string; ok?: string; formulario?:string }&ExtraChargeQuery&ServiceDayQuery&EvidenceQuery> }) {
+export default async function ServiceDetail({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ error?: string; ok?: string; formulario?:string;conductor_creado?:string }&ExtraChargeQuery&ServiceDayQuery&EvidenceQuery> }) {
   const actor = await requireActor();
   const { id } = await params;
   let service;
@@ -76,6 +78,8 @@ export default async function ServiceDetail({ params, searchParams }: { params: 
   const rental=service.service_type==="arriendo";
   const serviceContainers=canWork&&!rental?await listServiceContainerPhotos(actor,id):[];
   const canAssign = canPlan(actor) && !rental && ["solicitada", "programada"].includes(service.status);
+  const registeredDriver=canPlan(actor)?drivers.find(d=>paramsQuery.conductor_creado===`account:${d.id}`)??externalDrivers.find(d=>paramsQuery.conductor_creado===`external:${d.id}`):undefined;
+  const registrationKey=registeredDriver?paramsQuery.conductor_creado:"";
   const canScheduleRental=canPlan(actor)&&rental&&["solicitada","programada"].includes(service.status);
   const equipment=canScheduleRental?await db.query<{id:string;code:string;label:string}>(
     "SELECT id,code,label FROM assets WHERE kind='equipo' AND available=true AND deleted_at IS NULL ORDER BY label"):[];
@@ -83,7 +87,7 @@ export default async function ServiceDetail({ params, searchParams }: { params: 
   const serviceStages:Record<string,{label:string;instruction:string;target:string}> = rental?{
     solicitada:{label:"Programar arriendo",target:"arriendo",instruction:"Operaciones confirma el período y el equipo antes de emitir la orden de arriendo."},
     programada:{label:"Respaldar ejecución",target:canManage(actor)?evidence.some(item=>Boolean(item.storage_key))?"cierre-arriendo":"documentacion":"arriendo",instruction:"Revise el período y adjunte el respaldo de ejecución. Administración cierra el arriendo sin registrar pesaje."},
-    completada:{label:"Arriendo cerrado",target:"cierre",instruction:"El período y el respaldo quedaron registrados. Revise la documentación y el cierre comercial."},
+    completada:{label:"Arriendo cerrado",target:"cierre",instruction:"El arriendo figura como completado. Revise sus documentos y el cierre comercial."},
   }:{
     solicitada:{label:"Planificación",target:"planificacion",instruction:"Operaciones asigna conductor, vehículo y rampla antes de programar el retiro."},
     programada:{label:"Preparación en terreno",target:canWork?"checklist":"planificacion",instruction:"El conductor revisa el checklist y prepara los respaldos. El pesaje se valida después en administración."},
@@ -136,12 +140,13 @@ export default async function ServiceDetail({ params, searchParams }: { params: 
           {actor.role!=="conductor"&&<Link className="order-link" href={`/solicitudes/${service.id}/seguimiento`}><FileText size={16}/> {service.operating_company==="e_y_j"?"Seguimiento de propuesta, OC y respaldo documental":"Seguimiento de guía valorizada, propuesta, OC y SIDREP"} →</Link>}
           {actor.role!=="conductor"&&service.operating_company!=="e_y_j"&&<Link className="order-link" href="/ingresos"><PackageCheck size={16}/> Ver ingresos de material y excedentes →</Link>}
           {canAssign && (!assets.length || (!drivers.length && !externalDrivers.length)) && <div className="resource-alert"><strong>Faltan recursos para programar este servicio.</strong><span>{!assets.length ? "Registre un camión en Maestros. " : ""}{!drivers.length&&!externalDrivers.length ? "Registre un conductor propio o tercero debajo." : ""}</span>{!assets.length && <Link href="/maestros">Ir a Maestros →</Link>}</div>}
+          {canAssign&&registeredDriver&&<p className="helper-text" role="status">Conductor registrado: <strong>{registeredDriver.name}</strong>. Ya está disponible en el selector. Selecciónelo y guarde la planificación para asignarlo al servicio.</p>}
           {canAssign && <ServiceOperationForm key={`${id}:${service.scheduled_for?.toISOString()??""}:${service.assigned_asset_id}:${service.ramp_asset_id}:${service.driver_id}:${service.external_driver_id}`} kind="plan" id={id} updating={service.status==="programada"}
             values={{scheduled_for:localInput(service.scheduled_for),asset_id:service.assigned_asset_id??"",ramp_asset_id:service.ramp_asset_id??"",driver_selection:service.external_driver_id?`tercero:${service.external_driver_id}`:service.driver_id?`cuenta:${service.driver_id}`:""}}
             assets={assets.map(a=>({value:a.id,label:`${a.plate||"Patente pendiente"} · ${a.label} (${a.code})`}))} ramps={ramps.map(a=>({value:a.id,label:`${a.plate||"Patente pendiente"} · ${a.label} (${a.code})`}))}
             drivers={drivers.map(d=>({value:`cuenta:${d.id}`,label:d.name}))} externalDrivers={externalDrivers.map(d=>({value:`tercero:${d.id}`,label:`${d.name} · ${d.company_name} · ${d.tax_id}`}))} disabled={!assets.length||(!drivers.length&&!externalDrivers.length)}/>}
-          {canAssign && <details className="small-action"><summary>Registrar conductor de transportista (sin cuenta)</summary><p className="helper-text">Identifique al tercero por RUT y transportista. Si la faena exige documentos, regístrelos y verifíquelos en <Link href="/personal">Personal</Link> antes de programar. Operaciones registrará checklist, guía y hoja de servicio con su propia cuenta.</p><form action={createExternalDriverForServiceAction} className="form-stack compact"><input type="hidden" name="id" value={service.id}/><div className="two-fields"><label>Nombre y apellido<input name="name" required minLength={2} maxLength={120}/></label><label>RUT del conductor<input name="tax_id" required maxLength={20} placeholder="12.345.678-5"/></label></div><div className="two-fields"><label>Transportista<input name="company_name" required minLength={2} maxLength={160}/></label><label>Teléfono (opcional)<input name="phone" maxLength={40}/></label></div><SubmitButton className="button button-outline">Registrar tercero</SubmitButton></form></details>}
-          {canAssign && actor.role==="admin" && <details className="small-action"><summary>Crear conductor con acceso al sistema</summary><form action={createDriverForServiceAction} className="form-stack compact inline-driver"><input type="hidden" name="id" value={service.id}/><div className="two-fields"><label>Nombre del conductor<input name="name" required maxLength={120} placeholder="Nombre y apellido"/></label><label>Correo del conductor<input name="email" type="email" required placeholder="conductor@empresa.cl"/></label></div><label>Contraseña inicial (mínimo 12 caracteres)<input name="password" type="password" minLength={12} maxLength={128} autoComplete="new-password" required/></label><SubmitButton className="button button-outline">Crear conductor y volver al despacho</SubmitButton></form></details>}
+          {canPlan(actor)&&(canAssign||paramsQuery.formulario==="driver_external")&&<ServiceDriverForm key={`${id}:external:${registrationKey}`} id={id} kind="external" context={paramsQuery} open={paramsQuery.formulario==="driver_external"&&!registeredDriver} disabled={!canAssign}/>}
+          {actor.role==="admin"&&(canAssign||paramsQuery.formulario==="driver_account")&&<ServiceDriverForm key={`${id}:account:${registrationKey}`} id={id} kind="account" context={paramsQuery} open={paramsQuery.formulario==="driver_account"&&!registeredDriver} disabled={!canAssign}/>}
           {canAssign && <details id="cancelar-servicio" className="cancel-control service-operation-section" open={paramsQuery.formulario==="cancel"}><summary>Cancelar este servicio</summary><ServiceOperationForm key={`${id}:${service.status}`} kind="cancel" id={id}/></details>}
           {service.status === "cancelada" && <p className="cancelled-note">Este servicio fue cancelado. El motivo y responsable quedaron registrados en el historial.</p>}
           {!service.scheduled_for && !canAssign && <p className="muted">Pendiente de planificación por el equipo de operaciones.</p>}
@@ -166,7 +171,7 @@ export default async function ServiceDetail({ params, searchParams }: { params: 
           <ServiceOperationForm key={`${id}:${evidence.map(e=>e.id).sort().join(",")}`} kind="finish" id={id} purchase={purchase} ticketReady={ticketReady} disabled={purchase&&(!guideReady||!sheetReady)} values={{material_name:service.waste_type,impurity_kg:"0",guide_number:service.guide_number??""}} sources={evidence.filter(item=>item.storage_key&&["guia_traslado","ticket_pesaje","hoja_servicio"].includes(item.document_kind)).map(item=>({id:item.id,name:item.original_filename||evidenceLabels[item.document_kind]||"Respaldo"}))}/>
         </>}</section>}
         {service.status === "completada" && <section id="cierre" className="section-card completion-card"><div className="section-heading"><div><div className="eyebrow">CIERRE REGISTRADO</div><h2><PackageCheck size={20}/> {rental?"Arriendo completado":"Servicio completado"}</h2></div></div>
-          {rental?<p>Período registrado: <strong>{day(service.rental_from)} al {day(service.rental_to)}</strong>. Respaldo adjunto; sin pesaje.</p>:<div className="facts-grid"><div className="fact"><span>Peso bruto</span><strong>{Number(service.gross_kg).toLocaleString("es-CL")} kg</strong></div><div className="fact"><span>Tara</span><strong>{Number(service.tare_kg).toLocaleString("es-CL")} kg</strong></div><div className="fact"><span>Peso neto</span><strong>{(Number(service.gross_kg) - Number(service.tare_kg)).toLocaleString("es-CL")} kg</strong></div></div>}
+          {rental?<p>Período registrado: <strong>{day(service.rental_from)} al {day(service.rental_to)}</strong>. Arriendo completado; cierre sin pesaje.</p>:<div className="facts-grid"><div className="fact"><span>Peso bruto</span><strong data-service-closed-weight="gross">{serviceOrderWeight(service.gross_kg)}</strong></div><div className="fact"><span>Tara</span><strong data-service-closed-weight="tare">{serviceOrderWeight(service.tare_kg)}</strong></div><div className="fact"><span>Peso neto</span><strong data-service-closed-weight="net">{serviceOrderNet(service.gross_kg,service.tare_kg)}</strong></div></div>}
           {purchase&&purchaseReviews[0]&&<div className="note-block"><span>Revisión administrativa · {purchaseReviews[0].reviewer_name} · {chileDate(purchaseReviews[0].reviewed_at)}</span><p>Material recibido: {purchaseReviews[0].material_name} · Impurezas: {Number(purchaseReviews[0].impurity_kg).toLocaleString("es-CL")} kg · Ticket: {purchaseReviews[0].missing_ticket_reason?`no entregado (${purchaseReviews[0].missing_ticket_reason})`:"cotejado"}.</p>{purchaseReviews[0].observations&&<p>{purchaseReviews[0].observations}</p>}</div>}
           {!rental&&service.operating_company==="rerchar"&&canManage(actor)&&<><p className="helper-text">{purchase?receiptEntries[0]?"Recepción cotejada. Abra el ingreso vinculado y continúe con guía valorizada, factura y aviso documental.":"Recepción cotejada. Cree el ingreso con los datos de este servicio y confirme pesos, guías y materiales antes del seguimiento.":"Continúe con la documentación y el seguimiento de guías antes del cierre comercial."}</p><Link className="button button-primary" href={purchase?receiptEntries[0]?`/ingresos/${receiptEntries[0].id}`:`/ingresos?servicio=${id}#nuevo-ingreso`:`/solicitudes/${id}/seguimiento`}>{purchase?receiptEntries[0]?"Abrir ingreso vinculado →":"Crear ingreso de este servicio →":"Continuar seguimiento documental →"}</Link></>}
           {actor.role==="admin"&&<Link className="button button-outline" href={`/finanzas/${id}`}>Valorizar y registrar cobros →</Link>}
