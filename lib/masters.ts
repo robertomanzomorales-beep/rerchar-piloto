@@ -45,8 +45,12 @@ export async function updateSite(actor:Actor,id:string,input:unknown){
   const data=z.object({name,address:optional(250)}).parse(input);
   await transaction(async tx=>{
     await authorizeMasters(tx,actor);
+    const [source]=await tx.query<{client_id:string}>("SELECT client_id FROM client_sites WHERE id=$1 AND deleted_at IS NULL",[id]);
+    if(!source)reject("La faena no existe o ya no está activa.");
+    const [client]=await tx.query("SELECT id FROM clients WHERE id=$1 AND deleted_at IS NULL FOR SHARE",[source.client_id]);
+    if(!client)reject("El cliente de la faena ya no está activo.");
     const [site]=await tx.query<{id:string;name:string;address:string|null}>(
-      "SELECT cs.id,cs.name,cs.address FROM client_sites cs JOIN clients c ON c.id=cs.client_id WHERE cs.id=$1 AND cs.deleted_at IS NULL AND c.deleted_at IS NULL FOR UPDATE OF cs,c",[id]);
+      "SELECT id,name,address FROM client_sites WHERE id=$1 AND client_id=$2 AND deleted_at IS NULL FOR UPDATE",[id,source.client_id]);
     if(!site)reject("La faena no existe o ya no está activa.");
     const next={name:data.name,address:data.address||null};
     const previous={name:site.name,address:site.address};

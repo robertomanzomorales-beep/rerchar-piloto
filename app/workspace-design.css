@@ -252,6 +252,32 @@
   .app-shell .client-dossier .page-intro { overflow-wrap:anywhere; }
   .app-shell .client-dossier .dossier-group h3 { color:var(--company-accent); }
   .app-shell .client-documents-layout { align-items:start; grid-template-columns:minmax(0,1fr); }
+  .app-shell .finance-section { min-width:0; scroll-margin-top:76px; }
+  .app-shell .finance-catalog-layout { align-items:start; margin-bottom:18px; }
+  .app-shell .finance-catalog-form :is(label,.two-fields) { min-width:0; }
+  .app-shell .finance-catalog-form .request-form-error { margin:0 0 8px; }
+  .app-shell .finance-contract-context { display:grid; gap:5px; padding:12px 14px; border:1px solid var(--line); border-radius:8px; background:var(--company-tint,#f5f8f7); font-size:12px; overflow-wrap:anywhere; }
+  .app-shell .finance-contract-context small { color:var(--muted); }
+  .app-shell .finance-page .finance-catalog-records { max-height:none; overflow:visible; }
+  .app-shell .finance-catalog-records li { display:block; padding:16px 0; overflow-wrap:anywhere; }
+  .app-shell .finance-record-top { display:flex; align-items:start; justify-content:space-between; gap:10px; }
+  .app-shell .finance-record-top strong { min-width:0; }
+  .app-shell .finance-record-top .badge { flex-shrink:0; font-size:10px; }
+  .app-shell .finance-record-detail { display:grid; gap:5px; margin-top:8px; font-size:12px; color:var(--muted); }
+  .app-shell .finance-record-detail strong { color:var(--ink); font-variant-numeric:tabular-nums; }
+  .app-shell .finance-catalog-records small { text-align:left; }
+  .app-shell .finance-record-detail p { margin:4px 0; white-space:pre-wrap; }
+  .app-shell .finance-record-control { margin-top:12px; padding:12px 14px; border:1px solid var(--line); border-radius:8px; background:var(--company-tint,#f8faf9); }
+  .app-shell .finance-record-control summary { cursor:pointer; color:var(--company-accent); font-size:12px; font-weight:600; }
+  .app-shell .finance-record-control[open] > summary { margin-bottom:14px; }
+  .app-shell .finance-record-control > .button { margin-bottom:14px; }
+  .app-shell .finance-contract-notes { margin-top:10px; font-size:12px; }
+  .app-shell .finance-contract-notes summary { cursor:pointer; color:var(--company-accent); }
+  .app-shell .finance-contract-notes p { margin:10px 0 0; white-space:pre-wrap; }
+  .app-shell :is(.finance-period-vigente) { background:#eaf5ef; color:#27654b; }
+  .app-shell :is(.finance-period-programada,.finance-period-programado,.finance-period-por-clasificar) { background:#eef3f9; color:#385f83; }
+  .app-shell :is(.finance-period-finalizada,.finance-period-finalizado,.finance-period-inactiva,.finance-period-inactivo,.finance-period-no-disponible) { background:#f0f2f4; color:#64727b; }
+  .app-shell .finance-notice-filters { margin-top:16px; }
   .app-shell .service-operation-form[data-service-operation="plan"] { grid-template-columns:repeat(2,minmax(0,1fr)); }
 }
 @media screen and (min-width:1200px) {
@@ -269,6 +295,8 @@
   .app-shell :is(.master-search,.client-search) label { flex-basis:100%; }
   .app-shell .client-records li { display:grid; gap:5px; }
   .app-shell .client-records li small { text-align:left; }
+  .app-shell .finance-catalog-form .two-fields { grid-template-columns:minmax(0,1fr); }
+  .app-shell .finance-record-top { flex-wrap:wrap; }
 }
 @media (prefers-reduced-motion:reduce) {
   .loading-indicator,.loading-orbit { animation:none; }

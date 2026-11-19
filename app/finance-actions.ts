@@ -5,8 +5,9 @@ import { revalidatePath } from "next/cache";
 import { ZodError } from "zod";
 import { requireActor } from "@/lib/auth";
 import { addServiceCost, classifyContractCompany, confirmServiceInvoiceTotal, createContract, createTariff, FinanceError, recordTariffNotice, registerInvoice, registerPayment, reviseTariff, updateClientOrderReference, valueService, voidInvoice } from "@/lib/finance";
+import {financeCatalogAnchor,financeCatalogContextFromForm,financeCatalogDraft,financeCatalogHref,isFinanceId,type FinanceCatalogKind,type FinanceCatalogState} from "@/lib/finance-catalog-state";
 
-const value=(form:FormData,key:string)=>String(form.get(key)??"");
+const value=(form:FormData,key:string)=>String(form.get(key)??"").replace(/\r\n?/g,"\n");
 const detail=(id:string)=>`/finanzas/${encodeURIComponent(id)}`;
 function message(error:unknown){
   if(error instanceof FinanceError)return error.message;
@@ -21,16 +22,25 @@ async function run(path:string,fn:()=>Promise<unknown>):Promise<never>{
   revalidatePath("/","layout");
   redirect(`${path}${separator}ok=1`);
 }
-export async function createContractAction(form:FormData){const actor=await requireActor();const company=value(form,"operating_company");await run(`/finanzas?empresa=${company==="e_y_j"?"e_y_j":"rerchar"}`,()=>createContract(actor,{
+async function runCatalog(kind:FinanceCatalogKind,form:FormData,operation:()=>Promise<unknown>):Promise<FinanceCatalogState>{
+  let result:unknown;
+  try{result=await operation();}catch(error){return {error:message(error),values:financeCatalogDraft(kind,form)};}
+  const context=financeCatalogContextFromForm(form),company=value(form,"operating_company");
+  if(kind==="contract"&&(company==="rerchar"||company==="e_y_j"))context.empresa=company;
+  const sourceId=value(form,kind==="notice"?"notice_id":kind==="revise"?"tariff_id":"id"),id=typeof result==="string"&&isFinanceId(result)?result:sourceId;
+  revalidatePath("/","layout");
+  redirect(financeCatalogHref(context,financeCatalogAnchor(kind,id),{ok:"1",origen:kind,edicion:id}));
+}
+export async function createContractAction(_previous:FinanceCatalogState,form:FormData):Promise<FinanceCatalogState>{const actor=await requireActor();return runCatalog("contract",form,()=>createContract(actor,{
   client_id:value(form,"client_id"),site_id:value(form,"site_id"),operating_company:value(form,"operating_company"),code:value(form,"code"),starts_on:value(form,"starts_on"),
   ends_on:value(form,"ends_on"),notes:value(form,"notes")}));}
-export async function classifyContractCompanyAction(form:FormData){const actor=await requireActor();await run("/finanzas?empresa=pendiente",()=>classifyContractCompany(actor,value(form,"id"),value(form,"operating_company")));}
-export async function createTariffAction(form:FormData){const actor=await requireActor();const company=value(form,"company_view");await run(`/finanzas?empresa=${company==="e_y_j"?"e_y_j":"rerchar"}`,()=>createTariff(actor,{
+export async function classifyContractCompanyAction(_previous:FinanceCatalogState,form:FormData):Promise<FinanceCatalogState>{const actor=await requireActor();return runCatalog("classify",form,()=>classifyContractCompany(actor,value(form,"id"),value(form,"operating_company")));}
+export async function createTariffAction(_previous:FinanceCatalogState,form:FormData):Promise<FinanceCatalogState>{const actor=await requireActor();return runCatalog("tariff",form,()=>createTariff(actor,{
   contract_id:value(form,"contract_id"),service_type:value(form,"service_type"),waste_type:value(form,"waste_type"),unit:value(form,"unit"),
   unit_price_clp:value(form,"unit_price_clp"),valid_from:value(form,"valid_from"),valid_until:value(form,"valid_until")}));}
-export async function reviseTariffAction(form:FormData){const actor=await requireActor();const company=value(form,"company_view");await run(`/finanzas?empresa=${company==="e_y_j"?"e_y_j":"rerchar"}`,()=>reviseTariff(actor,value(form,"tariff_id"),{
+export async function reviseTariffAction(_previous:FinanceCatalogState,form:FormData):Promise<FinanceCatalogState>{const actor=await requireActor();return runCatalog("revise",form,()=>reviseTariff(actor,value(form,"tariff_id"),{
   unit_price_clp:value(form,"unit_price_clp"),valid_from:value(form,"valid_from"),reason:value(form,"reason")}));}
-export async function recordTariffNoticeAction(form:FormData){const actor=await requireActor();const company=value(form,"company_view");await run(`/finanzas?empresa=${company==="e_y_j"?"e_y_j":"rerchar"}`,()=>recordTariffNotice(actor,value(form,"notice_id"),{
+export async function recordTariffNoticeAction(_previous:FinanceCatalogState,form:FormData):Promise<FinanceCatalogState>{const actor=await requireActor();return runCatalog("notice",form,()=>recordTariffNotice(actor,value(form,"notice_id"),{
   channel:value(form,"channel"),recipient:value(form,"recipient"),notified_on:value(form,"notified_on"),reference:value(form,"reference")}));}
 export async function valueServiceAction(form:FormData){const actor=await requireActor();const id=value(form,"service_id");await run(detail(id),()=>valueService(actor,id,{
   tariff_id:value(form,"tariff_id"),client_order_reference:value(form,"client_order_reference")}));}
