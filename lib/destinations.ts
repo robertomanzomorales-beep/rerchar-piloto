@@ -47,7 +47,7 @@ export async function listQuoteDestinations(actor:Actor){
   if(!canManage(actor))reject("No tiene acceso al maestro de destinos.");
   return db.query<QuoteDestination>(`SELECT id,name,facility_type,address,commune,latitude,longitude,location_url,status,
     accepted_categories,authorization_reference,authorization_valid_until,authorization_document_name,
-    disposal_unit,disposal_price_clp,updated_at FROM quote_destinations ORDER BY name`);
+    disposal_unit,disposal_price_clp,updated_at FROM quote_destinations ORDER BY name,id`);
 }
 export async function createQuoteDestination(actor:Actor,input:unknown){
   if(!canManage(actor))reject("No tiene permiso para agregar destinos.");
