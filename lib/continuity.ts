@@ -3,6 +3,7 @@ import type { Actor } from "./auth";
 import { canManage } from "./auth";
 import { db, transaction, type Db } from "./db";
 import { hourMaintenanceProcedure, hourMaintenanceTemplates } from "./maintenance-templates";
+import {lastRecordPage,recordPage,recordsPerPage} from "./record-pagination";
 
 const uuid = z.uuid();
 const optionalId = z.union([uuid,z.literal("")]).default("");
@@ -13,6 +14,7 @@ const optionalDate = z.union([date,z.literal("")]).default("");
 const positive = z.coerce.number().finite().positive().max(100_000_000);
 const nonnegative = z.coerce.number().finite().min(0).max(100_000_000);
 export class ContinuityError extends Error {}
+export class FuelSubmissionConflict extends ContinuityError {}
 function reject(message: string): never { throw new ContinuityError(message); }
 function guard(actor: Actor) { if (!canManage(actor)) reject("Este módulo requiere acceso de operaciones."); }
 async function audit(tx: Db, actor: Actor, action: string, entityType: string, entityId: string, change: unknown) {
@@ -309,52 +311,74 @@ export async function cancelWorkOrder(actor: Actor, orderId: string, reason: unk
   });
 }
 
-export type FuelEntry = {id:string;asset_id:string;asset_label:string;asset_code:string;driver_name:string|null;service_folio:string|null;service_company:"rerchar"|"e_y_j"|null;
+export type FuelEntry = {id:string;asset_id:string;asset_label:string;asset_code:string;reading_unit:string;driver_name:string|null;service_folio:string|null;service_company:"rerchar"|"e_y_j"|null;
   fuel_date:Date|string;liters:string;cost_clp:string;reading:string;full_tank:boolean;km_per_liter:string|null;supplier:string;receipt_number:string;notes:string|null};
-export async function listFuel(actor: Actor) {
+export async function listFuel(actor: Actor,requestedPage=1,requestedAsset="") {
   guard(actor);
-  const [assets,drivers,services,entries] = await Promise.all([
+  const assetId=requestedAsset?z.string().regex(/^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i).parse(requestedAsset).toLowerCase():"";
+  const [assets,drivers,services,historyAssets,[totals]] = await Promise.all([
     listAssets(actor),
-    db.query<{id:string;name:string}>("SELECT id,name FROM users WHERE role='conductor' AND active=true ORDER BY name"),
-    db.query<{id:string;folio:string;operating_company:"rerchar"|"e_y_j"|null;asset_id:string}>(`SELECT id,folio,operating_company,assigned_asset_id AS asset_id FROM service_requests
-      WHERE assigned_asset_id IS NOT NULL AND status IN ('programada','en_ruta','pendiente_revision','completada') ORDER BY created_at DESC LIMIT 200`),
-    db.query<FuelEntry>(`SELECT f.*,a.label AS asset_label,a.code AS asset_code,u.name AS driver_name,s.folio AS service_folio,s.operating_company AS service_company
-      FROM fuel_entries f JOIN assets a ON a.id=f.asset_id LEFT JOIN users u ON u.id=f.driver_id
-      LEFT JOIN service_requests s ON s.id=f.service_id ORDER BY f.fuel_date DESC,f.created_at DESC LIMIT 300`),
+    db.query<{id:string;name:string}>("SELECT id,name FROM users WHERE role='conductor' AND active=true ORDER BY name,id"),
+    db.query<FuelService>(`SELECT id,folio,operating_company,assigned_asset_id AS asset_id,driver_id FROM service_requests
+      WHERE deleted_at IS NULL AND assigned_asset_id IS NOT NULL AND status IN ('programada','en_ruta','pendiente_revision','completada') ORDER BY created_at DESC,id DESC`),
+    db.query<{id:string;code:string;label:string;archived:boolean}>(`SELECT a.id,a.code,a.label,(a.deleted_at IS NOT NULL) AS archived FROM assets a
+      WHERE a.deleted_at IS NULL OR EXISTS(SELECT 1 FROM fuel_entries f WHERE f.asset_id=a.id) ORDER BY a.kind,a.label,a.id`),
+    db.query<{total:string;liters:string;cost:string}>(`SELECT count(*)::text AS total,COALESCE(sum(liters),0)::text AS liters,COALESCE(sum(cost_clp),0)::text AS cost
+      FROM fuel_entries WHERE ($1::uuid IS NULL OR asset_id=$1)`,[assetId||null]),
   ]);
-  return {assets,drivers,services,entries};
+  const totalEntries=Number(totals.total),totalPages=lastRecordPage(totalEntries),page=Math.min(recordPage(requestedPage),totalPages);
+  const entries=await db.query<FuelEntry>(`SELECT f.*,a.label AS asset_label,a.code AS asset_code,a.reading_unit,u.name AS driver_name,s.folio AS service_folio,s.operating_company AS service_company
+      FROM fuel_entries f JOIN assets a ON a.id=f.asset_id LEFT JOIN users u ON u.id=f.driver_id
+      LEFT JOIN service_requests s ON s.id=f.service_id WHERE ($1::uuid IS NULL OR f.asset_id=$1)
+      ORDER BY f.fuel_date DESC,f.created_at DESC,f.id DESC LIMIT $2 OFFSET $3`,[assetId||null,recordsPerPage,(page-1)*recordsPerPage]);
+  return {assets,drivers,services,historyAssets,entries,totalEntries,totalLiters:totals.liters,totalCost:totals.cost,page,totalPages,assetId};
 }
+export type FuelService={id:string;folio:string;operating_company:"rerchar"|"e_y_j"|null;asset_id:string;driver_id:string|null};
 
 export async function registerFuel(actor: Actor, input: unknown) {
   guard(actor);
   const data = z.object({submission_key:uuid,asset_id:uuid,driver_id:optionalId,service_id:optionalId,
     fuel_date:date,liters:positive,cost_clp:nonnegative,reading:nonnegative,full_tank:z.boolean(),
-    supplier:z.string().trim().min(2).max(160),receipt_number:z.string().trim().min(2).max(80),notes:optional(1000)}).parse(input);
+    supplier:z.string().trim().min(2).max(160),receipt_number:z.string().trim().min(2).max(80),
+    notes:z.preprocess(value=>typeof value==="string"?value.replace(/\r\n?/g,"\n"):value,optional(1000))}).parse(input);
   return transaction(async (tx) => {
+    if(data.service_id)await tx.query("SELECT id FROM service_requests WHERE id=$1 FOR SHARE",[data.service_id]);
     const [asset] = await tx.query<{reading_unit:string;current_reading:string}>("SELECT reading_unit,current_reading FROM assets WHERE id=$1 AND deleted_at IS NULL FOR UPDATE",[data.asset_id]);
     if (!asset || asset.reading_unit==="sin") reject("Seleccione un activo con odómetro u horómetro configurado.");
-    const [previousKey] = await tx.query<{id:string}>("SELECT id FROM fuel_entries WHERE submission_key=$1",[data.submission_key]);
-    if (previousKey) return previousKey.id;
+    const payload=[data.submission_key,data.asset_id,data.driver_id,data.service_id,data.fuel_date,data.liters,data.cost_clp,data.reading,data.full_tank,data.supplier,data.receipt_number,data.notes,actor.id];
+    const previous=async()=>{
+      const [entry]=await tx.query<{id:string;same:boolean}>(`SELECT id,(asset_id=$2::uuid AND driver_id IS NOT DISTINCT FROM NULLIF($3,'')::uuid
+        AND service_id IS NOT DISTINCT FROM NULLIF($4,'')::uuid AND fuel_date=$5::date AND liters=$6::numeric(14,3) AND cost_clp=$7::numeric(14,2)
+        AND reading=$8::numeric(14,2) AND full_tank=$9::boolean AND supplier=$10 AND receipt_number=$11
+        AND replace(replace(COALESCE(notes,''),chr(13)||chr(10),chr(10)),chr(13),chr(10))=$12) AS same
+        FROM fuel_entries WHERE submission_key=$1`,payload.slice(0,12));
+      if(entry&&!entry.same)throw new FuelSubmissionConflict("Este formulario ya registró una carga con otros datos. Para registrar otra, elija «Preparar otra carga»; los datos se conservan.");
+      return entry?.id;
+    };
+    const previousId=await previous();if(previousId)return previousId;
     if (data.driver_id) {
       const [driver] = await tx.query("SELECT id FROM users WHERE id=$1 AND role='conductor' AND active=true",[data.driver_id]);
       if (!driver) reject("El conductor no está habilitado como usuario activo.");
     }
     if (data.service_id) {
-      const [service] = await tx.query<{driver_id:string|null}>("SELECT driver_id FROM service_requests WHERE id=$1 AND assigned_asset_id=$2 AND deleted_at IS NULL",[data.service_id,data.asset_id]);
+      const [service] = await tx.query<{driver_id:string|null}>(`SELECT driver_id FROM service_requests WHERE id=$1 AND assigned_asset_id=$2 AND deleted_at IS NULL
+        AND status IN ('programada','en_ruta','pendiente_revision','completada')`,[data.service_id,data.asset_id]);
       if (!service || (data.driver_id && service.driver_id!==data.driver_id)) reject("El servicio no corresponde a este activo y conductor.");
     }
     if (data.reading < Number(asset.current_reading)) reject("El kilometraje u horómetro es menor a la lectura actual.");
-    const [last] = await tx.query<{reading:string;full_tank:boolean}>(`SELECT reading,full_tank FROM fuel_entries WHERE asset_id=$1
-      ORDER BY created_at DESC,id DESC LIMIT 1`,[data.asset_id]);
+    const [last] = await tx.query<{reading:string;full_tank:boolean;ordered_date:boolean}>(`SELECT reading,full_tank,(fuel_date<=$2::date) AS ordered_date FROM fuel_entries WHERE asset_id=$1
+      ORDER BY created_at DESC,id DESC LIMIT 1`,[data.asset_id,data.fuel_date]);
     let efficiency: number | null = null;
-    if (asset.reading_unit==="km" && data.full_tank && last?.full_tank && data.reading>Number(last.reading)) {
+    if (asset.reading_unit==="km" && data.full_tank && last?.full_tank && last.ordered_date && data.reading>Number(last.reading)) {
       efficiency = Number(((data.reading-Number(last.reading))/data.liters).toFixed(3));
-      if (efficiency<=0) efficiency=null;
+      if (efficiency<=0 || efficiency>=1_000_000_000) efficiency=null;
     }
     const [entry] = await tx.query<{id:string}>(`INSERT INTO fuel_entries
       (submission_key,asset_id,driver_id,service_id,fuel_date,liters,cost_clp,reading,full_tank,km_per_liter,supplier,receipt_number,notes,created_by)
-      VALUES ($1,$2,NULLIF($3,'')::uuid,NULLIF($4,'')::uuid,$5,$6,$7,$8,$9,$10,$11,$12,NULLIF($13,''),$14) RETURNING id`,
+      VALUES ($1,$2,NULLIF($3,'')::uuid,NULLIF($4,'')::uuid,$5,$6,$7,$8,$9,$10,$11,$12,NULLIF($13,''),$14)
+      ON CONFLICT (submission_key) DO NOTHING RETURNING id`,
       [data.submission_key,data.asset_id,data.driver_id,data.service_id,data.fuel_date,data.liters,data.cost_clp,data.reading,data.full_tank,efficiency,data.supplier,data.receipt_number,data.notes,actor.id]);
+    if(!entry){const stored=await previous();if(stored)return stored;reject("No se pudo confirmar la carga. Vuelva a intentar.");}
     await readingTx(tx,actor,data.asset_id,data.reading,"combustible",entry.id,`Carga de combustible ${data.receipt_number}`);
     await audit(tx,actor,"fuel","fuel_entry",entry.id,{...data,km_per_liter:efficiency});
     return entry.id;

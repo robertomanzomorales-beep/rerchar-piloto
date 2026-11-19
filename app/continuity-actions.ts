@@ -5,10 +5,11 @@ import { redirect } from "next/navigation";
 import { ZodError } from "zod";
 import { requireActor } from "@/lib/auth";
 import {
-  ContinuityError, cancelWorkOrder, closeWorkOrder, createHourMaintenancePlan, createMaintenancePlan, createTire, createWorkOrder,
+  ContinuityError, FuelSubmissionConflict, cancelWorkOrder, closeWorkOrder, createHourMaintenancePlan, createMaintenancePlan, createTire, createWorkOrder,
   moveTire, recordAssetReading, registerFuel, reserveForWorkOrder, setAssetDetails, startWorkOrder,
 } from "@/lib/continuity";
 import {maintenanceAnchor,maintenanceContextFromForm,maintenanceDraft,maintenanceHref,type MaintenanceFormKind,type MaintenanceFormState} from "@/lib/maintenance-form-state";
+import {fuelContextFromForm,fuelDraft,fuelHref,type FuelFormState} from "@/lib/fuel-form-state";
 
 const value = (form:FormData,key:string) => String(form.get(key)??"");
 function message(error:unknown) {
@@ -18,13 +19,6 @@ function message(error:unknown) {
   console.error("Error en continuidad operacional",error);
   return "No se pudo registrar el cambio. Revise los datos e intente nuevamente.";
 }
-async function run(path:string,operation:()=>Promise<unknown>):Promise<never> {
-  try { await operation(); }
-  catch (error) { redirect(`${path}?error=${encodeURIComponent(message(error))}`); }
-  revalidatePath("/","layout");
-  redirect(`${path}?ok=1`);
-}
-
 async function maintain(kind:MaintenanceFormKind,form:FormData,operation:()=>Promise<unknown>,scope="maintenance",createdOrder=false):Promise<MaintenanceFormState>{
   let result:unknown;
   try{result=await operation();}catch(error){return {error:message(error),values:maintenanceDraft(kind,form)};}
@@ -86,13 +80,15 @@ export async function cancelWorkOrderAction(_previous:MaintenanceFormState,form:
   const actor=await requireActor(); const id=value(form,"order_id");
   return maintain("cancel",form,()=>cancelWorkOrder(actor,id,value(form,"reason")),id);
 }
-export async function registerFuelAction(form:FormData) {
+export async function registerFuelAction(_previous:FuelFormState,form:FormData):Promise<FuelFormState> {
   const actor=await requireActor();
-  await run("/combustible",()=>registerFuel(actor,{
+  try{await registerFuel(actor,{
     submission_key:value(form,"submission_key"),asset_id:value(form,"asset_id"),driver_id:value(form,"driver_id"),service_id:value(form,"service_id"),
     fuel_date:value(form,"fuel_date"),liters:value(form,"liters"),cost_clp:value(form,"cost_clp"),reading:value(form,"reading"),
     full_tank:form.get("full_tank")==="on",supplier:value(form,"supplier"),receipt_number:value(form,"receipt_number"),notes:value(form,"notes"),
-  }));
+  });}catch(error){return {error:message(error),values:fuelDraft(form),canRenew:error instanceof FuelSubmissionConflict};}
+  revalidatePath("/","layout");
+  redirect(fuelHref(fuelContextFromForm(form),"nueva-carga",{ok:"1"}));
 }
 export async function createTireAction(_previous:MaintenanceFormState,form:FormData):Promise<MaintenanceFormState> {
   const actor=await requireActor();

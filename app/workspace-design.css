@@ -192,6 +192,15 @@
   .app-shell .maintenance-tire-control { min-width:230px; max-width:320px; }
   .app-shell .maintenance-tire-control summary { cursor:pointer; color:var(--company-accent); font-size:12px; font-weight:600; padding:6px 0; }
   .app-shell .maintenance-tire-control[open] summary { margin-bottom:10px; }
+  .app-shell .fuel-section { scroll-margin-top:76px; min-width:0; }
+  .app-shell .fuel-entry-form { min-width:0; }
+  .app-shell .fuel-entry-form .request-form-error { margin:0 0 6px; }
+  .app-shell .fuel-history-filter { display:flex; flex-wrap:wrap; gap:10px; align-items:end; margin:0 0 16px; }
+  .app-shell .fuel-history-filter label { display:grid; flex:1; gap:6px; min-width:0; font-size:12px; }
+  .app-shell .fuel-history-filter .text-link { align-self:center; }
+  .app-shell .fuel-record-notes { margin-top:6px; }
+  .app-shell .fuel-record-notes summary { color:var(--company-accent); font-size:11px; cursor:pointer; }
+  .app-shell .fuel-record-notes p { white-space:pre-wrap; overflow-wrap:anywhere; max-width:320px; }
   .app-shell .service-operation-form[data-service-operation="plan"] { grid-template-columns:repeat(2,minmax(0,1fr)); }
 }
 @media screen and (max-width:650px) {
