@@ -1,0 +1,35 @@
+import assert from "node:assert/strict";
+import {readdir,readFile} from "node:fs/promises";
+import test from "node:test";
+import type {Actor} from "../lib/auth";
+test("la orden conserva datos operativos y distingue ausencia, cero y estado del documento",async t=>{
+  process.env.PGLITE_DATA_DIR="memory://";
+  const {db,transaction}=await import("../lib/db"),order=await import("../lib/service-order"),{waitForPrintAssets}=await import("../lib/print-readiness");
+  for(const name of (await readdir("db")).filter(n=>/^\d+.*\.sql$/.test(n)).sort()){const sql=await readFile("db/"+name,"utf8");await transaction(async tx=>{for(const part of sql.split(/;\s*(?:\n|$)/).map(x=>x.trim()).filter(Boolean))await tx.query(part);});}
+  const [client,other]=await db.query<{id:string}>("INSERT INTO clients(name) VALUES('Cliente orden revisión'),('Otro cliente orden') RETURNING id"),[site]=await db.query<{id:string}>("INSERT INTO client_sites(client_id,name) VALUES($1,'Faena') RETURNING id",[client.id]);
+  const users=await db.query<{id:string;role:Actor['role'];client_id:string|null}>("INSERT INTO users(email,name,password_hash,role,client_id) VALUES('admin@order.example.invalid','Admin','h','admin',NULL),('ops@order.example.invalid','Operaciones','h','operaciones',NULL),('driver@order.example.invalid','Conductor','h','conductor',NULL),('client@order.example.invalid','Cliente','h','cliente',$1),('other@order.example.invalid','Ajeno','h','cliente',$2) RETURNING id,role,client_id",[client.id,other.id]),[admin,ops,driver,portal,foreign]=users.map(u=>({...u,name:"Revisión",email:"test@example.invalid"})),[asset]=await db.query<{id:string}>("INSERT INTO assets(code,label,kind,plate) VALUES('ORD-CAM','Camión orden','camion','ORD-100') RETURNING id");
+  const services:Record<string,string>={};for(const company of ["rerchar","e_y_j"]){const [s]=await db.query<{id:string}>("INSERT INTO service_requests(submission_key,client_id,site_id,operating_company,request_category,service_type,waste_type,origin,destination,status,scheduled_for,assigned_asset_id,driver_id,created_by) VALUES(gen_random_uuid(),$1,$2,$3,$4,'retiro','Material','Faena','Patio','programada','2026-09-29T02:30:00Z',$5,$6,$7) RETURNING id",[client.id,site.id,company,company==="rerchar"?"compra":"servicios",asset.id,driver.id,admin.id]);services[company]=s.id;}
+  const [precise,unknown]=await db.query<{id:string}>("INSERT INTO material_catalog(name) VALUES('Material preciso revisión'),('Material sin cantidad revisión') RETURNING id");
+  await db.query("INSERT INTO service_request_materials(service_id,position,material_id,material_name,quantity_kg,unit_price_clp,line_note) VALUES($1,2,$3,'Material sin cantidad',NULL,123456.78,NULL),($1,1,$2,'Material preciso',0.001,876543.21,'Separar para recepción')",[services.rerchar,precise.id,unknown.id]);
+  await db.query("INSERT INTO service_checklists(service_id,vehicle_ok,documents_ok,containment_ok,ppe_ok,comment,completed_by) VALUES($1,true,false,true,true,'Control registrado',$2)",[services.rerchar,ops.id]);
+  await t.test("la orden conserva materiales y cantidades sin exponer sus precios",async()=>{
+    const detail=await order.getServiceOrder(driver,services.rerchar);assert.equal(detail.service.operating_company,"rerchar");assert.equal(detail.service.asset_label,"ORD-100 · Camión orden");assert.deepEqual(detail.materials.map(m=>m.position),[1,2]);assert.equal(detail.materials[0].quantity_kg,"0.001");assert.equal(detail.materials[1].quantity_kg,null);assert.ok(detail.materials.every(m=>!("unit_price_clp" in m)));assert.equal(detail.check?.completed_name,"Operaciones");assert.equal(detail.check?.documents_ok,false);
+    assert.equal(detail.materials[0].line_note,"Separar para recepción");assert.equal((await order.getServiceOrder(portal,services.e_y_j)).materials.length,0);
+  });
+  await t.test("los pesos faltantes no se convierten en cero y los decimales conservan su unidad",async()=>{
+    assert.equal(order.serviceOrderWeight(null),"Sin registro");assert.equal(order.serviceOrderWeight("0"),"0 kg");assert.equal(order.serviceOrderNet(null,"0"),"Sin registro");assert.equal(order.serviceOrderNet("100.30","100.10"),"0,2 kg");assert.equal(order.serviceOrderNet("100","100"),"0 kg");assert.equal(order.serviceOrderNet("10","20"),"Revisar pesaje");assert.equal(order.serviceOrderWeight("0.001",3),"0,001 kg");
+  });
+  await t.test("el documento distingue borrador, cancelación, cierre y arriendo",async()=>{
+    const {service}=await order.getServiceOrder(admin,services.rerchar);assert.equal(order.serviceOrderState(service).draft,false);assert.equal(order.serviceOrderState({...service,operating_company:null}).draft,true);assert.equal(order.serviceOrderState({...service,status:"solicitada"}).draft,true);assert.equal(order.serviceOrderState({...service,status:"cancelada"}).title,"ORDEN CANCELADA");assert.equal(order.serviceOrderState({...service,status:"completada",scheduled_for:null,assigned_asset_id:null,driver_id:null}).draft,false);
+    const rental={...service,service_type:"arriendo",scheduled_for:null,assigned_asset_id:null,driver_id:null,rental_from:"2026-09-28",rental_to:"2026-09-30"};assert.equal(order.serviceOrderState(rental).title,"ORDEN DE ARRIENDO");assert.equal(order.serviceOrderState({...rental,rental_to:null}).draft,true);
+  });
+  await t.test("la lectura usa el perfil vigente y el alcance real del servicio",async()=>{
+    for(const actor of [admin,ops,driver,portal])assert.ok(await order.getServiceOrder(actor,services.rerchar));await assert.rejects(()=>order.getServiceOrder(foreign,services.rerchar),/sin acceso/);await db.query("UPDATE users SET client_id=$2 WHERE id=$1",[portal.id,other.id]);await assert.rejects(()=>order.getServiceOrder(portal,services.rerchar),/sin acceso/);await db.query("UPDATE users SET active=false WHERE id=$1",[admin.id]);await assert.rejects(()=>order.getServiceOrder(admin,services.rerchar),/sin acceso/);
+  });
+  await t.test("la preparación espera a que fuentes y marca estén listas",async()=>{
+    let fontReady!:()=>void,imageReady!:()=>void,finished=false;const fonts=new Promise<void>(resolve=>fontReady=resolve),image=new Promise<void>(resolve=>imageReady=resolve);const preparing=waitForPrintAssets(fonts,[{complete:false,naturalWidth:0,decode:()=>image}],1000).then(()=>finished=true);await Promise.resolve();assert.equal(finished,false);fontReady();await Promise.resolve();assert.equal(finished,false);imageReady();await preparing;assert.equal(finished,true);
+  });
+  await t.test("una marca que falla o no termina de cargar permite reintentar sin bloquear la preparación",async()=>{
+    await assert.rejects(()=>waitForPrintAssets(Promise.resolve(),[{complete:false,naturalWidth:0,decode:()=>Promise.reject(new Error("fallo de imagen"))}],100),/No se pudieron cargar/);await assert.rejects(()=>waitForPrintAssets(new Promise(()=>{}),[],10),/demoró demasiado/);let decoded=false;await waitForPrintAssets(Promise.resolve(),[{complete:true,naturalWidth:892,decode:async()=>{decoded=true;}}],100);assert.equal(decoded,false);
+  });
+});

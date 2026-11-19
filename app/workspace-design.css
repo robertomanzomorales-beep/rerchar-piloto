@@ -303,6 +303,30 @@
   .app-shell .receivable-vencida { background:#fbefed; color:#9b5147; }
   .app-shell :is(.receivable-anulada,.transaction-salida) { background:#f0f2f4; color:#64727b; }
   .app-shell .transaction-amount { font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .print-control { display:grid; gap:8px; justify-items:end; min-width:0; }
+  .print-control-error { font-size:14px; color:#9b5147; max-width:360px; line-height:1.5; }
+  .app-shell .service-order-actions { flex-wrap:wrap; }
+  .app-shell .service-order-sheet { padding:30px 34px; }
+  .app-shell .service-order-sheet .order-grid :is(small,strong),.app-shell .service-order-sheet .order-section p { font-size:14px; line-height:1.6; }
+  .app-shell .service-order-sheet .order-section h2 { font-size:16px; }
+  .app-shell .service-order-sheet :is(.order-system,.order-number small,.order-footer) { font-size:12px; }
+  .app-shell .service-order-sheet .order-logo { width:175px; border-radius:0; }
+  .app-shell .service-order-sheet .order-header { border-bottom:2px solid #20765b; padding-bottom:20px; }
+  .app-shell .service-order-sheet[data-company="e_y_j"] .order-header { border-bottom-color:#2f5d84; }
+  .app-shell .service-order-sheet[data-company="e_y_j"] .order-section h2 { color:#2f5d84; }
+  .app-shell .service-order-notice { margin:18px 0 0; padding:12px 14px; border:1px solid #d4dce0; border-radius:6px; color:#52636c; background:#f4f7f8; font-size:14px; line-height:1.6; }
+  .app-shell .service-order-materials { border-collapse:collapse; width:100%; margin-bottom:18px; font-size:14px; table-layout:fixed; }
+  .app-shell .service-order-materials th { text-align:left; color:var(--muted); font-size:14px; padding:8px 0; }
+  .app-shell .service-order-materials td { padding:10px 0; border-top:1px solid var(--line); overflow-wrap:anywhere; }
+  .app-shell .service-order-materials :is(th,td):last-child { width:32%; padding-left:16px; }
+  .app-shell .service-order-material-note { display:block; margin-top:5px; white-space:pre-wrap; color:var(--muted); font-size:12px; line-height:1.6; }
+  .app-shell .service-order-sheet .order-check-grid > div { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:10px; }
+  .app-shell .service-order-sheet .order-check-grid strong { font-weight:500; font-size:14px; }
+  .app-shell .service-order-sheet .order-check-grid span { font-size:14px; font-weight:600; }
+  .app-shell .service-order-sheet .order-check-pending { color:#866329; }
+  .app-shell .service-order-sheet .order-section .service-order-check-meta { color:var(--muted); font-size:12px; }
+  .app-shell .service-order-sheet .order-section :is(p,strong) { overflow-wrap:anywhere; }
+  @media (max-width:650px) { .app-shell .service-order-sheet { padding:23px 18px; } .app-shell .service-order-sheet .order-check-grid > div { grid-template-columns:minmax(0,1fr); gap:4px; } }
   .app-shell .service-history-timeline { max-height:none; overflow:visible; }
   .app-shell .service-history-timeline li { gap:6px; padding-bottom:20px; overflow-wrap:anywhere; }
   .app-shell .service-history-timeline strong { white-space:pre-wrap; font-weight:600; font-size:12px; }
@@ -396,4 +420,22 @@
 @media (prefers-reduced-motion:reduce) {
   .loading-indicator,.loading-orbit { animation:none; }
   .app-shell .nav-group-panel,.app-shell .nav-group-toggle,.app-shell .nav-link { transition:none; }
+}
+
+@media print {
+  .service-order-sheet .order-logo { width:155px; }
+  .service-order-sheet .order-grid,.service-order-sheet .order-check-grid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px 20px; }
+  .service-order-sheet .order-section { padding:15px 0 4px; }
+  .service-order-sheet .order-section h2 { break-after:avoid-page; margin-bottom:12px; }
+  .service-order-sheet .order-grid > div,.service-order-sheet .order-check-grid > div,.service-order-sheet .service-order-materials tr { break-inside:avoid; }
+  .service-order-sheet .service-order-materials { width:100%; border-collapse:collapse; table-layout:fixed; font-size:11px; margin-bottom:12px; }
+  .service-order-sheet .service-order-materials :is(th,td) { padding:6px 4px; text-align:left; border-top:1px solid #d9dfe2; overflow-wrap:anywhere; }
+  .service-order-sheet .service-order-materials :is(th,td):last-child { width:32%; }
+  .service-order-sheet .service-order-materials thead { display:table-header-group; }
+  .service-order-sheet .service-order-material-note { display:block; white-space:pre-wrap; font-size:10px; line-height:1.5; }
+  .service-order-sheet .order-check-grid > div { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; }
+  .service-order-sheet .order-check-grid :is(strong,span) { font-size:11px; font-weight:500; }
+  .service-order-sheet .service-order-check-meta { color:#5b6970; font-size:10px; }
+  .service-order-sheet .service-order-notice { break-inside:avoid; margin:14px 0 0; padding:8px 10px; border:1px solid #a9b4bb; background:#fff; color:#344851; font-size:11px; line-height:1.5; }
+  .service-order-sheet .order-footer { flex-wrap:wrap; line-height:1.5; }
 }
