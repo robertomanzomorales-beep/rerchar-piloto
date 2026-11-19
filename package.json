@@ -22,6 +22,7 @@
     "test:personnel-http": "node --import tsx scripts/verify-personnel.ts",
     "test:maintenance-http": "node --import tsx scripts/verify-maintenance.ts",
     "test:fuel-http": "node --import tsx scripts/verify-fuel.ts",
+    "test:containers-http": "node --import tsx scripts/verify-containers.ts",
     "test:material-followup-http": "node --import tsx scripts/verify-material-followup.ts",
     "test:material-receipt-form-http": "node --import tsx scripts/verify-material-receipt-form.ts",
     "test:supplier-invoice-form-http": "node --import tsx scripts/verify-supplier-invoice-form.ts",
