@@ -4,29 +4,29 @@ import {redirect} from "next/navigation";
 import {revalidatePath} from "next/cache";
 import {ZodError} from "zod";
 import {requireActor} from "@/lib/auth";
-import {ExtraChargeError,registerExtraReceivablePayment,voidExtraReceivableInvoice} from "@/lib/extra-charges";
-import {parseReceivableFilter} from "@/lib/receivable-export";
+import {ExtraChargeError,invoiceExtraCharge,registerExtraReceivablePayment,voidExtraReceivableInvoice} from "@/lib/extra-charges";
+import type {Company} from "@/lib/companies";
+import {receivableAnchor,receivableContextFromForm,receivableDraft,receivableHref,type ReceivableFormKind,type ReceivableFormState} from "@/lib/receivable-form-state";
 
-const v=(form:FormData,key:string)=>String(form.get(key)??"");
-const page=(form:FormData)=>{
-  const requested=Number(v(form,"pagina"));
-  const current=Number.isSafeInteger(requested)&&requested>=1&&requested<=10_000?requested:1;
-  return `/cobranzas?${new URLSearchParams({empresa:v(form,"company")==="e_y_j"?"e_y_j":"rerchar",
-    estado:parseReceivableFilter(v(form,"estado")),pagina:String(current)})}`;
-};
-async function run(path:string,fn:()=>Promise<unknown>):Promise<never>{
-  try{await fn();}catch(error){
-    const message=error instanceof ExtraChargeError?error.message:error instanceof ZodError?"Revise monto, fecha y referencia.":"No se pudo registrar la operación.";
+const v=(form:FormData,key:string)=>String(form.get(key)??"").replace(/\r\n?/g,"\n");
+async function run(kind:ReceivableFormKind,form:FormData,operation:()=>Promise<unknown>):Promise<ReceivableFormState>{
+  try{await operation();}catch(error){
+    const message=error instanceof ExtraChargeError?error.message:error instanceof ZodError?"Revise el monto, las fechas y los campos obligatorios.":"No se pudo registrar la operación.";
     if(!(error instanceof ExtraChargeError||error instanceof ZodError))console.error("Cobranza",error);
-    redirect(`${path}&error=${encodeURIComponent(message)}`);
+    return {error:message,values:receivableDraft(kind,form)};
   }
-  revalidatePath("/","layout");redirect(`${path}&ok=1`);
+  revalidatePath("/","layout");const id=v(form,kind==="reconcile"?"id":"invoice_id");
+  redirect(receivableHref(receivableContextFromForm(form),receivableAnchor(kind,id),{ok:"1",origen:kind,registro:id}));
 }
-export async function registerExtraReceivablePaymentAction(form:FormData){
-  const actor=await requireActor();await run(page(form),()=>registerExtraReceivablePayment(actor,v(form,"invoice_id"),{
-    submission_key:v(form,"submission_key"),amount_clp:v(form,"amount_clp"),paid_on:v(form,"paid_on"),reference:v(form,"reference"),
-  }));
+export async function registerExtraReceivablePaymentAction(_previous:ReceivableFormState,form:FormData):Promise<ReceivableFormState>{
+  const actor=await requireActor(),company=receivableContextFromForm(form).empresa as Company;
+  return run("payment",form,()=>registerExtraReceivablePayment(actor,v(form,"invoice_id"),{submission_key:v(form,"submission_key"),amount_clp:v(form,"amount_clp"),paid_on:v(form,"paid_on"),reference:v(form,"reference")},company));
 }
-export async function voidExtraReceivableInvoiceAction(form:FormData){
-  const actor=await requireActor();await run(page(form),()=>voidExtraReceivableInvoice(actor,v(form,"invoice_id"),v(form,"reason")));
+export async function voidExtraReceivableInvoiceAction(_previous:ReceivableFormState,form:FormData):Promise<ReceivableFormState>{
+  const actor=await requireActor(),company=receivableContextFromForm(form).empresa as Company;
+  return run("void",form,()=>voidExtraReceivableInvoice(actor,v(form,"invoice_id"),v(form,"reason"),company));
+}
+export async function reconcileReceivableAction(_previous:ReceivableFormState,form:FormData):Promise<ReceivableFormState>{
+  const actor=await requireActor(),company=receivableContextFromForm(form).empresa as Company;
+  return run("reconcile",form,()=>invoiceExtraCharge(actor,v(form,"id"),{invoice_number:v(form,"invoice_number"),invoiced_on:v(form,"invoiced_on"),due_on:v(form,"due_on"),total_clp:v(form,"total_clp")},company));
 }

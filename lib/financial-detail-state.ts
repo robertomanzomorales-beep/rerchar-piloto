@@ -29,3 +29,6 @@ export function financialDetailHref(id:string,context:FinancialDetailContext={},
 export const financialCostLabels:Record<string,string>={mano_obra:"Mano de obra",disposicion:"Disposición",peajes:"Peajes",equipos:"Equipos",otros:"Otros"};
 export const financialPaymentLabels:Record<string,string>={transferencia:"Transferencia",efectivo:"Efectivo",tarjeta:"Tarjeta",otro:"Otro"};
 export const financialMoney=(value:string|number)=>Number(value).toLocaleString("es-CL",{maximumFractionDigits:2});
+
+// Los importes admiten dos decimales; los centavos evitan residuos al calcular máximos de abono.
+export const financialBalance=(total:string|number,paid:string|number)=>(Math.round(Number(total)*100)-Math.round(Number(paid)*100))/100;

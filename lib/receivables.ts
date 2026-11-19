@@ -3,6 +3,7 @@ import {db} from "./db";
 import type {Company} from "./companies";
 import {moduleReady} from "./schema-readiness";
 import type {ReceivableFilter} from "./receivable-export";
+import {isFinanceId} from "./finance-catalog-state";
 
 export class ReceivableError extends Error {}
 function admin(actor:Actor){if(actor.role!=="admin")throw new ReceivableError("Acceso administrativo requerido.");}
@@ -10,36 +11,36 @@ function validCompany(company:Company){if(!["rerchar","e_y_j"].includes(company)
 export const todayChile=()=>new Intl.DateTimeFormat("sv-SE",{timeZone:"America/Santiago",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
 export type Receivable={id:string;source:"servicio"|"extraordinario"|"edp"|"material";service_id:string|null;statement_id:string|null;
   guide_id:string|null;guide_count:string;edp_count:string;client_name:string;invoice_number:string;issued_on:Date|string;due_on:Date|string;
-  total_clp:string;paid_clp:string;extra_count:string};
+  total_clp:string;paid_clp:string;extra_count:string;status?:"emitida"|"anulada"};
 export type ReceivableOverview={total:string;overdue:string;upcoming:string;outstanding:string;legacy:string};
 
 const base=(billingReady:boolean)=>`SELECT f.id,'servicio'::text AS source,v.service_id,c.name AS client_name,f.invoice_number,
-  f.issued_on,f.due_on,f.total_clp,COALESCE((SELECT sum(p.amount_clp) FROM invoice_payments p WHERE p.invoice_id=f.id),0)::text AS paid_clp,
+  f.issued_on,f.due_on,f.total_clp,f.status,COALESCE((SELECT sum(p.amount_clp) FROM invoice_payments p WHERE p.invoice_id=f.id),0)::text AS paid_clp,
   (SELECT count(*)::text FROM service_extra_charges x WHERE x.linked_service_invoice_id=f.id) AS extra_count,
   ${billingReady?"(SELECT p.id FROM payment_statements p WHERE p.service_invoice_id=f.id ORDER BY p.created_at LIMIT 1)":"NULL::uuid"} AS statement_id,
   ${billingReady?"(SELECT count(*)::text FROM payment_statements p WHERE p.service_invoice_id=f.id)":"'0'::text"} AS edp_count,
   NULL::uuid AS guide_id,'0'::text AS guide_count
   FROM service_invoices f JOIN service_valuations v ON v.id=f.valuation_id JOIN service_requests s ON s.id=v.service_id
   JOIN clients c ON c.id=s.client_id WHERE s.operating_company=$1 AND s.deleted_at IS NULL AND f.status='emitida' AND f.total_verified=true`;
-const extraordinary=(billingReady:boolean,materialReady:boolean)=>`SELECT i.id,
+const extraordinary=(billingReady:boolean,materialReady:boolean,includeVoided=false)=>`SELECT i.id,
   ${billingReady||materialReady?`CASE ${billingReady?"WHEN EXISTS(SELECT 1 FROM payment_statements p WHERE p.receivable_invoice_id=i.id) THEN 'edp' ":""}
     ${materialReady?"WHEN EXISTS(SELECT 1 FROM material_guide_items g WHERE g.receivable_invoice_id=i.id) THEN 'material' ":""}
     ELSE 'extraordinario' END`:"'extraordinario'"}::text AS source,
   (SELECT x.service_id FROM service_extra_charges x WHERE x.receivable_invoice_id=i.id ORDER BY x.created_at LIMIT 1) AS service_id,
-  c.name AS client_name,i.invoice_number,i.issued_on,i.due_on,i.total_clp,
+  c.name AS client_name,i.invoice_number,i.issued_on,i.due_on,i.total_clp,i.status,
   COALESCE((SELECT sum(p.amount_clp) FROM extra_receivable_payments p WHERE p.invoice_id=i.id),0)::text AS paid_clp,
   (SELECT count(*)::text FROM service_extra_charges x WHERE x.receivable_invoice_id=i.id) AS extra_count,
   ${billingReady?"(SELECT p.id FROM payment_statements p WHERE p.receivable_invoice_id=i.id ORDER BY p.created_at LIMIT 1)":"NULL::uuid"} AS statement_id,
   ${billingReady?"(SELECT count(*)::text FROM payment_statements p WHERE p.receivable_invoice_id=i.id)":"'0'::text"} AS edp_count,
   ${materialReady?"(SELECT g.guide_id FROM material_guide_items g WHERE g.receivable_invoice_id=i.id ORDER BY g.guide_id LIMIT 1)":"NULL::uuid"} AS guide_id,
   ${materialReady?"(SELECT count(DISTINCT g.guide_id)::text FROM material_guide_items g WHERE g.receivable_invoice_id=i.id)":"'0'::text"} AS guide_count
-  FROM extra_receivable_invoices i JOIN clients c ON c.id=i.client_id WHERE i.issuer=$1 AND i.status='emitida'`;
+  FROM extra_receivable_invoices i JOIN clients c ON c.id=i.client_id WHERE i.issuer=$1 ${includeVoided?"":"AND i.status='emitida'"}`;
 
 export async function listReceivables(actor:Actor,company:Company){
   admin(actor);validCompany(company);
   const [ready,materialReady]=await Promise.all([moduleReady("edp_billing"),moduleReady("material_sale_billing")]);
   return db.query<Receivable>(`SELECT * FROM (${base(ready)} UNION ALL ${extraordinary(ready,materialReady)}) r
-    ORDER BY (r.total_clp::numeric-r.paid_clp::numeric)<=0,r.due_on,r.invoice_number LIMIT 500`,[company]);
+    ORDER BY (r.total_clp::numeric-r.paid_clp::numeric)<=0,r.due_on,r.invoice_number,r.source,r.id`,[company]);
 }
 
 export async function listReceivablesPage(actor:Actor,company:Company,filter:ReceivableFilter,on=todayChile(),limit=101,offset=0){
@@ -57,7 +58,7 @@ export async function listReceivablesPage(actor:Actor,company:Company,filter:Rec
   const [count,items]=await Promise.all([
     db.query<{total:string}>(`SELECT count(*)::text AS total ${from} ${where}`,[company,filter,on]),
     db.query<Receivable>(`SELECT r.* ${from} ${where}
-      ORDER BY (r.total_clp::numeric-r.paid_clp::numeric)<=0,r.due_on,r.invoice_number,r.id
+      ORDER BY (r.total_clp::numeric-r.paid_clp::numeric)<=0,r.due_on,r.invoice_number,r.source,r.id
       LIMIT $4 OFFSET $5`,[company,filter,on,Math.max(1,Math.min(1000,limit)),Math.max(0,offset)]),
   ]);
   return {total:Number(count[0]?.total??0),items};
@@ -109,4 +110,20 @@ export async function receivablesOverview(actor:Actor,company:Company,on=todayCh
           AND f.status='emitida' AND f.total_verified=false))::text AS legacy
     FROM balances`,[company,on]);
   return row;
+}
+
+export async function getReceivableInvoice(actor:Actor,company:Company,id:string){
+  admin(actor);validCompany(company);if(!isFinanceId(id))return undefined;
+  const [ready,materialReady]=await Promise.all([moduleReady("edp_billing"),moduleReady("material_sale_billing")]);
+  return (await db.query<Receivable>(`SELECT r.* FROM (${extraordinary(ready,materialReady,true)}) r WHERE r.id=$2`,[company,id]))[0];
+}
+export type ReconciliationCharge=LegacyReconciliation&{status:string;receivable_invoice_id:string|null;linked_service_invoice_id:string|null};
+export async function getReconciliationCharge(actor:Actor,company:Company,id:string){
+  admin(actor);validCompany(company);if(!isFinanceId(id))return undefined;
+  return (await db.query<ReconciliationCharge>(`SELECT x.id,'cargo'::text AS source,x.service_id,
+    COALESCE(x.invoice_number,'Sin folio') AS invoice_number,c.name AS client_name,
+    COALESCE(x.invoiced_on,x.service_day) AS issued_on,x.service_day,x.reason,x.status,
+    x.receivable_invoice_id,x.linked_service_invoice_id
+    FROM service_extra_charges x JOIN service_requests s ON s.id=x.service_id JOIN clients c ON c.id=s.client_id
+    WHERE x.id=$2 AND s.operating_company=$1 AND s.deleted_at IS NULL`,[company,id]))[0];
 }

@@ -1,7 +1,8 @@
 import {z} from "zod";
 import type {Actor} from "./auth";
 import {canPlan} from "./auth";
-import {db,transaction} from "./db";
+import {db,transaction,type Db} from "./db";
+import {financeDay} from "./finance-catalog-state";
 import type {Company} from "./companies";
 import {moduleReady} from "./schema-readiness";
 
@@ -20,6 +21,12 @@ const amount=z.union([z.literal(""),z.string(),z.number()]).transform((raw,ctx)=
 const today=()=>new Intl.DateTimeFormat("sv-SE",{timeZone:"America/Santiago",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
 function staff(actor:Actor){if(!canPlan(actor))reject("Se requiere acceso de operaciones o administración.");}
 function admin(actor:Actor){if(actor.role!=="admin")reject("La decisión comercial requiere administración.");}
+async function authorizeReceivable(tx:Db,actor:Actor){
+  admin(actor);const [user]=await tx.query("SELECT id FROM users WHERE id=$1 AND role='admin' AND active=true FOR SHARE",[actor.id]);
+  if(!user)reject("Su acceso de administración ya no está activo.");
+}
+const expectedIssuer=(company?:Company)=>company===undefined?null:z.enum(["rerchar","e_y_j"]).parse(company);
+
 export const extraChargeLabels={flete_falso:"Flete falso",sobrestadia:"Sobreestadía",otro:"Otro cargo"} as const;
 export type ExtraCharge={id:string;service_id:string;service_day:Date|string;kind:keyof typeof extraChargeLabels;reason:string;
   source_outcome:string;source_observation:string;amount_clp:string|null;quote_reference:string|null;client_order_reference:string|null;
@@ -104,18 +111,19 @@ export async function decideExtraCharge(actor:Actor,id:string,input:unknown){
   });
 }
 
-export async function invoiceExtraCharge(actor:Actor,id:string,input:unknown){
-  admin(actor);
+export async function invoiceExtraCharge(actor:Actor,id:string,input:unknown,company?:Company){
+  admin(actor);const issuer=expectedIssuer(company);
   if(!uuid.safeParse(id).success)reject("Cargo inválido.");
   const data=z.object({invoice_number:z.string().trim().min(2).max(80),invoiced_on:z.iso.date(),due_on:z.iso.date(),total_clp:amount}).parse(input);
   if(data.invoiced_on>today())reject("La factura no puede tener fecha futura.");
   if(data.due_on<data.invoiced_on)reject("El vencimiento no puede anteceder a la emisión.");
   if(!data.total_clp)reject("Indique el total de la factura externa, incluidos impuestos si corresponde.");
   await transaction(async tx=>{
+    await authorizeReceivable(tx,actor);
     const [before]=await tx.query<{status:string;service_day:Date|string;operating_company:Company|null;client_id:string;invoice_number:string|null;
       receivable_invoice_id:string|null;linked_service_invoice_id:string|null}>(`SELECT x.status,x.service_day,s.operating_company,s.client_id,
       x.invoice_number,x.receivable_invoice_id,x.linked_service_invoice_id
-      FROM service_extra_charges x JOIN service_requests s ON s.id=x.service_id WHERE x.id=$1 AND s.deleted_at IS NULL FOR UPDATE OF x`,[id]);
+      FROM service_extra_charges x JOIN service_requests s ON s.id=x.service_id WHERE x.id=$1 AND s.deleted_at IS NULL AND ($2::text IS NULL OR s.operating_company=$2) FOR UPDATE OF x`,[id,issuer]);
     if(!before||!['aprobado','facturado'].includes(before.status))reject("Apruebe primero el cargo; sólo se registra una factura externa existente.");
     if(before.status==='facturado'&&(before.receivable_invoice_id||before.linked_service_invoice_id))reject("Este cargo ya tiene una factura conciliada.");
     if(before.invoice_number&&before.invoice_number!==data.invoice_number)reject("El folio anterior es distinto. Revise su historial antes de conciliar.");
@@ -156,22 +164,28 @@ export async function invoiceExtraCharge(actor:Actor,id:string,input:unknown){
   });
 }
 
-export async function registerExtraReceivablePayment(actor:Actor,invoiceId:string,input:unknown){
-  admin(actor);
+export async function registerExtraReceivablePayment(actor:Actor,invoiceId:string,input:unknown,company?:Company){
+  admin(actor);const issuer=expectedIssuer(company);
   if(!uuid.safeParse(invoiceId).success)reject("Factura inválida.");
   const data=z.object({submission_key:uuid,amount_clp:amount,paid_on:z.iso.date(),reference:z.string().trim().min(2).max(120)}).parse(input);
   if(!data.amount_clp)reject("Indique un abono mayor que cero.");
   if(data.paid_on>today())reject("El pago no puede tener una fecha futura.");
   return transaction(async tx=>{
+    await authorizeReceivable(tx,actor);
     const [invoice]=await tx.query<{id:string;status:string;issued_on:Date|string;total_clp:string}>(
-      "SELECT id,status,issued_on,total_clp FROM extra_receivable_invoices WHERE id=$1 FOR UPDATE",[invoiceId]);
+      "SELECT id,status,issued_on,total_clp FROM extra_receivable_invoices WHERE id=$1 AND ($2::text IS NULL OR issuer=$2) FOR UPDATE",[invoiceId,issuer]);
     if(!invoice||invoice.status!=="emitida")reject("La factura no está vigente.");
-    const [old]=await tx.query<{id:string;invoice_id:string}>("SELECT id,invoice_id FROM extra_receivable_payments WHERE submission_key=$1",[data.submission_key]);
-    if(old){if(old.invoice_id!==invoiceId)reject("La clave de pago pertenece a otra factura.");return old.id;}
+    const [old]=await tx.query<{id:string;invoice_id:string;amount_clp:string;paid_on:Date|string;reference:string}>("SELECT id,invoice_id,amount_clp,paid_on,reference FROM extra_receivable_payments WHERE submission_key=$1",[data.submission_key]);
+    if(old){
+      if(old.invoice_id!==invoiceId)reject("La clave de pago pertenece a otra factura.");
+      if(Number(old.amount_clp)!==Number(data.amount_clp)||financeDay(old.paid_on)!==data.paid_on||old.reference!==data.reference)
+        reject("Esta clave ya registró un abono con otros datos. Recargue la vista para ingresar otro pago.");
+      return old.id;
+    }
     const issued=invoice.issued_on instanceof Date?invoice.issued_on.toISOString().slice(0,10):String(invoice.issued_on).slice(0,10);
     if(data.paid_on<issued)reject("El pago no puede anteceder a la emisión de la factura.");
-    const [balance]=await tx.query<{paid:string}>("SELECT COALESCE(sum(amount_clp),0)::text AS paid FROM extra_receivable_payments WHERE invoice_id=$1",[invoiceId]);
-    if(Number(balance.paid)+Number(data.amount_clp)>Number(invoice.total_clp))reject("El abono supera el saldo de la factura.");
+    const [balance]=await tx.query<{allowed:boolean}>("SELECT (COALESCE(sum(amount_clp),0)+$2::numeric)<=$3::numeric AS allowed FROM extra_receivable_payments WHERE invoice_id=$1",[invoiceId,data.amount_clp,invoice.total_clp]);
+    if(!balance?.allowed)reject("El abono supera el saldo de la factura.");
     const [created]=await tx.query<{id:string}>(`INSERT INTO extra_receivable_payments
       (submission_key,invoice_id,amount_clp,paid_on,reference,created_by) VALUES($1,$2,$3,$4,$5,$6) RETURNING id`,
       [data.submission_key,invoiceId,data.amount_clp,data.paid_on,data.reference,actor.id]);
@@ -181,14 +195,15 @@ export async function registerExtraReceivablePayment(actor:Actor,invoiceId:strin
   });
 }
 
-export async function voidExtraReceivableInvoice(actor:Actor,invoiceId:string,input:unknown){
-  admin(actor);
+export async function voidExtraReceivableInvoice(actor:Actor,invoiceId:string,input:unknown,company?:Company){
+  admin(actor);const issuer=expectedIssuer(company);
   if(!uuid.safeParse(invoiceId).success)reject("Factura inválida.");
   const reason=z.string().trim().min(5).max(500).parse(input);
   const billingReady=await moduleReady("edp_billing");
   const materialBillingReady=await moduleReady("material_sale_billing");
   await transaction(async tx=>{
-    const [invoice]=await tx.query<{status:string}>("SELECT status FROM extra_receivable_invoices WHERE id=$1 FOR UPDATE",[invoiceId]);
+    await authorizeReceivable(tx,actor);
+    const [invoice]=await tx.query<{status:string}>("SELECT status FROM extra_receivable_invoices WHERE id=$1 AND ($2::text IS NULL OR issuer=$2) FOR UPDATE",[invoiceId,issuer]);
     if(!invoice||invoice.status!=="emitida")reject("Factura no vigente.");
     const [paid]=await tx.query("SELECT id FROM extra_receivable_payments WHERE invoice_id=$1 LIMIT 1",[invoiceId]);
     if(paid)reject("No se puede anular una factura que registra pagos.");

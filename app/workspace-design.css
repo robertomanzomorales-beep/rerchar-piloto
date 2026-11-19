@@ -287,6 +287,23 @@
   .app-shell .financial-records li small { text-align:left; }
   .app-shell .financial-detail-page :is(.page-intro,.fact strong,.supply-meta strong,.financial-detail-form) { overflow-wrap:anywhere; }
   .app-shell .financial-document-link { margin-top:16px; }
+  .app-shell .receivable-records { display:grid; gap:16px; margin-top:18px; }
+  .app-shell .receivable-entry { padding:18px; border:1px solid var(--line); border-radius:8px; background:#fff; overflow-wrap:anywhere; }
+  .app-shell .receivable-entry .finance-record-top { margin-bottom:10px; }
+  .app-shell .receivable-client { margin:5px 0 0; color:var(--muted); font-size:12px; }
+  .app-shell .receivable-amounts { display:flex; flex-wrap:wrap; gap:14px 28px; padding:12px 0 16px; }
+  .app-shell .receivable-amounts > div { display:grid; gap:5px; min-width:0; }
+  .app-shell .receivable-amounts span { color:var(--muted); font-size:11px; }
+  .app-shell .receivable-amounts strong { font-size:15px; font-variant-numeric:tabular-nums; }
+  .app-shell .receivable-document-links { display:flex; flex-wrap:wrap; gap:8px 18px; margin-bottom:6px; font-size:12px; }
+  .app-shell .receivable-form :is(label,.two-fields) { min-width:0; }
+  .app-shell .receivable-form .request-form-error { margin:0 0 8px; }
+  .app-shell :is(.receivable-pagada,.transaction-entrada) { background:#eaf5ef; color:#27654b; }
+  .app-shell :is(.receivable-pendiente,.receivable-vence-pronto) { background:#eef3f9; color:#385f83; }
+  .app-shell .receivable-vencida { background:#fbefed; color:#9b5147; }
+  .app-shell :is(.receivable-anulada,.transaction-salida) { background:#f0f2f4; color:#64727b; }
+  .app-shell .transaction-amount { font-variant-numeric:tabular-nums; white-space:nowrap; }
+
 
   .app-shell .service-operation-form[data-service-operation="plan"] { grid-template-columns:repeat(2,minmax(0,1fr)); }
 }
@@ -308,6 +325,8 @@
   .app-shell .finance-catalog-form .two-fields { grid-template-columns:minmax(0,1fr); }
   .app-shell .finance-record-top { flex-wrap:wrap; }
   .app-shell .financial-detail-form .two-fields { grid-template-columns:minmax(0,1fr); }
+  .app-shell .receivable-form .two-fields { grid-template-columns:minmax(0,1fr); }
+  .app-shell .receivable-entry { padding:14px; }
 }
 @media (prefers-reduced-motion:reduce) {
   .loading-indicator,.loading-orbit { animation:none; }

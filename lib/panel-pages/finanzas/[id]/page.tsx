@@ -5,7 +5,7 @@ import {ArrowLeft,Banknote,ReceiptText,Wallet} from "lucide-react";
 import {requireActor} from "@/lib/auth";
 import {FinanceError,getFinancialService} from "@/lib/finance";
 import {isFinanceId} from "@/lib/finance-catalog-state";
-import {financialCostLabels,financialDetailAnchors,financialDetailContext,financialDetailFields,financialDetailHref,financialMoney as money,financialPaymentLabels,type FinancialDetailContext,type FinancialDetailKind,type FinancialDetailPage} from "@/lib/financial-detail-state";
+import {financialBalance,financialCostLabels,financialDetailAnchors,financialDetailContext,financialDetailFields,financialDetailHref,financialMoney as money,financialPaymentLabels,type FinancialDetailContext,type FinancialDetailKind,type FinancialDetailPage} from "@/lib/financial-detail-state";
 import {lastRecordPage,recordPage,recordsPerPage} from "@/lib/record-pagination";
 import {Notice,chileCalendarDate,chileDate} from "@/components/UI";
 import {FinancialDetailForm} from "@/components/FinancialDetailForm";
@@ -22,7 +22,7 @@ export default async function FinancialDetail({params,searchParams}:{params:Prom
   const pages={pagina_costos:Math.min(recordPage(context.pagina_costos),lastRecordPage(costs.length)),pagina_abonos:Math.min(recordPage(context.pagina_abonos),lastRecordPage(payments.length)),pagina_anuladas:Math.min(recordPage(context.pagina_anuladas),lastRecordPage(voidedInvoices.length))};
   if((Object.keys(pages) as FinancialDetailPage[]).some(key=>pages[key]!==recordPage(context[key])))redirect(financialDetailHref(id,{...context,...Object.fromEntries(Object.entries(pages).map(([key,value])=>[key,String(value)]))},forced?financialDetailAnchors[forced]:"",query));
   const today=new Intl.DateTimeFormat("sv-SE",{timeZone:"America/Santiago",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
-  const remaining=Number(service.invoice_total??0)-Number(service.paid_clp),margin=Number(service.total_clp??0)-Number(service.manual_cost_clp)-Number(service.fuel_cost_clp);
+  const remaining=financialBalance(service.invoice_total??0,service.paid_clp),margin=financialBalance(financialBalance(service.total_clp??0,service.manual_cost_clp),service.fuel_cost_clp);
   const invoiceId=forced&&["confirm","void","payment"].includes(forced)&&isFinanceId(query.factura)?query.factura!:service.invoice_id??"",sameInvoice=!!invoiceId&&invoiceId===service.invoice_id;
   const closed=service.status==="completada",canValue=closed&&!!service.operating_company&&!service.valuation_id,canInvoice=closed&&!!service.operating_company&&!!service.valuation_id&&!service.invoice_id&&!service.in_payment_statement;
   const canConfirm=sameInvoice&&service.invoice_status==="emitida"&&!service.invoice_total_verified,canVoid=sameInvoice&&service.invoice_status==="emitida"&&!payments.length,canPay=sameInvoice&&service.invoice_status==="emitida"&&!!service.invoice_total_verified&&remaining>0;
