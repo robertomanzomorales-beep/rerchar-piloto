@@ -20,12 +20,14 @@ async function audit(tx: Db, actor: Actor, action: string, entityType: string, e
     [actor.id,action,entityType,entityId,JSON.stringify(change)]);
 }
 
-export type AssetBrief = { id: string; code: string; label: string; kind: string; available: boolean; reading_unit: string; current_reading: string; has_readings: boolean; brand: string | null; model: string | null; model_year: number | null };
+export type AssetBrief = { id: string; code: string; label: string; kind: string; available: boolean; reading_unit: string; current_reading: string; has_readings: boolean; has_reading_plans:boolean; reading_version:string; brand: string | null; model: string | null; model_year: number | null };
 export async function listAssets(actor: Actor) {
   guard(actor);
   return db.query<AssetBrief>(`SELECT a.id,a.code,a.label,a.kind,a.available,a.reading_unit,a.current_reading,a.brand,a.model,a.model_year,
-    EXISTS (SELECT 1 FROM asset_readings r WHERE r.asset_id=a.id) AS has_readings
-    FROM assets a WHERE a.deleted_at IS NULL ORDER BY a.kind,a.label`);
+    EXISTS (SELECT 1 FROM asset_readings r WHERE r.asset_id=a.id) AS has_readings,
+    EXISTS (SELECT 1 FROM maintenance_plans p WHERE p.asset_id=a.id AND p.active=true AND p.frequency_kind='lectura') AS has_reading_plans,
+    (SELECT count(*)::text FROM asset_readings r WHERE r.asset_id=a.id) AS reading_version
+    FROM assets a WHERE a.deleted_at IS NULL ORDER BY a.kind,a.label,a.id`);
 }
 
 export async function setAssetDetails(actor: Actor, assetId: string, input: unknown) {
@@ -37,8 +39,9 @@ export async function setAssetDetails(actor: Actor, assetId: string, input: unkn
     const [asset] = await tx.query<{ current_reading: string; reading_unit: string }>("SELECT current_reading,reading_unit FROM assets WHERE id=$1 AND deleted_at IS NULL FOR UPDATE",[id]);
     if (!asset) reject("Activo no encontrado.");
     if (asset.reading_unit!==data.reading_unit) {
-      const [history]=await tx.query<{recorded:boolean}>("SELECT EXISTS (SELECT 1 FROM asset_readings WHERE asset_id=$1) AS recorded",[id]);
-      if (Number(asset.current_reading)>0 || history.recorded) reject("No cambie la unidad de un activo con lecturas registradas.");
+      const [history]=await tx.query<{recorded:boolean}>(`SELECT (EXISTS (SELECT 1 FROM asset_readings WHERE asset_id=$1)
+        OR EXISTS (SELECT 1 FROM maintenance_plans WHERE asset_id=$1 AND active=true AND frequency_kind='lectura')) AS recorded`,[id]);
+      if (Number(asset.current_reading)>0 || history.recorded) reject("No cambie la unidad de un activo con lecturas o pautas por lectura registradas.");
     }
     await tx.query("UPDATE assets SET brand=NULLIF($2,''),model=NULLIF($3,''),model_year=NULLIF($4,'')::integer,reading_unit=$5 WHERE id=$1",
       [id,data.brand,data.model,String(data.model_year),data.reading_unit]);
@@ -67,11 +70,12 @@ export async function recordAssetReading(actor: Actor, assetId: string, input: u
 export type MaintenancePlan = { id: string; asset_id: string; asset_label: string; asset_code: string; title: string; frequency_kind: string;
   interval_days: number | null; interval_reading: string | null; next_due_date: Date | string | null; next_due_reading: string | null;
   lead_days: number; lead_reading: string; current_reading: string; reading_unit: string; warning: boolean;
-  template_key: string | null; procedure: string | null };
+  template_key: string | null; procedure: string | null; order_id:string|null; order_folio:string|null; order_status:string|null };
 export type WorkOrder = { id: string; folio: string; asset_id: string; asset_label: string; asset_code: string; plan_id: string | null; incident_id: string | null; source_service_id:string|null;
   kind: string; title: string; description: string | null; status: string; blocks_asset: boolean; scheduled_for: Date | string | null; started_at: Date | null;
   closed_at: Date | null; performed_on: Date|string|null; history_only: boolean; reading_at_close: string | null; labor_cost: string; parts_cost: string; supplier: string | null;
-  resolution: string | null; created_at: Date; created_by_name: string; closed_by_name: string | null };
+  resolution: string | null; created_at: Date; created_by_name: string; closed_by_name: string | null;
+  asset_reading_unit:string; asset_current_reading:string; requires_close_reading:boolean };
 export type Tire = { id: string; code: string; brand: string | null; size: string | null; status: string; asset_id: string | null;
   position: string | null; asset_label: string | null;warehouse_id:string|null;warehouse_name:string|null };
 
@@ -79,20 +83,23 @@ export async function listMaintenance(actor: Actor) {
   guard(actor);
   const [assets, plans, orders, incidents, tires, warehouses] = await Promise.all([
     listAssets(actor),
-    db.query<MaintenancePlan>(`SELECT p.*,a.label AS asset_label,a.code AS asset_code,a.current_reading,a.reading_unit,
+    db.query<MaintenancePlan>(`SELECT p.*,a.label AS asset_label,a.code AS asset_code,a.current_reading,a.reading_unit,w.id AS order_id,w.folio AS order_folio,w.status AS order_status,
       (CASE WHEN p.frequency_kind='fecha' THEN p.next_due_date <= (now() AT TIME ZONE 'America/Santiago')::date + p.lead_days
        ELSE a.current_reading + p.lead_reading >= p.next_due_reading END) AS warning
-      FROM maintenance_plans p JOIN assets a ON a.id=p.asset_id WHERE p.active=true AND a.deleted_at IS NULL ORDER BY warning DESC,p.created_at DESC LIMIT 200`),
-    db.query<WorkOrder>(`SELECT w.*,i.source_service_id,a.label AS asset_label,a.code AS asset_code,u.name AS created_by_name,c.name AS closed_by_name
-      FROM work_orders w JOIN assets a ON a.id=w.asset_id LEFT JOIN fleet_incidents i ON i.id=w.incident_id JOIN users u ON u.id=w.created_by LEFT JOIN users c ON c.id=w.closed_by
-      ORDER BY CASE w.status WHEN 'en_trabajo' THEN 0 WHEN 'abierta' THEN 1 ELSE 2 END,w.created_at DESC LIMIT 150`),
+      FROM maintenance_plans p JOIN assets a ON a.id=p.asset_id
+      LEFT JOIN LATERAL (SELECT id,folio,status FROM work_orders WHERE plan_id=p.id AND status IN ('abierta','en_trabajo') ORDER BY created_at DESC,id DESC LIMIT 1) w ON true
+      WHERE p.active=true AND a.deleted_at IS NULL ORDER BY warning DESC,p.created_at DESC,p.id DESC`),
+    db.query<WorkOrder>(`SELECT w.*,i.source_service_id,a.label AS asset_label,a.code AS asset_code,u.name AS created_by_name,c.name AS closed_by_name,
+      a.reading_unit AS asset_reading_unit,a.current_reading AS asset_current_reading,(p.template_key IS NOT NULL) AS requires_close_reading
+      FROM work_orders w JOIN assets a ON a.id=w.asset_id LEFT JOIN maintenance_plans p ON p.id=w.plan_id LEFT JOIN fleet_incidents i ON i.id=w.incident_id JOIN users u ON u.id=w.created_by LEFT JOIN users c ON c.id=w.closed_by
+      ORDER BY CASE w.status WHEN 'en_trabajo' THEN 0 WHEN 'abierta' THEN 1 ELSE 2 END,w.created_at DESC,w.id DESC`),
     db.query<{ id: string; asset_id: string; source_service_id:string|null; description: string; asset_label: string }>(`SELECT i.id,i.asset_id,i.source_service_id,i.description,a.label AS asset_label
       FROM fleet_incidents i JOIN assets a ON a.id=i.asset_id
-      WHERE i.status='abierta' AND NOT EXISTS (SELECT 1 FROM work_orders w WHERE w.incident_id=i.id AND w.status IN ('abierta','en_trabajo'))
-      ORDER BY i.reported_at DESC LIMIT 100`),
+      WHERE i.status='abierta' AND a.deleted_at IS NULL AND NOT EXISTS (SELECT 1 FROM work_orders w WHERE w.incident_id=i.id AND w.status IN ('abierta','en_trabajo'))
+      ORDER BY CASE i.severity WHEN 'critica' THEN 0 WHEN 'alta' THEN 1 WHEN 'media' THEN 2 ELSE 3 END,i.reported_at DESC,i.id DESC`),
     db.query<Tire>(`SELECT t.*,a.label AS asset_label,w.name AS warehouse_name FROM tires t LEFT JOIN assets a ON a.id=t.asset_id
-      LEFT JOIN warehouses w ON w.id=t.warehouse_id ORDER BY t.code LIMIT 300`),
-    db.query<{id:string;name:string}>("SELECT id,name FROM warehouses WHERE active=true ORDER BY name"),
+      LEFT JOIN warehouses w ON w.id=t.warehouse_id ORDER BY t.code,t.id`),
+    db.query<{id:string;name:string}>("SELECT id,name FROM warehouses WHERE active=true ORDER BY name,id"),
   ]);
   return { assets,plans,orders,incidents,tires,warehouses };
 }
@@ -102,12 +109,12 @@ export type ChecklistFault = { id:string; asset_id:string; source_service_id:str
   order_id:string|null; order_folio:string|null; order_status:string|null };
 export async function listChecklistFaults(actor:Actor,company:"rerchar"|"e_y_j",page=1) {
   guard(actor);
-  const offset=(Math.max(1,Math.min(10_000,Math.trunc(page)||1))-1)*100;
   const where=`FROM fleet_incidents i JOIN service_requests s ON s.id=i.source_service_id
     WHERE s.operating_company=$1 AND i.status='abierta'`;
-  const [count,items]=await Promise.all([
-    db.query<{total:string}>(`SELECT count(*)::text AS total ${where}`,[company]),
-    db.query<ChecklistFault>(`SELECT i.id,i.asset_id,i.source_service_id,i.description,i.reported_at,
+  const [count]=await db.query<{total:string}>(`SELECT count(*)::text AS total ${where}`,[company]);
+  const total=Number(count?.total??0),totalPages=Math.max(1,Math.ceil(total/100));
+  const currentPage=Math.min(totalPages,Number.isSafeInteger(page)&&page>=1?page:1);
+  const items=await db.query<ChecklistFault>(`SELECT i.id,i.asset_id,i.source_service_id,i.description,i.reported_at,
       a.label AS asset_label,s.operating_company,s.folio,c.name AS client_name,
       w.id AS order_id,w.folio AS order_folio,w.status AS order_status
       FROM fleet_incidents i JOIN service_requests s ON s.id=i.source_service_id
@@ -115,9 +122,8 @@ export async function listChecklistFaults(actor:Actor,company:"rerchar"|"e_y_j",
       LEFT JOIN LATERAL (SELECT id,folio,status FROM work_orders
         WHERE incident_id=i.id AND status IN ('abierta','en_trabajo') ORDER BY created_at DESC,id DESC LIMIT 1) w ON true
       WHERE s.operating_company=$1 AND i.status='abierta'
-      ORDER BY i.reported_at DESC,i.id DESC LIMIT 100 OFFSET $2`,[company,offset]),
-  ]);
-  return {total:Number(count[0]?.total??0),items};
+      ORDER BY i.reported_at DESC,i.id DESC LIMIT 100 OFFSET $2`,[company,(currentPage-1)*100]);
+  return {total,items,page:currentPage,totalPages};
 }
 
 export async function createMaintenancePlan(actor: Actor, input: unknown) {
@@ -132,7 +138,7 @@ export async function createMaintenancePlan(actor: Actor, input: unknown) {
   const intervalReading = byDate ? null : positive.parse(data.interval_reading);
   const nextReading = byDate ? null : nonnegative.parse(data.next_due_reading);
   return transaction(async (tx) => {
-    const [asset] = await tx.query<{ reading_unit: string }>("SELECT reading_unit FROM assets WHERE id=$1 AND deleted_at IS NULL",[data.asset_id]);
+    const [asset] = await tx.query<{ reading_unit: string }>("SELECT reading_unit FROM assets WHERE id=$1 AND deleted_at IS NULL FOR UPDATE",[data.asset_id]);
     if (!asset || (!byDate && asset.reading_unit==="sin")) reject("Para planes por lectura, configure antes el odómetro u horómetro del activo.");
     const [plan] = await tx.query<{id:string}>(`INSERT INTO maintenance_plans (asset_id,title,frequency_kind,interval_days,interval_reading,next_due_date,next_due_reading,lead_days,lead_reading,created_by)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
@@ -196,8 +202,10 @@ export async function createWorkOrder(actor: Actor, input: unknown) {
 export async function getWorkOrder(actor: Actor, id: string) {
   guard(actor);
   if (!uuid.safeParse(id).success) reject("Orden de trabajo inválida.");
-  const [order] = await db.query<WorkOrder>(`SELECT w.*,i.source_service_id,a.label AS asset_label,a.code AS asset_code,u.name AS created_by_name,c.name AS closed_by_name
-    FROM work_orders w JOIN assets a ON a.id=w.asset_id LEFT JOIN fleet_incidents i ON i.id=w.incident_id JOIN users u ON u.id=w.created_by LEFT JOIN users c ON c.id=w.closed_by WHERE w.id=$1`,[id]);
+  const [order] = await db.query<WorkOrder>(`SELECT w.*,i.source_service_id,a.label AS asset_label,a.code AS asset_code,u.name AS created_by_name,c.name AS closed_by_name,
+      a.reading_unit AS asset_reading_unit,a.current_reading AS asset_current_reading,(p.template_key IS NOT NULL) AS requires_close_reading
+    FROM work_orders w JOIN assets a ON a.id=w.asset_id LEFT JOIN maintenance_plans p ON p.id=w.plan_id
+      LEFT JOIN fleet_incidents i ON i.id=w.incident_id JOIN users u ON u.id=w.created_by LEFT JOIN users c ON c.id=w.closed_by WHERE w.id=$1`,[id]);
   if (!order) reject("Orden de trabajo no encontrada.");
   const [reservations, history] = await Promise.all([
     db.query<{id:string;quantity:string;status:string;item_name:string;unit:string;warehouse_name:string}>(`SELECT r.id,r.quantity,r.status,i.name AS item_name,i.unit,w.name AS warehouse_name

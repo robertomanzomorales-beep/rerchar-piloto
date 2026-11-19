@@ -183,11 +183,20 @@
 .loading-orbit i:nth-child(3) { background:#e7b900; transform:rotate(240deg) translateX(12px); }
 @keyframes loading-orbit-turn { to { transform:rotate(360deg); } }
 @media screen {
-  .app-shell :is(#solicitudes-compras,#facturas-proveedores,#reservas-stock,#kardex,.material-followup-section,.material-guide-section,.certificate-section,.service-operation-section,.personnel-section) { scroll-margin-top:76px; }
+  .app-shell :is(#solicitudes-compras,#facturas-proveedores,#reservas-stock,#kardex,.material-followup-section,.material-guide-section,.certificate-section,.service-operation-section,.personnel-section,.maintenance-section) { scroll-margin-top:76px; }
+  .app-shell .maintenance-form { min-width:0; }
+  .app-shell .maintenance-form.form-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .app-shell .maintenance-form :is(label,fieldset,.two-fields) { min-width:0; }
+  .app-shell .maintenance-form .request-form-error { margin:0 0 6px; }
+  .app-shell .maintenance-quick-form { gap:8px; }
+  .app-shell .maintenance-tire-control { min-width:230px; max-width:320px; }
+  .app-shell .maintenance-tire-control summary { cursor:pointer; color:var(--company-accent); font-size:12px; font-weight:600; padding:6px 0; }
+  .app-shell .maintenance-tire-control[open] summary { margin-bottom:10px; }
   .app-shell .service-operation-form[data-service-operation="plan"] { grid-template-columns:repeat(2,minmax(0,1fr)); }
 }
 @media screen and (max-width:650px) {
   .app-shell .service-operation-form[data-service-operation="plan"] { grid-template-columns:minmax(0,1fr); }
+  .app-shell .maintenance-form.form-grid { grid-template-columns:minmax(0,1fr); }
 }
 @media (prefers-reduced-motion:reduce) {
   .loading-indicator,.loading-orbit { animation:none; }

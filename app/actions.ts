@@ -14,6 +14,7 @@ import {setFleetDay,FleetScheduleError} from "@/lib/fleet-schedule";
 import {reportServiceDay,ServiceDayError} from "@/lib/service-day";
 import {requestDraft,type RequestFormState} from "@/lib/request-form-state";
 import {serviceOperationAnchors,serviceOperationDraft,type ServiceOperationKind,type ServiceOperationState} from "@/lib/service-operation-state";
+import {maintenanceAnchor,maintenanceContextFromForm,maintenanceDraft,maintenanceHref,type MaintenanceFormState} from "@/lib/maintenance-form-state";
 
 const value = (form: FormData, key: string) => String(form.get(key) ?? "");
 const servicePath = (id: string) => `/solicitudes/${encodeURIComponent(id)}`;
@@ -159,19 +160,20 @@ export async function cancelServiceAction(_previous:ServiceOperationState,form:F
   const actor = await requireActor(); const id = value(form,"id");
   return serviceOperation("cancel",id,form,() => cancelService(actor, id, value(form,"reason")));
 }
-function fleetReturnPath(form:FormData) {
-  const page=Number(value(form,"page"));
-  return Number.isSafeInteger(page)&&page>1&&page<=10_000?`/flota?pagina=${page}`:"/flota";
+async function fleetOperation(kind:"report"|"resolve",form:FormData,operation:()=>Promise<unknown>):Promise<MaintenanceFormState>{
+  try{await operation();}catch(error){return {error:message(error),values:maintenanceDraft(kind,form)};}
+  revalidatePath("/","layout");
+  redirect(maintenanceHref(maintenanceContextFromForm(form),maintenanceAnchor(kind),{ok:"1"},"fleet"));
 }
-export async function reportFleetIncidentAction(form: FormData) {
+export async function reportFleetIncidentAction(_previous:MaintenanceFormState,form:FormData):Promise<MaintenanceFormState> {
   const actor = await requireActor();
-  await run(fleetReturnPath(form), () => reportFleetIncident(actor, {
+  return fleetOperation("report",form, () => reportFleetIncident(actor, {
     asset_id: value(form,"asset_id"), description: value(form,"description"), severity: value(form,"severity"),observed_on:value(form,"observed_on"),
   }));
 }
-export async function resolveFleetIncidentAction(form: FormData) {
+export async function resolveFleetIncidentAction(_previous:MaintenanceFormState,form:FormData):Promise<MaintenanceFormState> {
   const actor = await requireActor();
-  await run(fleetReturnPath(form), () => resolveFleetIncident(actor, value(form,"id"), value(form,"resolution")));
+  return fleetOperation("resolve",form, () => resolveFleetIncident(actor, value(form,"id"), value(form,"resolution")));
 }
 export async function saveChecklistAction(_previous:ServiceOperationState,form:FormData):Promise<ServiceOperationState> {
   const actor = await requireActor(); const id = value(form,"id");
