@@ -13,6 +13,7 @@ import {requestTypesFromQuote} from "./request-kind";
 import {currentOrderDocumentSql} from "./quote-order";
 import {existingPlate,normalizedPlate} from "./asset-identity";
 import {authorizeMasters} from "./masters";
+import {serviceSearch} from "./service-search";
 
 const uuid = z.uuid();
 const required = (max = 180) => z.string().trim().min(2).max(max);
@@ -52,13 +53,14 @@ const serviceSelect = `SELECT s.*, c.name AS client_name, cs.name AS site_name,
   LEFT JOIN external_drivers ed ON ed.id = s.external_driver_id`;
 
 export async function listServices(actor: Actor, term = "", state = "", company = "", type = "", limit = 100, closedMonth = "", priority = "", offset = 0) {
-  const q = term.trim().slice(0, 100);
+  const search=serviceSearch(term),q=search.term;
   const kind=["retiro","traslado","arriendo","compra","venta","otro"].includes(type)?type:"";
   const month=state==="completada"&&/^\d{4}-(0[1-9]|1[0-2])$/.test(closedMonth)?`${closedMonth}-01`:null;
   const urgency=["normal","alta","critica"].includes(priority)?priority:"";
   return db.query<ServiceRow>(
     `${serviceSelect} WHERE s.deleted_at IS NULL
-     AND ($1::text = '' OR c.name ILIKE '%' || $1 || '%' OR s.waste_type ILIKE '%' || $1 || '%' OR s.folio::text = $1)
+     AND ($1::text = '' OR ($12::text='' AND (c.name ILIKE '%' || $1 || '%' OR s.waste_type ILIKE '%' || $1 || '%'))
+       OR (s.folio::text=$12 AND ($13::text='' OR ($13='pendiente' AND s.operating_company IS NULL) OR s.operating_company=$13)))
      AND ($2::text = '' OR ($2 = 'abiertas' AND s.status IN ('solicitada','programada','en_ruta','pendiente_revision')) OR s.status = $2)
      AND ($3::text <> 'cliente' OR s.client_id = $4::uuid)
      AND ($3::text <> 'conductor' OR s.driver_id = $5::uuid)
@@ -69,7 +71,7 @@ export async function listServices(actor: Actor, term = "", state = "", company 
      AND ($10::text = '' OR s.priority = $10)
      ORDER BY s.created_at DESC, s.folio DESC LIMIT $8 OFFSET $11`,
     [q, state, actor.role, actor.client_id, actor.id, company,kind,Math.max(1,Math.min(100,Math.trunc(limit)||100)),month,urgency,
-      Number.isSafeInteger(offset)?Math.max(0,Math.min(500_000,offset)):0],
+      Number.isSafeInteger(offset)?Math.max(0,Math.min(500_000,offset)):0,search.folio,search.company],
   );
 }
 
