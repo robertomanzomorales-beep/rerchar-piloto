@@ -20,6 +20,7 @@ import {serviceOperationAnchors,serviceOperationDraft,type ServiceOperationKind,
 import {maintenanceAnchor,maintenanceContextFromForm,maintenanceDraft,maintenanceHref,type MaintenanceFormState} from "@/lib/maintenance-form-state";
 import {masterAnchor,masterContextFromForm,masterDraft,masterHref,type MasterFormKind,type MasterFormState} from "@/lib/master-form-state";
 import {serviceDriverDraft,serviceDriverHref,type ServiceDriverKind,type ServiceDriverState} from "@/lib/service-driver-state";
+import {loginEmail,loginFailureMessage,type LoginState} from "@/lib/login-state";
 
 const value = (form: FormData, key: string) => String(form.get(key) ?? "");
 const servicePath = (id: string) => `/solicitudes/${encodeURIComponent(id)}`;
@@ -37,11 +38,10 @@ async function run(path: string, operation: () => Promise<unknown>, success = pa
   redirect(`${success}${success.includes("?") ? "&" : "?"}ok=1`);
 }
 
-export async function loginAction(form: FormData) {
-  const email = value(form, "email");
-  const password = value(form, "password");
-  const success = await signIn(email, password);
-  if (!success) redirect("/ingresar?error=1");
+export async function loginAction(_previous:LoginState,form:FormData):Promise<LoginState>{
+  const email=loginEmail(form),password=form.get("password");
+  try{if(typeof password!=="string"||!await signIn(typeof form.get("email")==="string"?String(form.get("email")):"",password))return {error:loginFailureMessage,email};}
+  catch{console.error("No se pudo comprobar el acceso.");return {error:"No fue posible comprobar el acceso en este momento. Intente nuevamente en unos minutos.",email};}
   redirect("/");
 }
 
