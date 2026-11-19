@@ -22,6 +22,7 @@ import {listCredentialAlerts} from "@/lib/personnel";
 import {guideFollowupOverview} from "@/lib/service-ledger";
 import {ActivityChart,StatusComposition,type MonthActivity,type ServiceStatus} from "@/components/CompanyDashboardCharts";
 import {clientDashboardGroups} from "@/lib/client-dashboard";
+import {guideFollowupHref} from "@/lib/guide-followup-filters";
 
 type ServiceMetrics = { total:string; requested:string; scheduled:string; in_route:string; pending_review:string; completed:string; cancelled:string; critical:string };
 type QuoteMetrics = { total:string; draft:string; sent:string; accepted:string; expired:string; awaiting_order:string; awaiting_service:string };
@@ -145,10 +146,10 @@ export default async function CompanyHome({params}:{params:Promise<{empresa:stri
     ...(actor.role==="admin"?[{label:"Servicios cerrados con OC del cliente requerida y pendiente",count:clientOrdersPending,href:`/finanzas?empresa=${selected}&oc=pendiente`}]:[]),
     ...(actor.role==="admin"?[{label:"Cambios de tarifa por comunicar al cliente",count:value(tariffNotices[0]?.total),href:`/finanzas?empresa=${selected}&avisos=pendientes#avisos-tarifa`}]:[]),
     ...(selected==="rerchar"&&canManage(actor)?[
-      {label:"Guías valorizadas atrasadas a mi cargo",count:value(guideAlerts?.my_overdue),href:"/seguimiento-guias?estado=mias",urgent:true},
-      {label:"Guías valorizadas atrasadas",count:value(guideAlerts?.overdue),href:"/seguimiento-guias?estado=atrasadas",urgent:true},
-      {label:"Guías valorizadas que vencen en 7 días",count:value(guideAlerts?.upcoming),href:"/seguimiento-guias?estado=proximas"},
-      {label:"Guías valorizadas pendientes sin plazo",count:value(guideAlerts?.undated),href:"/seguimiento-guias?estado=sin_plazo"},
+      {label:"Guías valorizadas atrasadas a mi cargo",count:value(guideAlerts?.my_overdue),href:guideFollowupHref("mias_atrasadas"),urgent:true},
+      {label:"Guías valorizadas atrasadas",count:value(guideAlerts?.overdue),href:guideFollowupHref("atrasadas"),urgent:true},
+      {label:"Guías valorizadas que vencen en 7 días",count:value(guideAlerts?.upcoming),href:guideFollowupHref("proximas")},
+      {label:"Guías valorizadas pendientes sin plazo",count:value(guideAlerts?.undated),href:guideFollowupHref("sin_plazo")},
     ]:[]),
     ...(selected==="rerchar"&&canManage(actor)?[{label:"Ventas de material con pesaje, factura o pago pendientes",count:value(materials?.guides.pending),href:"/control-guias?vista=venta_pendiente"}]:[]),
     ...(selected==="rerchar"&&canManage(actor)&&receiptGuides?.ready?[{label:"Ingresos esperando guía valorizada",count:value(receiptGuides.pending),href:"/ingresos?vista=guia"}]:[]),

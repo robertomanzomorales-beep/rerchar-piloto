@@ -3,6 +3,10 @@ import type {Actor} from "./auth";
 import {canManage,canReadService} from "./auth";
 import {db,transaction} from "./db";
 import type {Company} from "./companies";
+import {chileCsvDay} from "./chile-csv";
+import {lastRecordPage,recordPage,recordsPerPage,recordWindow} from "./record-pagination";
+import {parseGuideFilter,type GuideFilter} from "./guide-followup-filters";
+export {parseGuideFilter,type GuideFilter} from "./guide-followup-filters";
 
 const uuid=z.uuid();
 const date=z.union([z.iso.date(),z.literal("")]).default("");
@@ -11,10 +15,6 @@ export class LedgerError extends Error {}
 function reject(message:string):never{throw new LedgerError(message);}
 export type Followup={service_id:string;dispatch_guide_status:string|null;requested_on:Date|string|null;due_on:Date|string|null;
   responsible_user_id:string|null;received_on:Date|string|null;documents_sent_on:Date|string|null;notes:string|null};
-export type GuideFilter="todas"|"atrasadas"|"proximas"|"sin_plazo"|"pendientes"|"mias";
-export function parseGuideFilter(value:string|undefined):GuideFilter{
-  return value==="atrasadas"||value==="proximas"||value==="sin_plazo"||value==="pendientes"||value==="mias"?value:"todas";
-}
 export type Commercial={service_id:string;quote_reference:string|null;quote_on:Date|string|null;order_reference:string|null;
   order_on:Date|string|null;service_sheet:string|null;eyj_guide:string|null;client_guide:string|null;sidrep:string|null;
   rental_days:string|null;quantity:string|null;service_value_clp:string|null;notes:string|null};
@@ -27,8 +27,26 @@ export async function getServiceLedger(actor:Actor,serviceId:string){
     db.query<Commercial>("SELECT * FROM service_commercial_details WHERE service_id=$1",[serviceId])]);
   return {followup:followup[0]??null,commercial:commercial[0]??null};
 }
+const followupSource="FROM service_requests s LEFT JOIN valued_guide_followups f ON f.service_id=s.id";
+const followupEligible=`s.operating_company='rerchar' AND s.deleted_at IS NULL AND s.status<>'cancelada'
+  AND s.service_type<>'arriendo' AND (s.scheduled_for IS NOT NULL OR f.service_id IS NOT NULL)`;
+const followupFilter=`${followupEligible} AND ($1::text='' OR s.operating_company=$1)
+  AND ($2::text='todas' OR ($2='pendientes' AND f.requested_on IS NOT NULL AND f.received_on IS NULL)
+    OR ($2='atrasadas' AND f.requested_on IS NOT NULL AND f.received_on IS NULL AND f.due_on<$3::date)
+    OR ($2='proximas' AND f.requested_on IS NOT NULL AND f.received_on IS NULL AND f.due_on BETWEEN $3::date AND $3::date+7)
+    OR ($2='sin_plazo' AND f.requested_on IS NOT NULL AND f.received_on IS NULL AND f.due_on IS NULL)
+    OR ($2='mias' AND f.requested_on IS NOT NULL AND f.received_on IS NULL AND f.responsible_user_id=$4::uuid)
+    OR ($2='mias_atrasadas' AND f.requested_on IS NOT NULL AND f.received_on IS NULL
+      AND f.responsible_user_id=$4::uuid AND f.due_on<$3::date))`;
+function followupParams(actor:Actor,company:string,filter:GuideFilter,asOf:string){
+  if(!canManage(actor))reject("Acceso de operaciones requerido.");
+  const on=asOf||chileCsvDay();
+  if(!z.iso.date().safeParse(on).success)reject("Fecha de seguimiento inválida.");
+  return [company,parseGuideFilter(filter),on,actor.id];
+}
 export async function guideFollowupOverview(actor:Actor,asOf:string){
   if(!canManage(actor))reject("Acceso de operaciones requerido.");
+  if(!z.iso.date().safeParse(asOf).success)reject("Fecha de seguimiento inválida.");
   const [counts]=await db.query<{waiting_request:string;pending:string;overdue:string;my_overdue:string;upcoming:string;undated:string;waiting_close:string}>(
     `SELECT count(*) FILTER (WHERE s.scheduled_for IS NOT NULL
         AND COALESCE((SELECT max(d.day) FROM service_day_reports d WHERE d.service_id=s.id AND d.outcome='completado'),
@@ -41,33 +59,30 @@ export async function guideFollowupOverview(actor:Actor,asOf:string){
         AND f.due_on BETWEEN $1::date AND $1::date+7)::text AS upcoming,
       count(*) FILTER (WHERE f.requested_on IS NOT NULL AND f.received_on IS NULL AND f.due_on IS NULL)::text AS undated,
       count(*) FILTER (WHERE f.received_on IS NOT NULL AND f.documents_sent_on IS NULL)::text AS waiting_close
-    FROM service_requests s LEFT JOIN valued_guide_followups f ON f.service_id=s.id
-    WHERE s.operating_company='rerchar' AND s.deleted_at IS NULL AND s.status<>'cancelada'
-      AND s.service_type<>'arriendo' AND (s.scheduled_for IS NOT NULL OR f.service_id IS NOT NULL)`,[asOf,actor.id]);
+    ${followupSource} WHERE ${followupEligible}`,[asOf,actor.id]);
   return counts??{waiting_request:"0",pending:"0",overdue:"0",my_overdue:"0",upcoming:"0",undated:"0",waiting_close:"0"};
 }
-export async function listGuideFollowups(actor:Actor,company="",filter:GuideFilter="todas",asOf=""){
-  if(!canManage(actor))reject("Acceso de operaciones requerido.");
+export async function listGuideFollowups(actor:Actor,company="",filter:GuideFilter="todas",asOf="",options?:{limit?:number;offset?:number}){
+  const params=followupParams(actor,company,filter,asOf),window=options?recordWindow(options.limit??recordsPerPage,options.offset??0):null;
   return db.query<{id:string;folio:string;operating_company:Company|null;client_name:string;site_name:string;scheduled_for:Date|null;service_day:Date|string;status:string;dispatch_guide_status:string|null;
     requested_on:Date|string|null;due_on:Date|string|null;responsible_name:string|null;received_on:Date|string|null;documents_sent_on:Date|string|null;notes:string|null}>(
     `SELECT s.id,s.folio,s.operating_company,c.name AS client_name,cs.name AS site_name,s.scheduled_for,s.status,
       COALESCE((SELECT max(d.day) FROM service_day_reports d WHERE d.service_id=s.id AND d.outcome='completado'),
         (s.scheduled_for AT TIME ZONE 'America/Santiago')::date) AS service_day,
-      f.dispatch_guide_status,f.requested_on,f.due_on,u.name AS responsible_name,f.received_on,f.documents_sent_on,f.notes FROM service_requests s
+      f.dispatch_guide_status,f.requested_on,f.due_on,u.name AS responsible_name,f.received_on,f.documents_sent_on,f.notes ${followupSource}
       JOIN clients c ON c.id=s.client_id JOIN client_sites cs ON cs.id=s.site_id
-      LEFT JOIN valued_guide_followups f ON f.service_id=s.id
       LEFT JOIN users u ON u.id=f.responsible_user_id
-      WHERE s.deleted_at IS NULL AND s.status<>'cancelada' AND s.service_type<>'arriendo'
-        AND (s.scheduled_for IS NOT NULL OR f.service_id IS NOT NULL)
-        AND s.operating_company='rerchar' AND ($1::text='' OR s.operating_company=$1)
-        AND ($2::text='todas' OR ($2='pendientes' AND f.requested_on IS NOT NULL AND f.received_on IS NULL)
-          OR ($2='atrasadas' AND f.requested_on IS NOT NULL AND f.received_on IS NULL AND f.due_on<$3::date)
-          OR ($2='proximas' AND f.requested_on IS NOT NULL AND f.received_on IS NULL AND f.due_on BETWEEN $3::date AND $3::date+7)
-          OR ($2='sin_plazo' AND f.requested_on IS NOT NULL AND f.received_on IS NULL AND f.due_on IS NULL)
-          OR ($2='mias' AND f.requested_on IS NOT NULL AND f.received_on IS NULL AND f.responsible_user_id=$4::uuid))
+      WHERE ${followupFilter}
       ORDER BY CASE WHEN f.requested_on IS NOT NULL AND f.received_on IS NULL THEN 0 ELSE 1 END,
-        f.due_on ASC NULLS LAST,COALESCE(f.requested_on,(s.scheduled_for AT TIME ZONE 'America/Santiago')::date,s.created_at::date) DESC
-      LIMIT 250`,[company,filter,asOf||"2000-01-01",actor.id]);
+        f.due_on ASC NULLS LAST,COALESCE(f.requested_on,(s.scheduled_for AT TIME ZONE 'America/Santiago')::date,s.created_at::date) DESC,s.id DESC
+      ${window?"LIMIT $5 OFFSET $6":""}`,[...params,...(window?[window.limit,window.offset]:[])]);
+}
+export async function guideFollowupPage(actor:Actor,company="",filter:GuideFilter="todas",asOf="",requested:unknown=1){
+  const params=followupParams(actor,company,filter,asOf);
+  const [count]=await db.query<{total:string}>(`SELECT count(*)::text AS total ${followupSource} WHERE ${followupFilter}`,params);
+  const total=Number(count.total),pages=lastRecordPage(total),page=Math.min(recordPage(requested),pages);
+  const rows=await listGuideFollowups(actor,company,filter,params[2],{limit:recordsPerPage,offset:(page-1)*recordsPerPage});
+  return {rows,total,pages,page};
 }
 export async function saveGuideFollowup(actor:Actor,serviceId:string,input:unknown){
   if(!canManage(actor))reject("Acceso de operaciones requerido.");

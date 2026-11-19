@@ -44,7 +44,8 @@
     "test:service-driver-review-http": "node --import tsx scripts/verify-service-driver-review.ts",
     "test:login-review-http": "node --import tsx scripts/verify-login-review.ts",
     "test:users-review-http": "node --import tsx scripts/verify-user-review.ts",
-    "test:destinations-review-http": "node --import tsx scripts/verify-destination-review.ts"
+    "test:destinations-review-http": "node --import tsx scripts/verify-destination-review.ts",
+    "test:dashboard-followup-review-http": "node --import tsx scripts/verify-dashboard-followup-review.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.3.13",
