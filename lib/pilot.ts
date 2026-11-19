@@ -12,6 +12,7 @@ import {catalogName} from "./material-stock";
 import {requestTypesFromQuote} from "./request-kind";
 import {currentOrderDocumentSql} from "./quote-order";
 import {existingPlate,normalizedPlate} from "./asset-identity";
+import {authorizeMasters} from "./masters";
 
 const uuid = z.uuid();
 const required = (max = 180) => z.string().trim().min(2).max(max);
@@ -199,6 +200,7 @@ export async function createClient(actor: Actor, input: unknown) {
   needManage(actor);
   const data = z.object({ name: required(), tax_id: optional(20), contact_name: required(120), email:z.union([z.email(),z.literal("")]).default(""),address:optional(250) }).parse(input);
   return transaction(async (tx) => {
+    await authorizeMasters(tx,actor);
     const [row] = await tx.query<{ id: string }>(
       "INSERT INTO clients (name,tax_id,contact_name,email,address) VALUES ($1,NULLIF($2,''),$3,NULLIF($4,''),NULLIF($5,'')) RETURNING id",
       [data.name,data.tax_id,data.contact_name,data.email,data.address],
@@ -211,9 +213,10 @@ export async function createClient(actor: Actor, input: unknown) {
 export async function createSite(actor: Actor, input: unknown) {
   needManage(actor);
   const data = z.object({ client_id: uuid, name: required(), address: optional(250) }).parse(input);
-  const [client] = await db.query("SELECT id FROM clients WHERE id=$1 AND deleted_at IS NULL", [data.client_id]);
-  if (!client) reject("Seleccione un cliente activo.");
   return transaction(async (tx) => {
+    await authorizeMasters(tx,actor);
+    const [client]=await tx.query("SELECT id FROM clients WHERE id=$1 AND deleted_at IS NULL FOR SHARE",[data.client_id]);
+    if(!client)reject("Seleccione un cliente activo.");
     const [row] = await tx.query<{ id: string }>(
       "INSERT INTO client_sites (client_id, name, address) VALUES ($1,$2,NULLIF($3,'')) RETURNING id",
       [data.client_id, data.name, data.address],
@@ -230,6 +233,7 @@ export async function createAsset(actor: Actor, input: unknown) {
   if(data.plate&&!normalizedPlate(data.plate))reject("Indique una patente válida o deje ese campo vacío.");
   const readingUnit = data.kind === "camion" ? "km" : "sin";
   return transaction(async (tx) => {
+    await authorizeMasters(tx,actor);
     const duplicate=await existingPlate(tx,data.plate);
     if(duplicate)reject(`La patente ya pertenece al activo ${duplicate.code}. Abra su ficha existente.`);
     const [row] = await tx.query<{ id: string }>(

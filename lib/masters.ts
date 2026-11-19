@@ -1,7 +1,7 @@
 import {z} from "zod";
 import type {Actor} from "./auth";
 import {canManage} from "./auth";
-import {transaction,type Db} from "./db";
+import {db,transaction,type Db} from "./db";
 import {existingPlate,normalizedPlate} from "./asset-identity";
 
 const uuid=z.uuid();
@@ -11,7 +11,7 @@ const optional=(limit:number)=>z.string().trim().max(limit).default("");
 export class MastersError extends Error {}
 function reject(message:string):never{throw new MastersError(message);}
 
-async function authorize(tx:Db,actor:Actor){
+export async function authorizeMasters(tx:Db,actor:Actor){
   if(!canManage(actor))reject("Su perfil no puede modificar maestros.");
   const [user]=await tx.query<{id:string}>(
     "SELECT id FROM users WHERE id=$1 AND role IN ('admin','operaciones') AND active=true FOR SHARE",[actor.id]);
@@ -27,7 +27,7 @@ export async function updateClient(actor:Actor,id:string,input:unknown){
   uuid.parse(id);
   const data=z.object({name,tax_id:optional(20),contact_name:z.string().trim().min(2).max(120),email:z.union([z.email(),z.literal("")]).default(""),address:optional(250)}).parse(input);
   await transaction(async tx=>{
-    await authorize(tx,actor);
+    await authorizeMasters(tx,actor);
     const [client]=await tx.query<{id:string;name:string;tax_id:string|null;contact_name:string|null;email:string|null;address:string|null}>(
       "SELECT id,name,tax_id,contact_name,email,address FROM clients WHERE id=$1 AND deleted_at IS NULL FOR UPDATE",[id]);
     if(!client)reject("El cliente no existe o ya no está activo.");
@@ -44,9 +44,9 @@ export async function updateSite(actor:Actor,id:string,input:unknown){
   uuid.parse(id);
   const data=z.object({name,address:optional(250)}).parse(input);
   await transaction(async tx=>{
-    await authorize(tx,actor);
+    await authorizeMasters(tx,actor);
     const [site]=await tx.query<{id:string;name:string;address:string|null}>(
-      "SELECT id,name,address FROM client_sites WHERE id=$1 AND deleted_at IS NULL FOR UPDATE",[id]);
+      "SELECT cs.id,cs.name,cs.address FROM client_sites cs JOIN clients c ON c.id=cs.client_id WHERE cs.id=$1 AND cs.deleted_at IS NULL AND c.deleted_at IS NULL FOR UPDATE OF cs,c",[id]);
     if(!site)reject("La faena no existe o ya no está activa.");
     const next={name:data.name,address:data.address||null};
     const previous={name:site.name,address:site.address};
@@ -62,7 +62,7 @@ export async function updateAsset(actor:Actor,id:string,input:unknown){
   if(!data.label&&!data.plate)reject("Indique una descripción o patente para identificar el activo.");
   if(data.plate&&!normalizedPlate(data.plate))reject("Indique una patente válida o deje ese campo vacío.");
   await transaction(async tx=>{
-    await authorize(tx,actor);
+    await authorizeMasters(tx,actor);
     const [asset]=await tx.query<{id:string;label:string;plate:string|null}>(
       "SELECT id,label,plate FROM assets WHERE id=$1 AND deleted_at IS NULL FOR UPDATE",[id]);
     if(!asset)reject("El activo no existe o ya no está disponible.");
@@ -74,4 +74,18 @@ export async function updateAsset(actor:Actor,id:string,input:unknown){
     await tx.query("UPDATE assets SET label=$2,plate=$3 WHERE id=$1",[id,next.label,next.plate]);
     await audit(tx,actor,"asset",id,previous,next);
   });
+}
+
+export type MasterClient={id:string;name:string;tax_id:string|null;contact_name:string|null;email:string|null;address:string|null};
+export type MasterSite={id:string;name:string;address:string|null;client_id:string;client_name:string};
+export type MasterAsset={id:string;code:string;label:string;kind:string;plate:string|null};
+export async function listMasters(actor:Actor){
+  if(!canManage(actor))reject("Su perfil no puede consultar maestros.");
+  const [clients,sites,assets,[users]]=await Promise.all([
+    db.query<MasterClient>("SELECT id,name,tax_id,contact_name,email,address FROM clients WHERE deleted_at IS NULL ORDER BY name,id"),
+    db.query<MasterSite>("SELECT cs.id,cs.name,cs.address,cs.client_id,c.name AS client_name FROM client_sites cs JOIN clients c ON c.id=cs.client_id WHERE cs.deleted_at IS NULL AND c.deleted_at IS NULL ORDER BY c.name,cs.name,cs.id"),
+    db.query<MasterAsset>("SELECT id,code,label,kind,plate FROM assets WHERE deleted_at IS NULL ORDER BY kind,label,id"),
+    actor.role==="admin"?db.query<{total:string}>("SELECT count(*)::text AS total FROM users WHERE active=true"):Promise.resolve([{total:"0"}]),
+  ]);
+  return {clients,sites,assets,activeUsers:Number(users.total)};
 }

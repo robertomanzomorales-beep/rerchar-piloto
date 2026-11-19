@@ -15,6 +15,7 @@ import {reportServiceDay,ServiceDayError} from "@/lib/service-day";
 import {requestDraft,type RequestFormState} from "@/lib/request-form-state";
 import {serviceOperationAnchors,serviceOperationDraft,type ServiceOperationKind,type ServiceOperationState} from "@/lib/service-operation-state";
 import {maintenanceAnchor,maintenanceContextFromForm,maintenanceDraft,maintenanceHref,type MaintenanceFormState} from "@/lib/maintenance-form-state";
+import {masterAnchor,masterContextFromForm,masterDraft,masterHref,type MasterFormKind,type MasterFormState} from "@/lib/master-form-state";
 
 const value = (form: FormData, key: string) => String(form.get(key) ?? "");
 const servicePath = (id: string) => `/solicitudes/${encodeURIComponent(id)}`;
@@ -42,33 +43,38 @@ export async function loginAction(form: FormData) {
 
 export async function logoutAction() { await signOut(); redirect("/ingresar"); }
 
-export async function createClientAction(form: FormData) {
-  const actor = await requireActor();
-  await run("/maestros", () => createClient(actor, { name: value(form,"name"), tax_id: value(form,"tax_id"), contact_name: value(form,"contact_name"), email:value(form,"email"), address:value(form,"address") }));
+async function runMaster(kind:MasterFormKind,form:FormData,operation:()=>Promise<unknown>):Promise<MasterFormState>{
+  try{await operation();}catch(error){return {error:message(error),values:masterDraft(kind,form)};}
+  revalidatePath("/","layout");const id=value(form,"id");
+  redirect(masterHref(masterContextFromForm(form),masterAnchor(kind,id),{ok:"1",...(id?{formulario:kind,edicion:id}:{})}));
 }
-export async function createSiteAction(form: FormData) {
+export async function createClientAction(_previous:MasterFormState,form: FormData):Promise<MasterFormState> {
   const actor = await requireActor();
-  await run("/maestros", () => createSite(actor, { client_id: value(form,"client_id"), name: value(form,"name"), address: value(form,"address") }));
+  return runMaster("client",form, () => createClient(actor, { name: value(form,"name"), tax_id: value(form,"tax_id"), contact_name: value(form,"contact_name"), email:value(form,"email").trim(), address:value(form,"address") }));
 }
-export async function createAssetAction(form: FormData) {
+export async function createSiteAction(_previous:MasterFormState,form: FormData):Promise<MasterFormState> {
   const actor = await requireActor();
-  await run("/maestros", () => createAsset(actor, { code: value(form,"code"), label: value(form,"label"), kind: value(form,"kind"), plate: value(form,"plate") }));
+  return runMaster("site",form, () => createSite(actor, { client_id: value(form,"client_id"), name: value(form,"name"), address: value(form,"address") }));
 }
-export async function updateClientAction(form:FormData){
+export async function createAssetAction(_previous:MasterFormState,form: FormData):Promise<MasterFormState> {
+  const actor = await requireActor();
+  return runMaster("asset",form, () => createAsset(actor, { code: value(form,"code"), label: value(form,"label"), kind: value(form,"kind"), plate: value(form,"plate") }));
+}
+export async function updateClientAction(_previous:MasterFormState,form:FormData):Promise<MasterFormState>{
   const actor=await requireActor();
-  await run("/maestros",()=>updateClient(actor,value(form,"id"),{
-    name:value(form,"name"),tax_id:value(form,"tax_id"),contact_name:value(form,"contact_name"),email:value(form,"email"),address:value(form,"address"),
+  return runMaster("edit_client",form,()=>updateClient(actor,value(form,"id"),{
+    name:value(form,"name"),tax_id:value(form,"tax_id"),contact_name:value(form,"contact_name"),email:value(form,"email").trim(),address:value(form,"address"),
   }));
 }
-export async function updateSiteAction(form:FormData){
+export async function updateSiteAction(_previous:MasterFormState,form:FormData):Promise<MasterFormState>{
   const actor=await requireActor();
-  await run("/maestros",()=>updateSite(actor,value(form,"id"),{
+  return runMaster("edit_site",form,()=>updateSite(actor,value(form,"id"),{
     name:value(form,"name"),address:value(form,"address"),
   }));
 }
-export async function updateAssetAction(form:FormData){
+export async function updateAssetAction(_previous:MasterFormState,form:FormData):Promise<MasterFormState>{
   const actor=await requireActor();
-  await run("/maestros",()=>updateAsset(actor,value(form,"id"),{
+  return runMaster("edit_asset",form,()=>updateAsset(actor,value(form,"id"),{
     label:value(form,"label"),plate:value(form,"plate"),
   }));
 }

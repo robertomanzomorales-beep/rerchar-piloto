@@ -230,7 +230,33 @@
   .app-shell .container-overdue ul { list-style:none; display:grid; gap:8px; padding:14px 0 0; margin:12px 0 0; border-top:1px solid #eadfc2; }
   .app-shell .container-overdue li { display:flex; flex-wrap:wrap; gap:8px 16px; }
   .app-shell .container-overdue a { color:inherit; font-weight:600; }
+  .app-shell :is(.master-section,.client-section) { min-width:0; scroll-margin-top:76px; }
+  .app-shell .masters-page .master-grid { align-items:start; }
+  .app-shell .masters-page .master-records { max-height:none; overflow:visible; }
+  .app-shell .master-form { min-width:0; }
+  .app-shell .master-form :is(label,.two-fields) { min-width:0; }
+  .app-shell .master-form .request-form-error { margin:0 0 8px; }
+  .app-shell .master-folder-link { display:inline-flex; margin:0 12px 14px; font-size:12px; }
+  .app-shell .master-entry form { background:var(--company-tint,#f8faf9); }
+  .app-shell :is(.master-search,.client-search) { display:flex; flex-wrap:wrap; align-items:end; gap:10px; margin:0 0 18px; }
+  .app-shell :is(.master-search,.client-search) label { display:grid; gap:6px; min-width:0; flex:1; font-size:12px; }
+  .app-shell :is(.master-search,.client-search) .text-link { align-self:center; }
+  .app-shell .client-section-links { display:flex; flex-wrap:wrap; gap:8px; margin:20px 0; }
+  .app-shell .client-section-links a { display:inline-flex; align-items:center; gap:8px; padding:8px 12px; border:1px solid var(--line); border-radius:7px; color:var(--company-accent); background:#fff; font-size:12px; text-decoration:none; }
+  .app-shell .client-section-links a:hover { background:var(--company-tint,#f5f8f7); }
+  .app-shell .client-section-links span { font-size:10px; font-variant-numeric:tabular-nums; color:var(--muted); }
+  .app-shell .client-dossier .client-records { max-height:none; overflow:visible; }
+  .app-shell .client-records li { align-items:start; flex-wrap:wrap; overflow-wrap:anywhere; }
+  .app-shell .client-records :is(small,strong,a) { min-width:0; }
+  .app-shell .client-dossier .page-title-row h1 { overflow-wrap:anywhere; }
+  .app-shell .client-dossier .page-intro { overflow-wrap:anywhere; }
+  .app-shell .client-dossier .dossier-group h3 { color:var(--company-accent); }
+  .app-shell .client-documents-layout { align-items:start; grid-template-columns:minmax(0,1fr); }
   .app-shell .service-operation-form[data-service-operation="plan"] { grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
+@media screen and (min-width:1200px) {
+  .app-shell .client-documents-layout { grid-template-columns:minmax(0,2fr) minmax(240px,1fr); }
+  .app-shell .client-documents-layout .data-table { min-width:600px; }
 }
 @media screen and (max-width:650px) {
   .app-shell .service-operation-form[data-service-operation="plan"] { grid-template-columns:minmax(0,1fr); }
@@ -240,6 +266,9 @@
   .app-shell .container-history-filter { align-items:stretch; }
   .app-shell .container-history-filter label { flex-basis:100%; }
   .app-shell .container-overdue summary { flex-wrap:wrap; }
+  .app-shell :is(.master-search,.client-search) label { flex-basis:100%; }
+  .app-shell .client-records li { display:grid; gap:5px; }
+  .app-shell .client-records li small { text-align:left; }
 }
 @media (prefers-reduced-motion:reduce) {
   .loading-indicator,.loading-orbit { animation:none; }
