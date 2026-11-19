@@ -1,5 +1,36 @@
 /* Workspace entrance and navigation. Restrained marks, clear destinations, readable controls. */
 @media screen {
+  .app-shell .users-admin { display:grid; gap:18px; min-width:0; }
+  .app-shell .users-admin > :is(.page-title-row,.section-card,.notice) { margin-bottom:0; }
+  .app-shell .user-overview { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin:0; }
+  .app-shell .user-overview > div { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:14px 16px; background:#fff; border:1px solid #dce4e6; border-radius:8px; }
+  .app-shell .user-overview dt { color:#647680; font-size:12px; }
+  .app-shell .user-overview dd { margin:0; color:#243c40; font-size:21px; font-weight:600; font-variant-numeric:tabular-nums; }
+  .app-shell .user-create > summary { display:flex; align-items:center; gap:9px; width:max-content; max-width:100%; color:#17644d; cursor:pointer; font-size:15px; font-weight:600; list-style:none; }
+  .app-shell .user-create > summary::-webkit-details-marker { display:none; }
+  .app-shell .user-create[open] > summary { margin-bottom:16px; }
+  .app-shell :is(.user-create,.user-control) > summary:focus-visible { outline:2px solid #24765a; outline-offset:4px; border-radius:4px; }
+  .app-shell .user-filters { display:flex; align-items:end; flex-wrap:wrap; gap:12px; margin-bottom:14px; }
+  .app-shell .user-filters label { display:grid; gap:6px; min-width:0; flex:1 1 160px; font-size:12px; font-weight:600; color:#526771; }
+  .app-shell .user-filters label:first-child { flex-grow:2; flex-basis:240px; }
+  .app-shell .user-filters :is(input,select) { width:100%; min-width:0; }
+  .app-shell .user-item { padding:17px; border-color:#dfe6e7; border-radius:8px; background:#fff; scroll-margin-top:100px; }
+  .app-shell .user-selected { border-color:#84b5a0; box-shadow:0 0 0 1px #84b5a02b; }
+  .app-shell .user-identity strong,.app-shell .user-scope strong { font-size:13px; font-weight:600; color:#2a4148; }
+  .app-shell :is(.user-identity,.user-scope,.user-state) small { font-size:12px; line-height:1.5; color:#61737a; }
+  .app-shell .user-self { font-size:11px; }
+  .app-shell :is(.user-active,.user-inactive) { font-size:11px; font-weight:600; }
+  .app-shell .user-actions { gap:10px; padding-top:13px; margin-top:3px; }
+  .app-shell .user-actions :is(.button,summary) { min-height:36px; font-size:12px; font-weight:600; }
+  .app-shell .user-control[open] { flex-basis:390px; }
+  .app-shell .user-control .user-account-form { padding:14px; gap:12px; background:#f8faf9; border-color:#dfe7e3; border-radius:6px; }
+  .app-shell .user-control .user-account-form label { font-size:12px; }
+  .app-shell .user-account-form :is(input,select,.password-field,.password-control) { min-width:0; max-width:100%; }
+  .app-shell .user-account-form .helper-text { margin:0; line-height:1.6; overflow-wrap:anywhere; }
+  .app-shell .user-actions > .user-account-form { max-width:100%; gap:7px; }
+  .app-shell .user-actions > .user-account-form .helper-text { max-width:230px; }
+  .app-shell .user-pagination { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin:15px 0; color:#60747d; font-size:12px; }
+  .app-shell .user-focused h2 { margin-top:0; }
   .app-shell[data-company="selector"] { --workspace-canvas:#f5f6f8; background:var(--workspace-canvas); }
   .app-shell .workspace-gateway { max-width:940px; margin:clamp(14px,3vh,30px) auto 0; padding:0 0 20px; }
   .app-shell .gateway-heading { display:block; margin-bottom:24px; }
@@ -416,6 +447,16 @@
   .app-shell .receivable-entry { padding:14px; }
   .app-shell .extra-charge-form .two-fields { grid-template-columns:minmax(0,1fr); }
   .app-shell .charge-entry { padding:14px; }
+}
+@media screen and (max-width:900px) {
+  .app-shell .user-overview { grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
+@media screen and (max-width:600px) {
+  .app-shell .user-overview { gap:8px; }
+  .app-shell .user-overview > div { padding:12px; align-items:start; flex-direction:column; gap:5px; }
+  .app-shell .user-filters label,.app-shell .user-filters label:first-child { flex-basis:100%; }
+  .app-shell .user-control[open] { flex-basis:100%; }
+  .app-shell .user-item { padding:14px; }
 }
 @media (prefers-reduced-motion:reduce) {
   .loading-indicator,.loading-orbit { animation:none; }

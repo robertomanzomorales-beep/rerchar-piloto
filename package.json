@@ -42,7 +42,8 @@
     "test:service-order-review-http": "node --import tsx scripts/verify-service-order-review.ts",
     "test:client-journey-review-http": "node --import tsx scripts/verify-client-journey-review.ts",
     "test:service-driver-review-http": "node --import tsx scripts/verify-service-driver-review.ts",
-    "test:login-review-http": "node --import tsx scripts/verify-login-review.ts"
+    "test:login-review-http": "node --import tsx scripts/verify-login-review.ts",
+    "test:users-review-http": "node --import tsx scripts/verify-user-review.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.3.13",
