@@ -2,55 +2,47 @@ import Link from "next/link";
 import {redirect} from "next/navigation";
 import {ReceiptText} from "lucide-react";
 import {requireActor} from "@/lib/auth";
-import {listExtraCharges,extraChargeOverview,extraChargeLabels,type ExtraChargeView} from "@/lib/extra-charges";
-import {decideExtraChargeAction,invoiceExtraChargeAction} from "@/app/extra-charge-actions";
-import {Notice,chileDate} from "@/components/UI";
-import {SubmitButton} from "@/components/Transition";
-import {companyName,serviceFolio} from "@/lib/companies";
-
-const day=(value:Date|string)=>value instanceof Date?value.toISOString().slice(0,10):String(value).slice(0,10);
-const money=(value:string|number)=>Number(value).toLocaleString("es-CL",{maximumFractionDigits:0});
-const statusName={propuesto:"Por revisar",aprobado:"Aprobado",descartado:"No cobrar",facturado:"Factura externa registrada"} as const;
-export default async function ExtraCharges({searchParams}:{searchParams:Promise<{empresa?:string;estado?:string;pagina?:string;error?:string;ok?:string}>}){
-  const actor=await requireActor();
-  if(actor.role!=="admin"&&actor.role!=="operaciones")redirect("/");
-  const query=await searchParams;
-  const company=query.empresa==="e_y_j"?"e_y_j":"rerchar";
-  const view:ExtraChargeView=query.estado==="propuestos"?"propuesto":query.estado==="aprobados"?"aprobado":"";
-  const requested=Number(query.pagina),page=Number.isSafeInteger(requested)&&requested>=1&&requested<=10_000?requested:1;
-  const [result,overview]=await Promise.all([listExtraCharges(actor,company,view,101,(page-1)*100),extraChargeOverview(actor,company)]);
-  const charges=result.slice(0,100),hasMore=result.length>100;
-  const href=(next:number)=>`/cobros-extraordinarios?${new URLSearchParams({empresa:company,estado:view==="propuesto"?"propuestos":view==="aprobado"?"aprobados":"todos",pagina:String(next)})}#cargos-parte`;
-  return <>
-    <div className="page-title-row"><div><div className="eyebrow">CONTROL COMERCIAL · {companyName(company)}</div><h1>Cobros extraordinarios</h1><p className="page-intro">Flete falso, sobreestadía y otros conceptos respaldados por el parte diario.</p></div><ReceiptText size={23}/></div>
-    <Notice error={query.error} ok={query.ok}/>
-    <form action="/cobros-extraordinarios" method="GET" className="filters"><label>Empresa<select name="empresa" defaultValue={company}><option value="rerchar">RERCHAR</option><option value="e_y_j">E y J</option></select></label><label>Estado<select name="estado" defaultValue={view==="propuesto"?"propuestos":view==="aprobado"?"aprobados":"todos"}><option value="propuestos">Por decidir</option><option value="aprobados">Aprobados sin factura</option><option value="todos">Todos</option></select></label><button type="submit" className="button button-outline">Aplicar</button></form>
-    <div className="supply-summary"><div><strong>{overview.proposed}</strong><span>Por decidir</span></div><div><strong>{overview.approved}</strong><span>Aprobados sin factura registrada</span></div><div><strong>${money(overview.approved_clp)}</strong><span>Neto aprobado sin factura registrada</span></div></div>
-    <p className="helper-text">Estos importes no se suman a la valorización del servicio ni al estado de pago. Una factura externa se cuenta una vez en <Link href={`/cobranzas?empresa=${company}`}>Cobranza</Link>, aunque incluya varios cargos o también el servicio principal.</p>
-    <section className="section-card" id="cargos-parte"><div className="section-heading"><div><div className="eyebrow">TRAZABILIDAD · {view==="propuesto"?"POR DECIDIR":view==="aprobado"?"APROBADOS":"TODOS"}</div><h2>Cargos del parte diario</h2></div><span className="count-pill">{view==="propuesto"?overview.proposed:view==="aprobado"?overview.approved:overview.total}</span></div>
-      {charges.length?<div className="record-list">{charges.map(x=><article key={x.id} className="note-block">
-        <strong>{extraChargeLabels[x.kind]} · {statusName[x.status]} · {day(x.service_day)}</strong>
-        <p><Link href={`/solicitudes/${x.service_id}`}>{serviceFolio(x)}</Link> · {x.client_name} · {companyName(x.operating_company)} · {x.reason}</p>
-        <small>Parte: {x.source_outcome} · {x.source_observation||"Sin observación"} · registrado por {x.creator_name} el {chileDate(x.created_at)}</small>
-        <p>Monto neto: <strong>{x.amount_clp?`$${money(x.amount_clp)}`:"Por acordar"}</strong> · Cotización: {x.quote_reference||"Sin referencia"} · OC cliente: {x.client_order_reference||"Sin referencia"}</p>
-        {x.decision_note&&<p>Decisión de {x.decider_name}: {x.decision_note}</p>}
-        {x.invoice_number&&<p>Factura externa: <strong>{x.invoice_number}</strong> · {day(x.invoiced_on!)} {x.receivable_invoice_id||x.linked_service_invoice_id?"· Conciliada en Cobranza":"· Falta completar vencimiento y total para conciliarla"}</p>}
-        {x.status==="propuesto"&&actor.role==="admin"&&<form action={decideExtraChargeAction} className="form-grid detail-form">
-          <input type="hidden" name="id" value={x.id}/><input type="hidden" name="company" value={company}/>
-          <label>Decisión<select name="status" defaultValue="aprobado"><option value="aprobado">Aprobar cobro</option><option value="descartado">No cobrar</option></select></label>
-          <label>Monto neto acordado (CLP; requerido al aprobar)<input name="amount_clp" type="number" min="0.01" step="0.01" defaultValue={x.amount_clp??""}/></label>
-          <label className="field-full">Motivo de la decisión<input name="decision_note" minLength={5} maxLength={500} required placeholder="Acuerdo con el cliente o motivo para no cobrar"/></label>
-          <div className="field-full form-footer"><SubmitButton className="button button-primary">Guardar decisión</SubmitButton></div>
-        </form>}
-        {(x.status==="aprobado"||x.status==="facturado"&&!x.receivable_invoice_id&&!x.linked_service_invoice_id)&&actor.role==="admin"&&<details className="reference-control"><summary>{x.status==="facturado"?"Conciliar factura anterior":"Registrar factura externa emitida"}</summary><form action={invoiceExtraChargeAction} className="form-grid detail-form">
-          <input type="hidden" name="id" value={x.id}/><input type="hidden" name="company" value={company}/>
-          <label>Folio de factura<input name="invoice_number" defaultValue={x.invoice_number??""} minLength={2} maxLength={80} required/></label><label>Fecha de emisión<input name="invoiced_on" type="date" defaultValue={x.invoiced_on?day(x.invoiced_on):""} min={day(x.service_day)} required/></label>
-          <label>Vencimiento<input name="due_on" type="date" required/></label><label>Total facturado CLP (incluye impuestos si corresponde)<input name="total_clp" type="number" min="0.01" step="0.01" required/></label>
-          <p className="field-full helper-text">Si este folio ya pertenece a una factura del mismo cliente y empresa, los datos deben coincidir; se vinculará sin duplicar el saldo.</p>
-          <div className="field-full form-footer"><SubmitButton className="button button-outline">Confirmar factura externa</SubmitButton></div>
-        </form></details>}
-      </article>)}</div>:<p className="muted">Sin cargos en esta vista. Abra una solicitud con parte diario para proponerlos o cambie el filtro.</p>}
-      {(page>1||hasMore)&&<nav className="records-pagination" aria-label="Páginas de cargos extraordinarios"><span>{page>1&&<Link className="button button-outline" href={href(page-1)}>Anterior</Link>}</span><span>Página {page} · hasta 100 cargos</span><span>{hasMore&&<Link className="button button-outline" href={href(page+1)}>Siguiente</Link>}</span></nav>}
+import {getExtraCharge,listExtraCharges,extraChargeOverview,extraChargeLabels,type ExtraChargeView} from "@/lib/extra-charges";
+import {extraChargeAnchor,extraChargeBoardHref,extraChargeContext,extraChargeFields,extraChargeStatusNames,type ExtraChargeFormKind,type ExtraChargeQuery} from "@/lib/extra-charge-state";
+import {financeDay as day,isFinanceId} from "@/lib/finance-catalog-state";
+import {financialMoney as money} from "@/lib/financial-detail-state";
+import {recordPage,lastRecordPage} from "@/lib/record-pagination";
+import {receivableAnchor,receivableHref} from "@/lib/receivable-form-state";
+import {Notice,chileCalendarDate,chileDate} from "@/components/UI";
+import {ExtraChargeForm} from "@/components/ExtraChargeForm";
+import {companyName,serviceFolio,type Company} from "@/lib/companies";
+export default async function ExtraCharges({searchParams}:{searchParams:Promise<ExtraChargeQuery>}){
+  const actor=await requireActor();if(actor.role!=="admin"&&actor.role!=="operaciones")redirect("/");
+  const query=await searchParams,context=extraChargeContext(query),company=context.empresa as Company,view:ExtraChargeView=context.estado==="propuestos"?"propuesto":context.estado==="aprobados"?"aprobado":"",page=recordPage(context.pagina);
+  const sourceKind=query.formulario_cargo??query.origen_cargo,kind=sourceKind&&Object.hasOwn(extraChargeFields,sourceKind)?sourceKind as ExtraChargeFormKind:undefined,id=isFinanceId(query.cargo)?query.cargo:undefined;
+  const [result,overview,selected]=await Promise.all([listExtraCharges(actor,company,view,101,(page-1)*100),extraChargeOverview(actor,company),id&&kind?getExtraCharge(actor,company,id):undefined]);
+  const total=Number(view==="propuesto"?overview.proposed:view==="aprobado"?overview.approved:overview.total),lastPage=lastRecordPage(total);
+  if(page>lastPage&&!query.formulario_cargo)redirect(extraChargeBoardHref({...context,pagina:String(lastPage)},"cargos-parte",query));
+  const rows=result.slice(0,100),extra=selected&&!rows.some(x=>x.id===selected.id)?selected:undefined;if(extra)rows.unshift(extra);
+  const href=(next:number)=>extraChargeBoardHref({...context,pagina:String(next)}),today=new Intl.DateTimeFormat("sv-SE",{timeZone:"America/Santiago",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
+  return <div className="extra-charges-page"><div className="page-title-row"><div><div className="eyebrow">CONTROL COMERCIAL · {companyName(company)}</div><h1>Cobros extraordinarios</h1><p className="page-intro">Flete falso, sobreestadía y otros conceptos respaldados por el parte diario.</p></div><span className="title-icon"><ReceiptText size={23}/></span></div>
+    <Notice error={query.error} ok={query.formulario_cargo?undefined:query.ok}/>
+    <form key={`${company}:${context.estado}`} action="/cobros-extraordinarios" method="GET" className="filters"><label>Empresa<select name="empresa" defaultValue={company}><option value="rerchar">RERCHAR</option><option value="e_y_j">E y J</option></select></label><label>Estado<select name="estado" defaultValue={context.estado}><option value="propuestos">Por decidir</option><option value="aprobados">Aprobados sin factura</option><option value="todos">Todos</option></select></label><button type="submit" className="button button-outline">Aplicar filtros</button></form>
+    <div className="supply-summary"><div><strong>{overview.proposed}</strong><span>Por decidir</span></div><div><strong>{overview.approved}</strong><span>Aprobados sin factura</span></div><div><strong>${money(overview.approved_clp)}</strong><span>Neto aprobado sin factura</span></div></div>
+    <p className="helper-text">La valorización principal y el estado de pago se conservan por separado. Cada factura externa se cuenta una vez en <Link href={`/cobranzas?empresa=${company}`}>Cobranzas</Link>, aunque respalde varios cargos o el servicio principal.</p>
+    <section id="cargos-parte" className="section-card finance-section"><div className="section-heading"><div><div className="eyebrow">TRAZABILIDAD · {view==="propuesto"?"POR DECIDIR":view==="aprobado"?"APROBADOS":"TODOS"}</div><h2>Cargos del parte diario</h2></div><span className="count-pill">{total}</span></div>
+      {page>lastPage&&<p className="helper-text">Esta página ya no tiene otros cargos. Se conserva la selección para completar la revisión. <Link href={href(lastPage)}>Ver última página disponible</Link>.</p>}
+      {rows.length?<div className="extra-charge-records">{rows.map(x=>{
+        const canDecide=x.status==="propuesto",canInvoice=x.status==="aprobado"||x.status==="facturado"&&!x.receivable_invoice_id&&!x.linked_service_invoice_id,isSelected=x.id===id;
+        return <article key={x.id} id={extraChargeAnchor(x.id)} className="charge-entry finance-section" data-extra-charge={x.id} data-charge-status={x.status}><div className="finance-record-top"><div><strong>{extraChargeLabels[x.kind]}</strong><p className="charge-record-date">Parte del {chileCalendarDate(x.service_day)}</p></div><span className={`badge charge-${x.status}`}>{extraChargeStatusNames[x.status]}</span></div>
+          <div className="charge-source-links"><Link href={`/solicitudes/${x.service_id}#cargos-adicionales`}>{serviceFolio(x)}</Link><span>{x.client_name}</span></div><p className="charge-reason">{x.reason}</p>
+          <details className="charge-source-details"><summary>Antecedente del parte</summary><p>{x.source_outcome==="completado"?"Realizado":x.source_outcome==="suspendido"?"Suspendido":"Incompleto"} · {x.source_observation||"Sin observación"}</p><small>Registrado por {x.creator_name} el {chileDate(x.created_at)}</small></details>
+          <div className="charge-commercial-facts"><div><span>{x.status==="propuesto"?"Neto propuesto":x.status==="descartado"?"Neto propuesto · sin cobro":"Neto acordado"}</span><strong>{x.amount_clp?`$${money(x.amount_clp)}`:"Por acordar"}</strong></div><div><span>Cotización</span><strong>{x.quote_reference||"Sin referencia"}</strong></div><div><span>OC del cliente</span><strong>{x.client_order_reference||"Sin referencia"}</strong></div></div>
+          {x.decision_note&&<p className="helper-text">Decisión de {x.decider_name??"administración"}{x.decided_at?` · ${chileDate(x.decided_at)}`:""}: {x.decision_note}</p>}
+          {x.invoice_number&&<p className="helper-text">Factura externa <strong>{x.invoice_number}</strong> · {chileCalendarDate(x.invoiced_on)} · {x.receivable_invoice_id||x.linked_service_invoice_id?"Conciliada en Cobranzas":"Pendiente de conciliación"}</p>}
+          {x.receivable_invoice_id&&<Link className="text-link" href={receivableHref({empresa:company,estado:"todas"},receivableAnchor("payment",x.receivable_invoice_id),{origen:"payment",registro:x.receivable_invoice_id})}>Revisar factura y saldo</Link>}
+          {x.linked_service_invoice_id&&<Link className="text-link" href={`/cobranzas?empresa=${company}&estado=todas`}>Revisar factura principal en Cobranzas</Link>}
+          {extra?.id===x.id&&<p className="helper-text">Cargo seleccionado fuera del filtro o página actual.</p>}
+          {actor.role==="admin"&&(canDecide||query.formulario_cargo==="decide"&&isSelected)&&<details className="finance-record-control" open={query.formulario_cargo==="decide"&&isSelected}><summary>Revisar decisión de cobro</summary><ExtraChargeForm key={`decide:${x.id}:${x.status}:${x.amount_clp}`} kind="decide" context={context} today={today} sourceId={x.id} defaults={{amount_clp:x.amount_clp??""}} disabled={!canDecide}/></details>}
+          {actor.role==="admin"&&(canInvoice||query.formulario_cargo==="invoice"&&isSelected)&&<details className="finance-record-control" open={query.formulario_cargo==="invoice"&&isSelected}><summary>{x.status==="facturado"?"Conciliar factura anterior":"Registrar factura externa"}</summary><ExtraChargeForm key={`invoice:${x.id}:${x.status}:${x.receivable_invoice_id}:${x.linked_service_invoice_id}`} kind="invoice" context={context} today={today} sourceId={x.id} minimum={day(x.service_day)} defaults={{invoice_number:x.invoice_number??"",invoiced_on:x.invoiced_on?day(x.invoiced_on):""}} disabled={!canInvoice}/></details>}
+        </article>;
+      })}</div>:<p className="muted">No hay cargos en esta vista. Puede proponerlos desde el parte diario de un servicio o cambiar los filtros.</p>}
+      {(page>1||result.length>100)&&<nav className="records-pagination" aria-label="Páginas de cargos extraordinarios"><span>{page>1&&<Link className="button button-outline" href={href(Math.min(page-1,lastPage))}>Anterior</Link>}</span><span>Página {page} · {total} cargos en esta vista</span><span>{result.length>100&&<Link className="button button-outline" href={href(page+1)}>Siguiente</Link>}</span></nav>}
     </section>
-  </>;
+  </div>;
 }

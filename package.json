@@ -33,7 +33,8 @@
     "test:fleet-http": "node --import tsx scripts/verify-fleet.ts",
     "test:finance-catalog-http": "node --import tsx scripts/verify-finance-catalog.ts",
     "test:financial-detail-http": "node --import tsx scripts/verify-financial-detail.ts",
-    "test:receivables-transactions-http": "node --import tsx scripts/verify-receivables-transactions.ts"
+    "test:receivables-transactions-http": "node --import tsx scripts/verify-receivables-transactions.ts",
+    "test:extra-charge-workflow-http": "node --import tsx scripts/verify-extra-charge-workflow.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.3.13",

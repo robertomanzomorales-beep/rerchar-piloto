@@ -1,4 +1,3 @@
-import {randomUUID} from "node:crypto";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, CalendarDays, CheckCircle2, ClipboardCheck, FileText, MapPin, PackageCheck, Truck, Weight } from "lucide-react";
@@ -14,8 +13,8 @@ import { SubmitButton } from "@/components/Transition";
 import ServiceDocuments from "@/components/ServiceDocuments";
 import ServiceOperationForm from "@/components/ServiceOperationForm";
 import {listServiceDays,resultLabel} from "@/lib/service-day";
-import {serviceExtraCharges,extraChargeLabels} from "@/lib/extra-charges";
-import {proposeExtraChargeAction} from "@/app/extra-charge-actions";
+import ServiceExtraCharges from "@/components/ServiceExtraCharges";
+import type {ExtraChargeQuery} from "@/lib/extra-charge-state";
 import {listServiceContainerPhotos} from "@/lib/containers";
 import {uploadServiceContainerPhotoAction} from "@/app/container-actions";
 
@@ -27,13 +26,13 @@ function localInput(value: Date | string | null) {
 const day=(value:Date|string|null)=>value instanceof Date?value.toISOString().slice(0,10):value?String(value).slice(0,10):"";
 const evidenceLabels:Record<string,string>={foto_area:"Foto del área de trabajo",foto_material:"Foto del material",checklist:"Checklist",ticket_pesaje:"Ticket de pesaje"};
 
-export default async function ServiceDetail({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ error?: string; ok?: string; formulario?:string }> }) {
+export default async function ServiceDetail({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ error?: string; ok?: string; formulario?:string }&ExtraChargeQuery> }) {
   const actor = await requireActor();
   const { id } = await params;
   let service;
   try { service = await getService(actor, id); }
   catch (error) { if (error instanceof PilotError) notFound(); throw error; }
-  const [timeline, evidence, checks, assets, ramps, drivers, externalDrivers, containerMoves, wasteRecord, certificate, sourceQuotes, sourceLines, requestMaterials, checklistIncidents, dayReports, extraCharges, purchaseReviews, receiptEntries] = await Promise.all([
+  const [timeline, evidence, checks, assets, ramps, drivers, externalDrivers, containerMoves, wasteRecord, certificate, sourceQuotes, sourceLines, requestMaterials, checklistIncidents, dayReports, purchaseReviews, receiptEntries] = await Promise.all([
     db.query<{ id: string; description: string; kind: string; created_at: Date; actor_name: string }>(
       `SELECT e.id,e.description,e.kind,e.created_at,u.name AS actor_name FROM service_events e
        LEFT JOIN users u ON u.id=e.actor_id WHERE e.service_id=$1 ORDER BY e.created_at DESC,e.id DESC`, [id],
@@ -62,7 +61,6 @@ export default async function ServiceDetail({ params, searchParams }: { params: 
     db.query<{id:string;status:string;description:string}>(
       "SELECT id,status,description FROM fleet_incidents WHERE source_service_id=$1 ORDER BY reported_at DESC",[id]),
     listServiceDays(actor,id),
-    canPlan(actor)?serviceExtraCharges(actor,id):Promise.resolve([]),
     service.request_category==="compra"&&service.status==="completada"?db.query<{material_name:string;impurity_kg:string;observations:string|null;missing_ticket_reason:string|null;reviewed_at:Date;reviewer_name:string}>(
       `SELECT r.material_name,r.impurity_kg,r.observations,r.missing_ticket_reason,r.reviewed_at,u.name AS reviewer_name
        FROM purchase_closure_reviews r JOIN users u ON u.id=r.reviewed_by WHERE r.service_id=$1`,[id]):Promise.resolve([]),
@@ -102,7 +100,7 @@ export default async function ServiceDetail({ params, searchParams }: { params: 
   return <>
     <Breadcrumb label={serviceFolio(service)}/>
     <div className="page-title-row detail-heading"><div><div className="eyebrow">SOLICITUD · {rental?"servicios / arriendo":service.service_type==="retiro"?"retiro de material":service.request_category} · {companyName(service.operating_company)}</div><h1>{serviceFolio(service)}</h1><p className="page-intro"><Link href={`/clientes/${service.client_id}`}>{service.client_name}</Link> · {service.site_name}</p></div><Badge status={service.status}/></div>
-    <Notice error={paramsQuery.error} ok={paramsQuery.ok}/>
+    <Notice error={paramsQuery.error} ok={paramsQuery.formulario_cargo?undefined:paramsQuery.ok}/>
     {serviceStages[service.status]&&<div className="service-guidance" role="status"><span className="service-guidance-label">ETAPA ACTUAL · {rental?"ARRIENDO":"SERVICIO"}</span><strong>{serviceStages[service.status].label}</strong><span>{serviceStages[service.status].instruction}</span>{(service.status!=="en_ruta"||canWork||canManage(actor))&&<a href={`#${serviceStages[service.status].target}`}>Ir a esta etapa ↓</a>}</div>}
     {!service.operating_company&&<section className="section-card"><p role="alert">Este registro anterior necesita confirmar la empresa operadora antes de emitir documentos o vincular facturas.</p>{actor.role==="admin"&&<form action={classifyServiceCompanyAction} className="form-grid"><input type="hidden" name="id" value={id}/><label>Empresa según respaldo de la operación<select name="operating_company" required defaultValue=""><option value="">Seleccione después de revisar</option><option value="rerchar">RERCHAR Chile SpA</option><option value="e_y_j">E y J Limitada</option></select></label><div className="form-footer"><SubmitButton className="button button-outline">Confirmar empresa</SubmitButton></div></form>}</section>}
     <div className="detail-grid">
@@ -155,19 +153,7 @@ export default async function ServiceDetail({ params, searchParams }: { params: 
           {dayReports.length>0&&<ul className="service-day-history">{dayReports.map(r=><li key={day(r.day)}><strong>{day(r.day)} · {resultLabel[r.outcome]}</strong><span>{r.driver_name||"Conductor sin informar"}</span>{r.observation&&<p>{r.observation}</p>}</li>)}</ul>}
           {canReport&&<ServiceOperationForm key={`${id}:${dayReports.map(r=>r.updated_at.toISOString()).join(",")}`} kind="day" id={id} minDay={programmedDay} maxDay={todayChile} values={{day:todayChile,outcome:"completado"}}/>}
         </section>}
-        {canPlan(actor)&&dayReports.length>0&&<section className="section-card"><div className="section-heading"><div><div className="eyebrow">EXCEPCIONES COMERCIALES</div><h2>Flete falso y sobreestadía</h2></div><Link href={`/cobros-extraordinarios?empresa=${service.operating_company??"rerchar"}`}>Ver control →</Link></div>
-          <p className="helper-text">Proponga un cobro desde el parte de ese día, incluso si el viaje quedó incompleto. Administración decide el monto o deja constancia de «no cobrar». No se agregará a la factura del servicio.</p>
-          <form action={proposeExtraChargeAction} className="form-grid detail-form"><input type="hidden" name="service_id" value={id}/><input type="hidden" name="submission_key" value={randomUUID()}/>
-            <label>Parte del día<select name="service_day" defaultValue="" required><option value="">Seleccione</option>{dayReports.map(r=><option key={day(r.day)} value={day(r.day)}>{day(r.day)} · {resultLabel[r.outcome]}</option>)}</select></label>
-            <label>Concepto<select name="kind" defaultValue="flete_falso"><option value="flete_falso">Flete falso</option><option value="sobrestadia">Sobreestadía</option><option value="otro">Otro cargo</option></select></label>
-            <label className="field-full">Motivo y respaldo<textarea name="reason" rows={2} required minLength={5} maxLength={1000} placeholder="Qué ocurrió, acuerdo del cliente y respaldo disponible"/></label>
-            <label>Monto neto propuesto (CLP; opcional)<input name="amount_clp" type="number" min="0.01" step="0.01"/></label>
-            <label>Cotización (opcional)<input name="quote_reference" maxLength={80}/></label>
-            <label>OC del cliente (opcional)<input name="client_order_reference" maxLength={80}/></label>
-            <div className="field-full form-footer"><SubmitButton className="button button-outline" disabled={!service.operating_company}>Proponer para revisión</SubmitButton></div>
-          </form>
-          {extraCharges.length>0&&<ul className="record-list">{extraCharges.map(x=><li key={x.id}><strong>{extraChargeLabels[x.kind]} · {day(x.service_day)} · {x.status==="descartado"?"No cobrar":x.status==="propuesto"?"Por revisar":x.status==="aprobado"?"Aprobado":"Factura registrada"}</strong><small>{x.reason} · {x.amount_clp?`$${Number(x.amount_clp).toLocaleString("es-CL")}`:"Monto por acordar"}{x.invoice_number?` · Factura ${x.invoice_number}`:""}</small></li>)}</ul>}
-        </section>}
+        {canPlan(actor)&&<ServiceExtraCharges actor={actor} serviceId={id} company={service.operating_company} query={paramsQuery} today={todayChile}/>}
         {!rental&&canWork && service.status === "programada" && <section id="checklist" className="section-card service-operation-section"><div className="section-heading"><div><div className="eyebrow">CONTROL PREVIO</div><h2><ClipboardCheck size={19}/> Checklist antes de salir</h2></div></div><ServiceOperationForm key={`${id}:${checklist?.completed_at.toISOString()??""}`} kind="checklist" id={id} values={{vehicle_ok:checklist?.vehicle_ok?"on":"",documents_ok:checklist?.documents_ok?"on":"",containment_ok:checklist?.containment_ok?"on":"",ppe_ok:checklist?.ppe_ok?"on":"",comment:checklist?.comment??""}}/>
           {checklistIncidents.map(incident=><p key={incident.id} className="helper-text">Avería del checklist: <strong>{incident.status==="abierta"?"Abierta en Mantenimiento":"Resuelta"}</strong> · {incident.description}{canManage(actor)&&<> · <Link href="/mantenimiento">Ver mantenimiento</Link></>}</p>)}
           {checklist && [checklist.vehicle_ok, checklist.documents_ok, checklist.containment_ok, checklist.ppe_ok].every(Boolean) && <form action={startServiceAction} className="next-action"><input type="hidden" name="id" value={service.id}/><span><CheckCircle2 size={18}/> Verificaciones completas</span><SubmitButton className="button button-primary">Iniciar ruta</SubmitButton></form>}</section>}

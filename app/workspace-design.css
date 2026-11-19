@@ -303,6 +303,30 @@
   .app-shell .receivable-vencida { background:#fbefed; color:#9b5147; }
   .app-shell :is(.receivable-anulada,.transaction-salida) { background:#f0f2f4; color:#64727b; }
   .app-shell .transaction-amount { font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .app-shell .extra-charge-records { display:grid; gap:16px; }
+  .app-shell .charge-entry { padding:18px; border:1px solid var(--line); border-radius:8px; overflow-wrap:anywhere; }
+  .app-shell .charge-record-date { margin:5px 0 0; font-size:12px; color:var(--muted); }
+  .app-shell .charge-source-links { display:flex; flex-wrap:wrap; gap:6px 12px; margin-top:12px; font-size:12px; }
+  .app-shell .charge-reason { margin:12px 0; font-size:13px; white-space:pre-wrap; }
+  .app-shell .charge-source-details { padding:10px 0; font-size:12px; color:var(--muted); }
+  .app-shell .charge-source-details summary { cursor:pointer; color:var(--company-accent); }
+  .app-shell .charge-source-details p { white-space:pre-wrap; }
+  .app-shell .charge-commercial-facts { display:flex; flex-wrap:wrap; gap:14px 24px; margin:12px 0 16px; }
+  .app-shell .charge-commercial-facts > div { display:grid; gap:5px; min-width:0; }
+  .app-shell .charge-commercial-facts span { font-size:11px; color:var(--muted); }
+  .app-shell .charge-commercial-facts strong { font-size:13px; font-variant-numeric:tabular-nums; }
+  .app-shell .extra-charge-form :is(label,.two-fields) { min-width:0; }
+  .app-shell .extra-charge-form .request-form-error { margin:0 0 8px; }
+  .app-shell .charge-source-preview { display:grid; gap:6px; padding:12px; border:1px solid var(--line); border-radius:7px; background:var(--company-tint,#f5f8f7); font-size:12px; overflow-wrap:anywhere; }
+  .app-shell .charge-source-preview span { white-space:pre-wrap; color:var(--muted); }
+  .app-shell .extra-charge-service-records.record-list { max-height:none; overflow:visible; }
+  .app-shell .extra-charge-service-records li { display:grid; gap:7px; padding:15px 0; overflow-wrap:anywhere; }
+  .app-shell .extra-charge-service-records li :is(p,small) { margin:0; text-align:left; white-space:pre-wrap; }
+  .app-shell .charge-history-heading { margin-top:22px; }
+  .app-shell :is(.charge-propuesto,.charge-aprobado) { background:#eef3f9; color:#385f83; }
+  .app-shell .charge-facturado { background:#eaf5ef; color:#27654b; }
+  .app-shell .charge-descartado { background:#f0f2f4; color:#64727b; }
+
 
 
   .app-shell .service-operation-form[data-service-operation="plan"] { grid-template-columns:repeat(2,minmax(0,1fr)); }
@@ -327,6 +351,8 @@
   .app-shell .financial-detail-form .two-fields { grid-template-columns:minmax(0,1fr); }
   .app-shell .receivable-form .two-fields { grid-template-columns:minmax(0,1fr); }
   .app-shell .receivable-entry { padding:14px; }
+  .app-shell .extra-charge-form .two-fields { grid-template-columns:minmax(0,1fr); }
+  .app-shell .charge-entry { padding:14px; }
 }
 @media (prefers-reduced-motion:reduce) {
   .loading-indicator,.loading-orbit { animation:none; }

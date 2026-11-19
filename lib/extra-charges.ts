@@ -21,9 +21,13 @@ const amount=z.union([z.literal(""),z.string(),z.number()]).transform((raw,ctx)=
 const today=()=>new Intl.DateTimeFormat("sv-SE",{timeZone:"America/Santiago",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
 function staff(actor:Actor){if(!canPlan(actor))reject("Se requiere acceso de operaciones o administración.");}
 function admin(actor:Actor){if(actor.role!=="admin")reject("La decisión comercial requiere administración.");}
-async function authorizeReceivable(tx:Db,actor:Actor){
+async function authorizeExtraAdmin(tx:Db,actor:Actor){
   admin(actor);const [user]=await tx.query("SELECT id FROM users WHERE id=$1 AND role='admin' AND active=true FOR SHARE",[actor.id]);
   if(!user)reject("Su acceso de administración ya no está activo.");
+}
+async function authorizeProposal(tx:Db,actor:Actor){
+  staff(actor);const [user]=await tx.query("SELECT id FROM users WHERE id=$1 AND role IN ('admin','operaciones') AND active=true FOR SHARE",[actor.id]);
+  if(!user)reject("Su acceso para proponer cargos ya no está activo.");
 }
 const expectedIssuer=(company?:Company)=>company===undefined?null:z.enum(["rerchar","e_y_j"]).parse(company);
 
@@ -60,7 +64,7 @@ export async function extraChargeOverview(actor:Actor,company:Company){
 export async function serviceExtraCharges(actor:Actor,serviceId:string){
   staff(actor);
   if(!uuid.safeParse(serviceId).success)reject("Servicio inválido.");
-  return db.query<ExtraCharge>(`${select} AND x.service_id=$1 ORDER BY x.service_day DESC,x.created_at DESC LIMIT 120`,[serviceId]);
+  return db.query<ExtraCharge>(`${select} AND x.service_id=$1 ORDER BY x.service_day DESC,x.created_at DESC,x.id DESC`,[serviceId]);
 }
 export async function pendingExtraChargeCount(actor:Actor,company:Company){
   staff(actor);
@@ -69,39 +73,53 @@ export async function pendingExtraChargeCount(actor:Actor,company:Company){
   return Number(row?.total??0);
 }
 
-export async function proposeExtraCharge(actor:Actor,serviceId:string,input:unknown){
-  staff(actor);
+export async function proposeExtraCharge(actor:Actor,serviceId:string,input:unknown,company?:Company){
+  staff(actor);const issuer=expectedIssuer(company);
   if(!uuid.safeParse(serviceId).success)reject("Servicio inválido.");
   const data=z.object({submission_key:uuid,service_day:z.iso.date(),kind:z.enum(["flete_falso","sobrestadia","otro"]),
     reason:z.string().trim().min(5).max(1000),amount_clp:amount,quote_reference:reference,client_order_reference:reference}).parse(input);
   if(data.service_day>today())reject("El día del cargo no puede ser futuro.");
   return transaction(async tx=>{
-    const [old]=await tx.query<{id:string;service_id:string}>("SELECT id,service_id FROM service_extra_charges WHERE submission_key=$1",[data.submission_key]);
-    if(old){if(old.service_id!==serviceId)reject("La clave de envío pertenece a otro servicio.");return old.id;}
-    const [source]=await tx.query<{outcome:string;observation:string;operating_company:Company|null}>(`SELECT d.outcome,d.observation,s.operating_company
-      FROM service_day_reports d JOIN service_requests s ON s.id=d.service_id
-      WHERE d.service_id=$1 AND d.day=$2::date AND s.deleted_at IS NULL FOR UPDATE OF s,d`,[serviceId,data.service_day]);
+    await authorizeProposal(tx,actor);
+    const [service]=await tx.query<{operating_company:Company|null}>("SELECT operating_company FROM service_requests WHERE id=$1 AND deleted_at IS NULL FOR UPDATE",[serviceId]);
+    if(!service)reject("El servicio ya no está disponible.");
+    if(!service.operating_company)reject("Confirme la empresa operadora del servicio.");
+    if(issuer&&service.operating_company!==issuer)reject("La empresa del servicio cambió. Vuelva a consultar la ficha.");
+    const [old]=await tx.query<{id:string;service_id:string;service_day:Date|string;kind:string;reason:string;amount_clp:string|null;proposed_amount_clp:string|null;quote_reference:string|null;client_order_reference:string|null}>(
+      `SELECT x.id,x.service_id,x.service_day,x.kind,x.reason,x.amount_clp,x.quote_reference,x.client_order_reference,
+        (SELECT a.next_value->>'amount_clp' FROM audit_events a WHERE a.entity_type='service_extra_charge' AND a.entity_id=x.id AND a.action='propose' ORDER BY a.created_at,a.id LIMIT 1) AS proposed_amount_clp
+        FROM service_extra_charges x WHERE x.submission_key=$1`,[data.submission_key]);
+    if(old){
+      if(old.service_id!==serviceId)reject("Este envío corresponde a otro servicio.");
+      const originalAmount=old.proposed_amount_clp??old.amount_clp??"";
+      if(financeDay(old.service_day)!==data.service_day||old.kind!==data.kind||old.reason!==data.reason||
+        Boolean(originalAmount)!==Boolean(data.amount_clp)||originalAmount!==""&&Number(originalAmount)!==Number(data.amount_clp)||
+        (old.quote_reference??"")!==data.quote_reference||(old.client_order_reference??"")!==data.client_order_reference)
+        reject("Este envío ya registró un cargo con otros datos. Recargue la ficha para proponer otro cargo.");
+      return old.id;
+    }
+    const [source]=await tx.query<{outcome:string;observation:string}>("SELECT outcome,observation FROM service_day_reports WHERE service_id=$1 AND day=$2::date FOR SHARE",[serviceId,data.service_day]);
     if(!source)reject("Registre primero el resultado del día en el parte del servicio.");
-    if(!source.operating_company)reject("Confirme la empresa operadora del servicio.");
     const [created]=await tx.query<{id:string}>(`INSERT INTO service_extra_charges
       (submission_key,service_id,service_day,kind,reason,source_outcome,source_observation,amount_clp,quote_reference,client_order_reference,created_by)
       VALUES($1,$2,$3::date,$4,$5,$6,$7,NULLIF($8,'')::numeric,NULLIF($9,''),NULLIF($10,''),$11) RETURNING id`,
       [data.submission_key,serviceId,data.service_day,data.kind,data.reason,source.outcome,source.observation,
         data.amount_clp,data.quote_reference,data.client_order_reference,actor.id]);
     await tx.query("INSERT INTO audit_events(actor_id,action,entity_type,entity_id,next_value) VALUES($1,'propose','service_extra_charge',$2,$3)",
-      [actor.id,created.id,JSON.stringify({service_id:serviceId,company:source.operating_company,...data,source_outcome:source.outcome,source_observation:source.observation})]);
+      [actor.id,created.id,JSON.stringify({service_id:serviceId,company:service.operating_company,...data,source_outcome:source.outcome,source_observation:source.observation})]);
     return created.id;
   });
 }
 
-export async function decideExtraCharge(actor:Actor,id:string,input:unknown){
-  admin(actor);
+export async function decideExtraCharge(actor:Actor,id:string,input:unknown,company?:Company){
+  admin(actor);const issuer=expectedIssuer(company);
   if(!uuid.safeParse(id).success)reject("Cargo inválido.");
-  const data=z.object({status:z.enum(["aprobado","descartado"]),decision_note:z.string().trim().min(5).max(500),amount_clp:amount}).parse(input);
+  const data=z.object({status:z.enum(["aprobado","descartado"]),decision_note:z.string().trim().min(5).max(500),amount_clp:amount}).parse(typeof input==="object"&&input!==null&&"status" in input&&input.status==="descartado"?{...input,amount_clp:""}:input);
   if(data.status==="aprobado"&&!data.amount_clp)reject("Para aprobar, registre el monto neto acordado.");
   await transaction(async tx=>{
+    await authorizeExtraAdmin(tx,actor);
     const [before]=await tx.query<{status:string;amount_clp:string|null;operating_company:Company|null}>(`SELECT x.status,x.amount_clp,s.operating_company
-      FROM service_extra_charges x JOIN service_requests s ON s.id=x.service_id WHERE x.id=$1 AND s.deleted_at IS NULL FOR UPDATE OF x`,[id]);
+      FROM service_extra_charges x JOIN service_requests s ON s.id=x.service_id WHERE x.id=$1 AND s.deleted_at IS NULL AND ($2::text IS NULL OR s.operating_company=$2) FOR UPDATE OF x`,[id,issuer]);
     if(!before||before.status!=="propuesto")reject("Este cargo ya fue resuelto o no existe.");
     if(!before.operating_company)reject("Confirme la empresa del servicio antes de decidir.");
     await tx.query(`UPDATE service_extra_charges SET status=$2,decision_note=$3,amount_clp=CASE WHEN $2='aprobado' THEN $4::numeric ELSE amount_clp END,
@@ -119,7 +137,7 @@ export async function invoiceExtraCharge(actor:Actor,id:string,input:unknown,com
   if(data.due_on<data.invoiced_on)reject("El vencimiento no puede anteceder a la emisión.");
   if(!data.total_clp)reject("Indique el total de la factura externa, incluidos impuestos si corresponde.");
   await transaction(async tx=>{
-    await authorizeReceivable(tx,actor);
+    await authorizeExtraAdmin(tx,actor);
     const [before]=await tx.query<{status:string;service_day:Date|string;operating_company:Company|null;client_id:string;invoice_number:string|null;
       receivable_invoice_id:string|null;linked_service_invoice_id:string|null}>(`SELECT x.status,x.service_day,s.operating_company,s.client_id,
       x.invoice_number,x.receivable_invoice_id,x.linked_service_invoice_id
@@ -171,7 +189,7 @@ export async function registerExtraReceivablePayment(actor:Actor,invoiceId:strin
   if(!data.amount_clp)reject("Indique un abono mayor que cero.");
   if(data.paid_on>today())reject("El pago no puede tener una fecha futura.");
   return transaction(async tx=>{
-    await authorizeReceivable(tx,actor);
+    await authorizeExtraAdmin(tx,actor);
     const [invoice]=await tx.query<{id:string;status:string;issued_on:Date|string;total_clp:string}>(
       "SELECT id,status,issued_on,total_clp FROM extra_receivable_invoices WHERE id=$1 AND ($2::text IS NULL OR issuer=$2) FOR UPDATE",[invoiceId,issuer]);
     if(!invoice||invoice.status!=="emitida")reject("La factura no está vigente.");
@@ -202,7 +220,7 @@ export async function voidExtraReceivableInvoice(actor:Actor,invoiceId:string,in
   const billingReady=await moduleReady("edp_billing");
   const materialBillingReady=await moduleReady("material_sale_billing");
   await transaction(async tx=>{
-    await authorizeReceivable(tx,actor);
+    await authorizeExtraAdmin(tx,actor);
     const [invoice]=await tx.query<{status:string}>("SELECT status FROM extra_receivable_invoices WHERE id=$1 AND ($2::text IS NULL OR issuer=$2) FOR UPDATE",[invoiceId,issuer]);
     if(!invoice||invoice.status!=="emitida")reject("Factura no vigente.");
     const [paid]=await tx.query("SELECT id FROM extra_receivable_payments WHERE invoice_id=$1 LIMIT 1",[invoiceId]);
@@ -226,4 +244,15 @@ export async function voidExtraReceivableInvoice(actor:Actor,invoiceId:string,in
     await tx.query("INSERT INTO audit_events(actor_id,action,entity_type,entity_id,next_value) VALUES($1,'void','extra_receivable_invoice',$2,$3)",
       [actor.id,invoiceId,JSON.stringify({reason})]);
   });
+}
+
+export async function getExtraCharge(actor:Actor,company:Company,id:string){
+  staff(actor);expectedIssuer(company);if(!uuid.safeParse(id).success)return undefined;
+  return (await db.query<ExtraCharge>(`${select} AND s.operating_company=$1 AND x.id=$2`,[company,id]))[0];
+}
+export type ExtraChargeDay={day:Date|string;outcome:string;observation:string};
+export async function extraChargeDays(actor:Actor,serviceId:string){
+  staff(actor);if(!uuid.safeParse(serviceId).success)reject("Servicio inválido.");
+  return db.query<ExtraChargeDay>(`SELECT d.day,d.outcome,d.observation FROM service_day_reports d
+    JOIN service_requests s ON s.id=d.service_id WHERE s.id=$1 AND s.deleted_at IS NULL ORDER BY d.day DESC`,[serviceId]);
 }
