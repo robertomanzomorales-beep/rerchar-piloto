@@ -67,6 +67,7 @@ async function main(){
       const body=await html("/contenedores?"+new URLSearchParams({empresa:"rerchar",unidad:units[0].id,pagina_movimientos:String(page),pagina_registros:String(page)}));history.push(...ids(body,"movement"));records.push(...ids(body,"record"));
     }
     assert.equal(history.length,317);assert.equal(new Set(history).size,317);assert.equal(records.length,317);assert.equal(new Set(records).size,317);
+    const selected=await html("/contenedores?unidad="+units[0].id+"&pagina="+(Math.floor(inventory.indexOf(units[0].id)/100)+1));const selectedRow=selected.match(new RegExp('<tr[^>]*data-container-id="'+units[0].id+'"[\\s\\S]*?</tr>'))?.[0];assert.ok(selectedRow?.includes('href="#movimiento-unidad"'),"Gestionar la unidad seleccionada conserva un ancla nativa");
     const empty=await html("/contenedores?unidad="+units[410].id);assert.equal(ids(empty,"record").length,0);assert.equal(ids(empty,"movement").length,0);
     const today=new Intl.DateTimeFormat("sv-SE",{timeZone:"America/Santiago",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date()),outcomes=[];
     for(const [index,company]of ["rerchar","e_y_j"].entries()){
