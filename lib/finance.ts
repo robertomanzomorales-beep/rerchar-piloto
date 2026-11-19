@@ -20,7 +20,7 @@ const positiveMoney=money.refine((value)=>Number(value)>0,"El monto debe ser may
 export class FinanceError extends Error {}
 function reject(message:string):never{throw new FinanceError(message);}
 function admin(actor:Actor){if(actor.role!=="admin")reject("Este módulo está restringido a administración.");}
-async function authorizeCatalog(tx:Db,actor:Actor){
+async function authorizeFinance(tx:Db,actor:Actor){
   admin(actor);const [user]=await tx.query("SELECT id FROM users WHERE id=$1 AND role='admin' AND active=true FOR SHARE",[actor.id]);
   if(!user)reject("Su acceso de administración ya no está activo.");
 }
@@ -158,11 +158,11 @@ export async function getFinancialService(actor:Actor,id:string){
       [service.client_id,service.site_id,service.service_type,service.waste_type,service.closed_at,service.operating_company]),
     db.query<InvoicePayment>(`SELECT p.id,p.amount_clp,p.paid_on,p.method,p.reference,p.created_at,u.name AS actor_name
       FROM invoice_payments p JOIN users u ON u.id=p.created_by JOIN service_invoices f ON f.id=p.invoice_id
-      JOIN service_valuations v ON v.id=f.valuation_id WHERE v.service_id=$1 ORDER BY p.created_at DESC`,[id]),
+      JOIN service_valuations v ON v.id=f.valuation_id WHERE v.service_id=$1 ORDER BY p.created_at DESC,p.id DESC`,[id]),
     db.query<ServiceCost>(`SELECT x.id,x.category,x.amount_clp,x.description,x.created_at,u.name AS actor_name
-      FROM service_costs x JOIN users u ON u.id=x.created_by WHERE x.service_id=$1 ORDER BY x.created_at DESC`,[id]),
-    db.query<{invoice_number:string;created_at:Date}>(`SELECT f.invoice_number,f.created_at FROM service_invoices f
-      JOIN service_valuations v ON v.id=f.valuation_id WHERE v.service_id=$1 AND f.status='anulada' ORDER BY f.created_at DESC`,[id]),
+      FROM service_costs x JOIN users u ON u.id=x.created_by WHERE x.service_id=$1 ORDER BY x.created_at DESC,x.id DESC`,[id]),
+    db.query<{id:string;invoice_number:string;created_at:Date}>(`SELECT f.id,f.invoice_number,f.created_at FROM service_invoices f
+      JOIN service_valuations v ON v.id=f.valuation_id WHERE v.service_id=$1 AND f.status='anulada' ORDER BY f.created_at DESC,f.id DESC`,[id]),
     listEdpServiceInvoices([id]),
   ]);
   return {service,tariffs,payments,costs,voidedInvoices,edpInvoices};
@@ -174,7 +174,7 @@ export async function createContract(actor:Actor,input:unknown){
     ends_on:z.union([z.iso.date(),z.literal("")]).default(""),notes:optional(1000)}).parse(input);
   if(data.ends_on&&data.ends_on<data.starts_on)reject("El término del contrato debe ser posterior al inicio.");
   return transaction(async(tx)=>{
-    await authorizeCatalog(tx,actor);
+    await authorizeFinance(tx,actor);
     const [client]=await tx.query("SELECT id FROM clients WHERE id=$1 AND deleted_at IS NULL FOR SHARE",[data.client_id]);
     if(!client)reject("Cliente no encontrado.");
     if(data.site_id){const [site]=await tx.query("SELECT id FROM client_sites WHERE id=$1 AND client_id=$2 AND deleted_at IS NULL FOR SHARE",[data.site_id,data.client_id]);if(!site)reject("La faena no pertenece al cliente.");}
@@ -190,7 +190,7 @@ export async function classifyContractCompany(actor:Actor,id:string,input:unknow
   admin(actor);uuid.parse(id);
   const company=z.enum(["rerchar","e_y_j"]).parse(input);
   await transaction(async tx=>{
-    await authorizeCatalog(tx,actor);
+    await authorizeFinance(tx,actor);
     const [contract]=await tx.query<{operating_company:Company|null}>("SELECT operating_company FROM client_contracts WHERE id=$1 FOR UPDATE",[id]);
     if(!contract||contract.operating_company)reject("Este contrato no está pendiente de clasificación.");
     const [mismatch]=await tx.query(`SELECT 1 FROM service_valuations v JOIN service_tariffs t ON t.id=v.tariff_id
@@ -211,7 +211,7 @@ export async function createTariff(actor:Actor,input:unknown){
   if(data.unit==="dia"&&data.service_type!=="arriendo")reject("La tarifa por día corresponde sólo a arriendos.");
   if(data.service_type==="arriendo"&&data.unit==="kg")reject("El arriendo no se valoriza por kilos.");
   return transaction(async(tx)=>{
-    await authorizeCatalog(tx,actor);
+    await authorizeFinance(tx,actor);
     const [contract]=await tx.query<{starts_on:Date|string;ends_on:Date|string|null;active:boolean;operating_company:Company|null}>("SELECT starts_on,ends_on,active,operating_company FROM client_contracts WHERE id=$1 FOR UPDATE",[data.contract_id]);
     if(!contract?.active)reject("Seleccione un contrato vigente como registro activo.");
     if(!contract.operating_company)reject("Confirme la empresa del contrato antes de registrar tarifas nuevas.");
@@ -234,7 +234,7 @@ export async function reviseTariff(actor:Actor,tariffId:string,input:unknown){
   admin(actor);const id=uuid.parse(tariffId);
   const data=z.object({unit_price_clp:money,valid_from:z.iso.date(),reason:z.string().trim().min(10).max(500)}).parse(input);
   return transaction(async tx=>{
-    await authorizeCatalog(tx,actor);
+    await authorizeFinance(tx,actor);
     const [source]=await tx.query<{contract_id:string}>("SELECT contract_id FROM service_tariffs WHERE id=$1",[id]);
     if(!source)reject("La tarifa no está disponible.");
     const [contract]=await tx.query<{active:boolean;operating_company:Company|null}>("SELECT active,operating_company FROM client_contracts WHERE id=$1 FOR UPDATE",[source.contract_id]);
@@ -276,7 +276,7 @@ export async function recordTariffNotice(actor:Actor,noticeId:string,input:unkno
   const today=new Intl.DateTimeFormat("sv-SE",{timeZone:"America/Santiago",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
   if(data.notified_on>today)reject("La fecha del aviso no puede ser futura: registre una comunicación ya realizada.");
   await transaction(async tx=>{
-    await authorizeCatalog(tx,actor);
+    await authorizeFinance(tx,actor);
     const [notice]=await tx.query<{status:string}>("SELECT status FROM tariff_change_notices WHERE id=$1 FOR UPDATE",[id]);
     if(notice?.status!=="pendiente")reject("El aviso ya fue registrado o no existe.");
     await tx.query(`UPDATE tariff_change_notices SET status='enviado',notified_on=$2,channel=$3,recipient=$4,reference=$5,recorded_by=$6 WHERE id=$1`,
@@ -290,6 +290,7 @@ export async function valueService(actor:Actor,serviceId:string,input:unknown){
   const id=uuid.parse(serviceId);
   const data=z.object({tariff_id:uuid,client_order_reference:optional(80)}).parse(input);
   return transaction(async(tx)=>{
+    await authorizeFinance(tx,actor);
     const [service]=await tx.query<{client_id:string;site_id:string;service_type:string;waste_type:string;status:string;operating_company:Company|null;
       closed_at:Date;gross_kg:string|null;tare_kg:string|null;rental_from:Date|string|null;rental_to:Date|string|null}>(`SELECT client_id,site_id,service_type,waste_type,status,operating_company,closed_at,gross_kg,tare_kg,rental_from,rental_to
       FROM service_requests WHERE id=$1 AND deleted_at IS NULL FOR UPDATE`,[id]);
@@ -331,6 +332,7 @@ export async function updateClientOrderReference(actor:Actor,serviceId:string,in
     reason:z.string().trim().min(5).max(300),
   }).parse(input);
   await transaction(async tx=>{
+    await authorizeFinance(tx,actor);
     const [valuation]=await tx.query<{id:string;client_order_reference:string|null}>(
       "SELECT id,client_order_reference FROM service_valuations WHERE service_id=$1 FOR UPDATE",[id]);
     if(!valuation)reject("Valorice el servicio antes de corregir la referencia.");
@@ -351,10 +353,11 @@ export async function registerInvoice(actor:Actor,serviceId:string,input:unknown
   const data=z.object({invoice_number:z.string().trim().min(2).max(80),issued_on:z.iso.date(),due_on:z.iso.date(),total_clp:positiveMoney}).parse(input);
   if(data.due_on<data.issued_on)reject("El vencimiento de la factura no puede ser anterior a su emisión.");
   return transaction(async(tx)=>{
+    await authorizeFinance(tx,actor);
     // Comparte el bloqueo del servicio con la importación a EDP para impedir
     // que dos rutas de facturación se abran simultáneamente.
-    const [service]=await tx.query<{id:string}>("SELECT id FROM service_requests WHERE id=$1 FOR UPDATE",[id]);
-    if(!service)reject("Servicio no encontrado.");
+    const [service]=await tx.query<{id:string}>("SELECT id FROM service_requests WHERE id=$1 AND status='completada' AND deleted_at IS NULL FOR UPDATE",[id]);
+    if(!service)reject("La factura se registra sobre un servicio cerrado y disponible.");
     const [edp]=await tx.query<{id:string}>(
       "SELECT id FROM payment_statement_operations WHERE service_id=$1 LIMIT 1",[id]);
     if(edp)reject("Este servicio respalda un estado de pago. Asocie la factura desde Estados de pago.");
@@ -371,12 +374,14 @@ export async function registerInvoice(actor:Actor,serviceId:string,input:unknown
   });
 }
 
-export async function confirmServiceInvoiceTotal(actor:Actor,invoiceId:string,input:unknown){
-  admin(actor);uuid.parse(invoiceId);
+export async function confirmServiceInvoiceTotal(actor:Actor,invoiceId:string,input:unknown,serviceId?:string){
+  admin(actor);uuid.parse(invoiceId);if(serviceId!==undefined)uuid.parse(serviceId);
   const data=z.object({total_clp:positiveMoney,reason:z.string().trim().min(5).max(500)}).parse(input);
   await transaction(async tx=>{
+    await authorizeFinance(tx,actor);
     const [invoice]=await tx.query<{status:string;total_verified:boolean;total_clp:string}>(
-      "SELECT status,total_verified,total_clp FROM service_invoices WHERE id=$1 FOR UPDATE",[invoiceId]);
+      `SELECT f.status,f.total_verified,f.total_clp FROM service_invoices f JOIN service_valuations v ON v.id=f.valuation_id
+        WHERE f.id=$1 AND ($2::uuid IS NULL OR v.service_id=$2) FOR UPDATE OF f`,[invoiceId,serviceId??null]);
     if(!invoice||invoice.status!=="emitida"||invoice.total_verified)reject("La factura no requiere esta conciliación.");
     const [paid]=await tx.query<{total:string}>("SELECT COALESCE(sum(amount_clp),0)::text AS total FROM invoice_payments WHERE invoice_id=$1",[invoiceId]);
     if(Number(data.total_clp)<Number(paid.total))reject("El total del documento no puede ser menor que los abonos registrados.");
@@ -386,13 +391,15 @@ export async function confirmServiceInvoiceTotal(actor:Actor,invoiceId:string,in
   });
 }
 
-export async function voidInvoice(actor:Actor,invoiceId:string,reason:unknown){
+export async function voidInvoice(actor:Actor,invoiceId:string,reason:unknown,serviceId?:string){
   admin(actor);
-  const id=uuid.parse(invoiceId);
+  const id=uuid.parse(invoiceId);if(serviceId!==undefined)uuid.parse(serviceId);
   const explanation=z.string().trim().min(5).max(500).parse(reason);
   const billingReady=await moduleReady("edp_billing");
   await transaction(async(tx)=>{
-    const [invoice]=await tx.query<{status:string}>("SELECT status FROM service_invoices WHERE id=$1 FOR UPDATE",[id]);
+    await authorizeFinance(tx,actor);
+    const [invoice]=await tx.query<{status:string}>(`SELECT f.status FROM service_invoices f JOIN service_valuations v ON v.id=f.valuation_id
+      WHERE f.id=$1 AND ($2::uuid IS NULL OR v.service_id=$2) FOR UPDATE OF f`,[id,serviceId??null]);
     if(!invoice||invoice.status!=="emitida")reject("La factura interna no está vigente.");
     const [payment]=await tx.query("SELECT id FROM invoice_payments WHERE invoice_id=$1 LIMIT 1",[id]);
     if(payment)reject("No anule una factura que registra pagos; requiere revisión administrativa.");
@@ -409,16 +416,25 @@ export async function voidInvoice(actor:Actor,invoiceId:string,reason:unknown){
   });
 }
 
-export async function registerPayment(actor:Actor,invoiceId:string,input:unknown){
+export async function registerPayment(actor:Actor,invoiceId:string,input:unknown,serviceId?:string){
   admin(actor);
-  const id=uuid.parse(invoiceId);
+  const id=uuid.parse(invoiceId);if(serviceId!==undefined)uuid.parse(serviceId);
   const data=z.object({submission_key:uuid,amount_clp:positiveMoney,paid_on:z.iso.date(),
     method:z.enum(["transferencia","efectivo","tarjeta","otro"]),reference:z.string().trim().min(2).max(120)}).parse(input);
+  const today=new Intl.DateTimeFormat("sv-SE",{timeZone:"America/Santiago",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
+  if(data.paid_on>today)reject("La fecha del abono no puede ser futura: registre un pago ya realizado.");
   return transaction(async(tx)=>{
-    const [invoice]=await tx.query<{status:string;total_clp:string;total_verified:boolean}>("SELECT status,total_clp,total_verified FROM service_invoices WHERE id=$1 FOR UPDATE",[id]);
+    await authorizeFinance(tx,actor);
+    const [invoice]=await tx.query<{status:string;total_clp:string;total_verified:boolean}>(`SELECT f.status,f.total_clp,f.total_verified FROM service_invoices f JOIN service_valuations v ON v.id=f.valuation_id
+      WHERE f.id=$1 AND ($2::uuid IS NULL OR v.service_id=$2) FOR UPDATE OF f`,[id,serviceId??null]);
     if(!invoice)reject("Factura no encontrada.");
-    const [previous]=await tx.query<{id:string;invoice_id:string}>("SELECT id,invoice_id FROM invoice_payments WHERE submission_key=$1",[data.submission_key]);
-    if(previous){if(previous.invoice_id!==id)reject("Clave de pago asignada a otra factura.");return previous.id;}
+    const [previous]=await tx.query<{id:string;invoice_id:string;amount_clp:string;paid_on:Date|string;method:string;reference:string}>("SELECT id,invoice_id,amount_clp,paid_on,method,reference FROM invoice_payments WHERE submission_key=$1",[data.submission_key]);
+    if(previous){
+      if(previous.invoice_id!==id)reject("Clave de pago asignada a otra factura.");
+      if(Number(previous.amount_clp)!==Number(data.amount_clp)||financeDay(previous.paid_on)!==data.paid_on||previous.method!==data.method||previous.reference!==data.reference)
+        reject("Esta clave ya registró un abono con otros datos. Recargue la ficha antes de ingresar un abono diferente.");
+      return previous.id;
+    }
     if(invoice.status!=="emitida")reject("La factura está anulada.");
     if(!invoice.total_verified)reject("Confirme el total real de la factura antes de registrar nuevos pagos.");
     const [balance]=await tx.query<{allowed:boolean}>(`SELECT ($2::numeric+COALESCE((SELECT sum(amount_clp) FROM invoice_payments WHERE invoice_id=$1),0))<=total_clp AS allowed
@@ -437,12 +453,19 @@ export async function addServiceCost(actor:Actor,serviceId:string,input:unknown)
   const data=z.object({submission_key:uuid,category:z.enum(["mano_obra","disposicion","peajes","equipos","otros"]),
     amount_clp:positiveMoney,description:z.string().trim().min(5).max(500)}).parse(input);
   return transaction(async(tx)=>{
-    const [service]=await tx.query("SELECT id FROM service_requests WHERE id=$1 AND status='completada' AND deleted_at IS NULL",[id]);
+    await authorizeFinance(tx,actor);
+    const [service]=await tx.query("SELECT id FROM service_requests WHERE id=$1 AND status='completada' AND deleted_at IS NULL FOR SHARE",[id]);
     if(!service)reject("Los costos se registran sobre servicios cerrados.");
     const [cost]=await tx.query<{id:string}>(`INSERT INTO service_costs (submission_key,service_id,category,amount_clp,description,created_by)
       VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (submission_key) DO NOTHING RETURNING id`,
       [data.submission_key,id,data.category,data.amount_clp,data.description,actor.id]);
-    if(!cost){const [previous]=await tx.query<{id:string;service_id:string}>("SELECT id,service_id FROM service_costs WHERE submission_key=$1",[data.submission_key]);if(!previous||previous.service_id!==id)reject("La clave de costo se usó para otro servicio.");return previous.id;}
+    if(!cost){
+      const [previous]=await tx.query<{id:string;service_id:string;category:string;amount_clp:string;description:string}>("SELECT id,service_id,category,amount_clp,description FROM service_costs WHERE submission_key=$1",[data.submission_key]);
+      if(!previous||previous.service_id!==id)reject("La clave de costo se usó para otro servicio.");
+      if(previous.category!==data.category||Number(previous.amount_clp)!==Number(data.amount_clp)||previous.description!==data.description)
+        reject("Esta clave ya registró un costo con otros datos. Recargue la ficha antes de ingresar un costo diferente.");
+      return previous.id;
+    }
     await audit(tx,actor,"cost","service_cost",cost.id,{service_id:id,...data});
     return cost.id;
   });

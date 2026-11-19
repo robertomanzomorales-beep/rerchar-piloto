@@ -278,6 +278,16 @@
   .app-shell :is(.finance-period-programada,.finance-period-programado,.finance-period-por-clasificar) { background:#eef3f9; color:#385f83; }
   .app-shell :is(.finance-period-finalizada,.finance-period-finalizado,.finance-period-inactiva,.finance-period-inactivo,.finance-period-no-disponible) { background:#f0f2f4; color:#64727b; }
   .app-shell .finance-notice-filters { margin-top:16px; }
+  .app-shell .financial-detail-layout { margin-bottom:18px; }
+  .app-shell .financial-detail-layout :is(aside,section) { min-width:0; }
+  .app-shell .financial-detail-form :is(label,.two-fields) { min-width:0; }
+  .app-shell .financial-detail-form .request-form-error { margin:0 0 8px; }
+  .app-shell .financial-detail-page .financial-records { max-height:none; overflow:visible; }
+  .app-shell .financial-records li { display:grid; gap:7px; padding:14px 0; overflow-wrap:anywhere; }
+  .app-shell .financial-records li small { text-align:left; }
+  .app-shell .financial-detail-page :is(.page-intro,.fact strong,.supply-meta strong,.financial-detail-form) { overflow-wrap:anywhere; }
+  .app-shell .financial-document-link { margin-top:16px; }
+
   .app-shell .service-operation-form[data-service-operation="plan"] { grid-template-columns:repeat(2,minmax(0,1fr)); }
 }
 @media screen and (min-width:1200px) {
@@ -297,6 +307,7 @@
   .app-shell .client-records li small { text-align:left; }
   .app-shell .finance-catalog-form .two-fields { grid-template-columns:minmax(0,1fr); }
   .app-shell .finance-record-top { flex-wrap:wrap; }
+  .app-shell .financial-detail-form .two-fields { grid-template-columns:minmax(0,1fr); }
 }
 @media (prefers-reduced-motion:reduce) {
   .loading-indicator,.loading-orbit { animation:none; }

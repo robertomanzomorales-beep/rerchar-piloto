@@ -5,10 +5,10 @@ import { revalidatePath } from "next/cache";
 import { ZodError } from "zod";
 import { requireActor } from "@/lib/auth";
 import { addServiceCost, classifyContractCompany, confirmServiceInvoiceTotal, createContract, createTariff, FinanceError, recordTariffNotice, registerInvoice, registerPayment, reviseTariff, updateClientOrderReference, valueService, voidInvoice } from "@/lib/finance";
+import {financialDetailAnchors,financialDetailContextFromForm,financialDetailDraft,financialDetailHref,type FinancialDetailKind,type FinancialDetailState} from "@/lib/financial-detail-state";
 import {financeCatalogAnchor,financeCatalogContextFromForm,financeCatalogDraft,financeCatalogHref,isFinanceId,type FinanceCatalogKind,type FinanceCatalogState} from "@/lib/finance-catalog-state";
 
 const value=(form:FormData,key:string)=>String(form.get(key)??"").replace(/\r\n?/g,"\n");
-const detail=(id:string)=>`/finanzas/${encodeURIComponent(id)}`;
 function message(error:unknown){
   if(error instanceof FinanceError)return error.message;
   if(error instanceof ZodError)return "Revise la tarifa, monto, folio y fechas ingresadas.";
@@ -16,11 +16,12 @@ function message(error:unknown){
   console.error("Error en finanzas internas",error);
   return "No fue posible guardar el cambio financiero.";
 }
-async function run(path:string,fn:()=>Promise<unknown>):Promise<never>{
-  const separator=path.includes("?")?"&":"?";
-  try{await fn();}catch(error){redirect(`${path}${separator}error=${encodeURIComponent(message(error))}`);}
+async function runDetail(kind:FinancialDetailKind,form:FormData,operation:()=>Promise<unknown>):Promise<FinancialDetailState>{
+  let result:unknown;
+  try{result=await operation();}catch(error){return {error:message(error),values:financialDetailDraft(kind,form)};}
   revalidatePath("/","layout");
-  redirect(`${path}${separator}ok=1`);
+  const anchor=kind==="payment"?"historial-abonos":kind==="cost"?"historial-costos":kind==="confirm"||kind==="void"?"factura-servicio":financialDetailAnchors[kind];
+  redirect(financialDetailHref(value(form,"service_id"),financialDetailContextFromForm(form),anchor,{ok:"1",origen:kind,registro:(kind==="payment"||kind==="cost")&&typeof result==="string"?result:undefined}));
 }
 async function runCatalog(kind:FinanceCatalogKind,form:FormData,operation:()=>Promise<unknown>):Promise<FinanceCatalogState>{
   let result:unknown;
@@ -42,17 +43,17 @@ export async function reviseTariffAction(_previous:FinanceCatalogState,form:Form
   unit_price_clp:value(form,"unit_price_clp"),valid_from:value(form,"valid_from"),reason:value(form,"reason")}));}
 export async function recordTariffNoticeAction(_previous:FinanceCatalogState,form:FormData):Promise<FinanceCatalogState>{const actor=await requireActor();return runCatalog("notice",form,()=>recordTariffNotice(actor,value(form,"notice_id"),{
   channel:value(form,"channel"),recipient:value(form,"recipient"),notified_on:value(form,"notified_on"),reference:value(form,"reference")}));}
-export async function valueServiceAction(form:FormData){const actor=await requireActor();const id=value(form,"service_id");await run(detail(id),()=>valueService(actor,id,{
+export async function valueServiceAction(_previous:FinancialDetailState,form:FormData):Promise<FinancialDetailState>{const actor=await requireActor();const id=value(form,"service_id");return runDetail("value",form,()=>valueService(actor,id,{
   tariff_id:value(form,"tariff_id"),client_order_reference:value(form,"client_order_reference")}));}
-export async function updateClientOrderReferenceAction(form:FormData){const actor=await requireActor();const id=value(form,"service_id");await run(detail(id),()=>updateClientOrderReference(actor,id,{
+export async function updateClientOrderReferenceAction(_previous:FinancialDetailState,form:FormData):Promise<FinancialDetailState>{const actor=await requireActor();const id=value(form,"service_id");return runDetail("reference",form,()=>updateClientOrderReference(actor,id,{
   client_order_reference:value(form,"client_order_reference"),reason:value(form,"reason")}));}
-export async function registerInvoiceAction(form:FormData){const actor=await requireActor();const id=value(form,"service_id");await run(detail(id),()=>registerInvoice(actor,id,{
+export async function registerInvoiceAction(_previous:FinancialDetailState,form:FormData):Promise<FinancialDetailState>{const actor=await requireActor();const id=value(form,"service_id");return runDetail("invoice",form,()=>registerInvoice(actor,id,{
   invoice_number:value(form,"invoice_number"),issued_on:value(form,"issued_on"),due_on:value(form,"due_on"),total_clp:value(form,"total_clp")}));}
-export async function confirmServiceInvoiceTotalAction(form:FormData){const actor=await requireActor();const id=value(form,"service_id");await run(detail(id),()=>confirmServiceInvoiceTotal(actor,value(form,"invoice_id"),{
-  total_clp:value(form,"total_clp"),reason:value(form,"reason")}));}
-export async function voidInvoiceAction(form:FormData){const actor=await requireActor();const id=value(form,"service_id");await run(detail(id),()=>voidInvoice(actor,value(form,"invoice_id"),value(form,"reason")));}
-export async function registerPaymentAction(form:FormData){const actor=await requireActor();const id=value(form,"service_id");await run(detail(id),()=>registerPayment(actor,value(form,"invoice_id"),{
+export async function confirmServiceInvoiceTotalAction(_previous:FinancialDetailState,form:FormData):Promise<FinancialDetailState>{const actor=await requireActor();const id=value(form,"service_id");return runDetail("confirm",form,()=>confirmServiceInvoiceTotal(actor,value(form,"invoice_id"),{
+  total_clp:value(form,"total_clp"),reason:value(form,"reason")},id));}
+export async function voidInvoiceAction(_previous:FinancialDetailState,form:FormData):Promise<FinancialDetailState>{const actor=await requireActor();const id=value(form,"service_id");return runDetail("void",form,()=>voidInvoice(actor,value(form,"invoice_id"),value(form,"reason"),id));}
+export async function registerPaymentAction(_previous:FinancialDetailState,form:FormData):Promise<FinancialDetailState>{const actor=await requireActor();const id=value(form,"service_id");return runDetail("payment",form,()=>registerPayment(actor,value(form,"invoice_id"),{
   submission_key:value(form,"submission_key"),amount_clp:value(form,"amount_clp"),paid_on:value(form,"paid_on"),
-  method:value(form,"method"),reference:value(form,"reference")}));}
-export async function addCostAction(form:FormData){const actor=await requireActor();const id=value(form,"service_id");await run(detail(id),()=>addServiceCost(actor,id,{
+  method:value(form,"method"),reference:value(form,"reference")},id));}
+export async function addCostAction(_previous:FinancialDetailState,form:FormData):Promise<FinancialDetailState>{const actor=await requireActor();const id=value(form,"service_id");return runDetail("cost",form,()=>addServiceCost(actor,id,{
   submission_key:value(form,"submission_key"),category:value(form,"category"),amount_clp:value(form,"amount_clp"),description:value(form,"description")}));}
