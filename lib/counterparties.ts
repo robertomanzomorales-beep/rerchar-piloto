@@ -1,6 +1,7 @@
 import {z} from "zod";
 import type {Actor} from "./auth";
 import {db,transaction} from "./db";
+import {recordPage,lastRecordPage,recordsPerPage} from "./record-pagination";
 
 const uuid=z.uuid();
 const optional=(max:number)=>z.string().trim().max(max).default("");
@@ -45,7 +46,13 @@ export function normalizeRut(raw:string){
   return clean;
 }
 export async function listCounterparties(actor:Actor){admin(actor);
-  return db.query<Counterparty>("SELECT * FROM counterparty_profiles ORDER BY legal_name LIMIT 400");
+  return db.query<Counterparty>("SELECT * FROM counterparty_profiles ORDER BY legal_name,id");
+}
+export async function counterpartyPage(actor:Actor,requestedPage:unknown=1){
+  admin(actor);const[totals]=await db.query<{total:string}>("SELECT count(*)::text AS total FROM counterparty_profiles");
+  const total=Number(totals.total),pages=lastRecordPage(total),page=Math.min(recordPage(requestedPage),pages);
+  const rows=await db.query<Pick<Counterparty,"id"|"legal_name"|"tax_id"|"kind"|"status">>("SELECT id,legal_name,tax_id,kind,status FROM counterparty_profiles ORDER BY legal_name,id LIMIT $1 OFFSET $2",[recordsPerPage,(page-1)*recordsPerPage]);
+  return{rows,total,page,pages};
 }
 export async function getCounterparty(actor:Actor,id:string){admin(actor);uuid.parse(id);
   const [profile]=await db.query<Counterparty>("SELECT * FROM counterparty_profiles WHERE id=$1",[id]);

@@ -48,7 +48,8 @@
     "test:dashboard-followup-review-http": "node --import tsx scripts/verify-dashboard-followup-review.ts",
     "test:service-ledger-review-http": "node --import tsx scripts/verify-service-ledger-review.ts",
     "test:compliance-review-http": "node --import tsx scripts/verify-compliance-review.ts",
-    "test:release-review-http": "node --import tsx scripts/verify-release-review.ts"
+    "test:release-review-http": "node --import tsx scripts/verify-release-review.ts",
+    "test:counterparty-review-http": "node --import tsx scripts/verify-counterparty-review.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.3.13",
