@@ -32,6 +32,7 @@ export default function Shell({ actor, children }: { actor: Actor; children: Rea
   const mobileToggle=useRef<HTMLButtonElement>(null);
   const mobileClose=useRef<HTMLButtonElement>(null);
   const mobileDrawer=useRef<HTMLElement>(null);
+  const companyToggle=useRef<HTMLButtonElement>(null);
   const searchReturnFocus=useRef<HTMLElement>(null);
   const [expanded,setExpanded]=useState<{path:string;groups:Record<string,boolean>}>({path:"",groups:{}});
   const openSearch=useCallback((opener:HTMLElement|null)=>{
@@ -51,7 +52,10 @@ export default function Shell({ actor, children }: { actor: Actor; children: Rea
   useEffect(()=>{
     if(!companyOpen)return;
     const dismiss=(event:PointerEvent)=>{if(event.target instanceof Element&&!event.target.closest('.company-picker'))setCompanyOpen(false);};
-    const onKey=(event:KeyboardEvent)=>{if(event.key==="Escape")setCompanyOpen(false);};
+    const onKey=(event:KeyboardEvent)=>{if(event.key==="Escape"&&!event.defaultPrevented){
+      event.preventDefault();event.stopPropagation();setCompanyOpen(false);
+      if(companyToggle.current?.isConnected&&companyToggle.current.getClientRects().length)companyToggle.current.focus();
+    }};
     document.addEventListener("pointerdown",dismiss);document.addEventListener("keydown",onKey);
     return()=>{document.removeEventListener("pointerdown",dismiss);document.removeEventListener("keydown",onKey);};
   },[companyOpen]);
@@ -80,7 +84,7 @@ export default function Shell({ actor, children }: { actor: Actor; children: Rea
   const selectedName=activeCompany==="e_y_j"?"E y J":activeCompany==="rerchar"?"RERCHAR":null;
   const companyExpanded=companyOpen;
   const companyOptions=<div className={`company-picker ${companyExpanded?"expanded":""}`}>
-    <button type="button" className="company-picker-trigger" aria-expanded={companyExpanded} onClick={()=>setCompanyOpen(open=>!open)}><span className="company-picker-line" aria-hidden="true"/><span className="company-picker-copy"><strong>{selectedName??"Elegir empresa"}</strong><small>{activeCompany==="rerchar"?"Gestión de materiales":activeCompany==="e_y_j"?"Servicios industriales":"Seleccione una operación"}</small></span><ChevronDown size={16} aria-hidden="true"/></button>
+    <button type="button" className="company-picker-trigger" aria-expanded={companyExpanded} onClick={event=>{companyToggle.current=event.currentTarget;setCompanyOpen(open=>!open);}}><span className="company-picker-line" aria-hidden="true"/><span className="company-picker-copy"><strong>{selectedName??"Elegir empresa"}</strong><small>{activeCompany==="rerchar"?"Gestión de materiales":activeCompany==="e_y_j"?"Servicios industriales":"Seleccione una operación"}</small></span><ChevronDown size={16} aria-hidden="true"/></button>
     <div className="company-picker-panel" inert={!companyExpanded}><div className="company-picker-inner" aria-label="Empresa operadora">
       <Link href="/empresa/rerchar" aria-current={activeCompany==="rerchar"?"page":undefined} onClick={()=>{setCompanyOpen(false);setMobileOpen(false);}} className={`company-switch company-switch--rerchar ${activeCompany==="rerchar"?"selected":""}`}><span className="switch-mark" aria-hidden="true"/><span><strong>RERCHAR</strong><small>Gestión de materiales</small></span><span className="switch-indicator" aria-hidden="true"/></Link>
       <Link href="/empresa/e_y_j" aria-current={activeCompany==="e_y_j"?"page":undefined} onClick={()=>{setCompanyOpen(false);setMobileOpen(false);}} className={`company-switch company-switch--eyj ${activeCompany==="e_y_j"?"selected":""}`}><span className="switch-mark" aria-hidden="true"/><span><strong>E y J</strong><small>Servicios industriales</small></span><span className="switch-indicator" aria-hidden="true"/></Link>
