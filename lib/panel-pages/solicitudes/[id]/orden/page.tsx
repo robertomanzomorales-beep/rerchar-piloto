@@ -7,13 +7,14 @@ import {getServiceOrder,serviceOrderNet,serviceOrderState,serviceOrderWeight} fr
 import {Badge,chileCalendarDate,chileDate} from "@/components/UI";
 import PrintButton from "@/components/PrintButton";
 import DocumentBrand from "@/components/DocumentBrand";
+import CompanyScope from "@/components/CompanyScope";
 import {companyName,serviceFolio} from "@/lib/companies";
 export default async function ServiceOrder({params}:{params:Promise<{id:string}>}){
   const actor=await requireActor(),{id}=await params;let detail;
   try{detail=await getServiceOrder(actor,id);}catch(error){if(error instanceof PilotError)notFound();throw error;}
   const {service,check,materials}=detail,folio=serviceFolio(service),rental=service.service_type==="arriendo",state=serviceOrderState(service),generated=new Date();
   const typeName=({retiro:"Retiro de material",traslado:"Traslado",arriendo:"Servicios de arriendo",compra:"Compra de material",venta:"Venta de material",otro:"Otro servicio"} as Record<string,string>)[service.service_type]??service.service_type;
-  return <><div className="order-actions service-order-actions print-hide"><Link href={`/solicitudes/${id}`} className="back-link"><ArrowLeft size={16}/> Volver al servicio</Link>{service.operating_company&&<PrintButton prepare/>}</div>
+  return <><CompanyScope company={service.operating_company}/><div className="order-actions service-order-actions print-hide"><Link href={`/solicitudes/${id}`} className="back-link"><ArrowLeft size={16}/> Volver al servicio</Link>{service.operating_company&&<PrintButton prepare/>}</div>
     <article className="order-sheet service-order-sheet" data-company={service.operating_company??"unassigned"} data-order-state={state.draft?"draft":service.status==="cancelada"?"canceled":"recorded"}>
       <header className="order-header"><div><DocumentBrand company={service.operating_company}/><div className="order-system">{companyName(service.operating_company)}</div></div><div className="order-number"><small>{state.title}</small><h1>{folio}</h1><Badge status={service.status}/></div></header>
       {state.notice&&<p className="service-order-notice" role="status">{state.notice}</p>}

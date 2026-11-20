@@ -9,6 +9,7 @@ import {Notice} from "@/components/UI";
 import ServiceLedgerForm from "@/components/ServiceLedgerForm";
 import PrintButton from "@/components/PrintButton";
 import DocumentBrand from "@/components/DocumentBrand";
+import CompanyScope from "@/components/CompanyScope";
 import {companyName,serviceFolio} from "@/lib/companies";
 import {db} from "@/lib/db";
 
@@ -36,7 +37,7 @@ export default async function ServiceFollowup({params,searchParams}:{params:Prom
       ["responsible_name","Responsable",f?.responsible_name||"—"],["received_on","Recibida",date(f?.received_on)||"—"]] as [string,string,string][]:[]),
     ["documents_sent_on","Documentos enviados",date(f?.documents_sent_on)||"—"],
   ];
-  return <div className="service-ledger-page"><div className="order-actions print-hide"><Link href={`/solicitudes/${id}`} className="back-link">Volver al servicio</Link>{canManage(actor)&&!isEyj&&<Link href={ledgerBackHref(context)} className="text-link">Volver al seguimiento de guías</Link>}{s.operating_company&&<PrintButton prepare label="Imprimir ficha comercial / PDF"/>}</div>
+  return <div className="service-ledger-page"><CompanyScope company={s.operating_company}/><div className="order-actions print-hide"><Link href={`/solicitudes/${id}`} className="back-link">Volver al servicio</Link>{canManage(actor)&&!isEyj&&<Link href={ledgerBackHref(context)} className="text-link">Volver al seguimiento de guías</Link>}{s.operating_company&&<PrintButton prepare label="Imprimir ficha comercial / PDF"/>}</div>
     <div className="print-hide"><Notice error={query.error} ok={query.ok}/><p className="helper-text">La ficha muestra la última información guardada.</p></div>
     {!s.operating_company&&<p role="alert" className="notice notice-error print-hide">Confirme la empresa operadora antes de imprimir esta ficha.</p>}
     <article className="order-sheet service-ledger-sheet" data-company={s.operating_company??"unassigned"}><header className="order-header"><div><DocumentBrand company={s.operating_company}/><div className="order-system">{companyName(s.operating_company)}</div><h1>{isEyj?"Seguimiento comercial y documental":"Seguimiento del servicio y guías"}</h1></div><div className="order-number"><small>SERVICIO</small><h1>{serviceFolio(s)}</h1></div></header>
