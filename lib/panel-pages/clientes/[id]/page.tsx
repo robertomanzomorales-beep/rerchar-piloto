@@ -22,8 +22,9 @@ export default async function ClientDossier({params,searchParams}:{params:Promis
   const pager=(name:DossierPageKey)=><Pages id={id} context={context} name={name} page={pages[name]} total={totals[name]}/>;
   const summaryHref=(company:string)=>`/clientes/${id}/resumen?`+new URLSearchParams({...context,empresa:company} as Record<string,string>);
   const newQuote="/cotizaciones/nueva?"+new URLSearchParams({cliente:id,...(context.empresa?{empresa:context.empresa}:{})});
+  const panelHref=context.empresa?`/empresa/${context.empresa}`:"/";
   return <div className="client-dossier">
-    <Link className="back-link" href={actor.role==="cliente"?"/":clientHref({empresa:context.empresa,buscar:context.buscar,pagina:context.pagina})}>{actor.role==="cliente"?"Mi panel":"Volver a clientes"}</Link>
+    <Link className="back-link" href={actor.role==="cliente"?panelHref:clientHref({empresa:context.empresa,buscar:context.buscar,pagina:context.pagina})}>{actor.role==="cliente"?"Mi panel":"Volver a clientes"}</Link>
     <div className="page-title-row"><div><div className="eyebrow">CARPETA DEL CLIENTE</div><h1>{client.name}</h1><p className="page-intro">{[client.tax_id,client.contact_name,client.email,client.address].filter(Boolean).join(" · ")||"Sin datos adicionales"}</p></div><span className="title-icon"><Building2 size={23}/></span></div>
     <div className="order-actions">{actor.role!=="cliente"&&<Link href={newQuote} className="button button-primary">Nueva cotización</Link>}{profileReady&&<Link href={profile?`/fichas/${profile.id}`:`/fichas/nueva?cliente=${id}`} className="button button-outline">{profile?"Ficha legal y contactos":"Completar ficha legal"}</Link>}<Link href={summaryHref("rerchar")} className="button button-outline">Resumen RERCHAR</Link><Link href={summaryHref("e_y_j")} className="button button-outline">Resumen E y J</Link></div>
     <nav className="client-section-links" aria-label="Secciones de la carpeta">{dossierPageKeys.map(key=><a href={`#${dossierAnchors[key]}`} key={key}>{sections[key]} <span>{totals[key]}</span></a>)}</nav>
