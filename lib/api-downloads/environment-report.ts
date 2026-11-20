@@ -3,6 +3,7 @@ import {z} from "zod";
 import {complianceDay} from "@/lib/compliance-state";
 import {listWasteRecords} from "@/lib/compliance";
 import {companyName,serviceFolio} from "@/lib/companies";
+import {chileCsvDay} from "@/lib/chile-csv";
 
 const cell=(value:string|number|null|undefined)=>{
   const raw=String(value??"");
@@ -22,7 +23,7 @@ export async function GET(request:Request){
     r.generator_name,r.transporter_name,r.receiver_name,r.treatment,r.guide_number,r.status,r.external_system,r.external_reference,
     complianceDay(r.reported_on),new Date(r.updated_at).toISOString()].map(cell).join(";"));
   return new Response(`\uFEFF${lines.join("\r\n")}\r\n`,{headers:{
-    "Content-Type":"text/csv; charset=utf-8","Content-Disposition":`attachment; filename="registros-ambientales-${new Date().toISOString().slice(0,10)}.csv"`,
+    "Content-Type":"text/csv; charset=utf-8","Content-Disposition":`attachment; filename="registros-ambientales-${chileCsvDay()}.csv"`,
     "Cache-Control":"private, no-store","X-Content-Type-Options":"nosniff",
   }});
 }
