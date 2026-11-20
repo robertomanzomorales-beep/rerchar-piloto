@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { ArrowUpRight, Clock3, ChevronRight } from "lucide-react";
 import { statusName, type ServiceRow } from "@/lib/pilot";
 import {companyName,serviceFolio} from "@/lib/companies";
@@ -23,8 +24,8 @@ export function Notice({ error, ok }: { error?: string; ok?: string }) {
   if (ok) return <div role="status" className="notice notice-success">Cambios guardados correctamente.</div>;
   return null;
 }
-export function Empty({ title, detail }: { title: string; detail: string }) {
-  return <div className="empty-state"><Clock3 size={24}/><h3>{title}</h3><p>{detail}</p></div>;
+export function Empty({ title, detail, children }: { title: string; detail: string; children?: ReactNode }) {
+  return <div className="empty-state"><Clock3 size={24} aria-hidden="true"/><h3>{title}</h3><p>{detail}</p>{children&&<div className="empty-state-actions">{children}</div>}</div>;
 }
 export function ServiceTable({ services }: { services: ServiceRow[] }) {
   if (!services.length) return <Empty title="Sin solicitudes en esta vista" detail="Cree una solicitud o cambie los filtros para ver resultados."/>;

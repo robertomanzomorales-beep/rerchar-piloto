@@ -317,6 +317,8 @@
   .app-shell .empty-state { padding:28px 18px; background:#fafcfd; color:#6b8491; }
   .app-shell .empty-state h3 { color:#405b69; font-size:13px; font-weight:600; }
   .app-shell .empty-state p { font-size:11px; max-width:48ch; margin-inline:auto; }
+  .app-shell .empty-state-actions { display:flex; flex-wrap:wrap; justify-content:center; gap:8px; margin-top:15px; }
+  .app-shell .empty-state-actions .button { max-width:100%; white-space:normal; text-align:center; }
   .app-shell .quote-step--current { box-shadow:none; background:var(--company-soft); }
   .app-shell .quote-step-number { border-radius:50%; width:27px; height:27px; }
   .app-shell .quote-step-copy strong { font-weight:560; }
