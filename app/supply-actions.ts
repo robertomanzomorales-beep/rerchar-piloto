@@ -7,6 +7,7 @@ import { ZodError,z } from "zod";
 import { requireActor } from "@/lib/auth";
 import {recordPage} from "@/lib/record-pagination";
 import {purchaseDraft,type PurchaseFormState} from "@/lib/purchase-form-state";
+import {purchaseDetailDraft,purchaseDetailFormHref,type PurchaseDetailFormKind,type PurchaseDetailFormState} from "@/lib/purchase-detail-form-state";
 import {inventoryDraft,inventoryFormAnchor,type InventoryFormKind,type InventoryFormState} from "@/lib/inventory-form-state";
 import {
   SupplyError, addPurchaseLine, adjustStock, approvePurchase, cancelPurchase, closeReservation,
@@ -88,9 +89,19 @@ export async function createPurchaseAction(_state:PurchaseFormState,form:FormDat
   revalidatePath("/", "layout");
   redirect(`${purchasePath(id)}?ok=1`);
 }
-export async function addPurchaseLineAction(form: FormData) {
-  const actor = await requireActor(); const path = purchasePath(value(form,"request_id"));
-  await run(path, () => addPurchaseLine(actor,value(form,"request_id"),{ item_id: value(form,"item_id"), quantity: value(form,"quantity") }));
+async function runPurchaseDetail(kind:PurchaseDetailFormKind,form:FormData,operation:()=>Promise<unknown>):Promise<PurchaseDetailFormState>{
+  try{await operation();}catch(error){return {error:message(error),values:purchaseDetailDraft(kind,form)};}
+  revalidatePath("/","layout");
+  if(!(await headers()).has("next-action")){
+    const path=purchaseDetailFormHref(value(form,"request_id"),kind);
+    const [base,anchor]=path.split("#");
+    redirect(`${base}?compra_ok=${kind}#${anchor}`);
+  }
+  return {error:"",ok:true,values:{}};
+}
+export async function addPurchaseLineAction(_state:PurchaseDetailFormState,form: FormData):Promise<PurchaseDetailFormState> {
+  const actor = await requireActor();
+  return runPurchaseDetail("line",form, () => addPurchaseLine(actor,value(form,"request_id"),{ item_id: value(form,"item_id"), quantity: value(form,"quantity") }));
 }
 export async function approvePurchaseAction(form: FormData) {
   const actor = await requireActor(); const id = value(form,"request_id");
@@ -100,11 +111,11 @@ export async function cancelPurchaseAction(form: FormData) {
   const actor = await requireActor(); const id = value(form,"request_id");
   await run(purchasePath(id), () => cancelPurchase(actor,id,value(form,"reason")));
 }
-export async function savePurchaseDraftAction(form: FormData) {
+export async function savePurchaseDraftAction(_state:PurchaseDetailFormState,form: FormData):Promise<PurchaseDetailFormState> {
   const actor = await requireActor(); const id = value(form,"request_id");
   const prices=Object.fromEntries([...form.entries()].filter(([key])=>key.startsWith("price_")).map(([key,val])=>[key.slice(6),String(val)]));
   const discounts=Object.fromEntries([...form.entries()].filter(([key])=>key.startsWith("discount_")).map(([key,val])=>[key.slice(9),String(val)]));
-  await run(purchasePath(id), () => savePurchaseDraft(actor,id,{ supplier: value(form,"supplier"), supplier_profile_id:value(form,"supplier_profile_id"), expected_date: value(form,"expected_date"),
+  return runPurchaseDetail("draft",form, () => savePurchaseDraft(actor,id,{ supplier: value(form,"supplier"), supplier_profile_id:value(form,"supplier_profile_id"), expected_date: value(form,"expected_date"),
     issuer:value(form,"issuer"),supplier_tax_id:value(form,"supplier_tax_id"),supplier_address:value(form,"supplier_address"),
     supplier_contact:value(form,"supplier_contact"),cost_center:value(form,"cost_center"),
     payment_terms:value(form,"payment_terms"),vat_rate:value(form,"vat_rate"),prices,discounts }));
@@ -113,9 +124,9 @@ export async function orderPurchaseAction(form: FormData) {
   const actor = await requireActor(); const id = value(form,"request_id");
   await run(purchasePath(id), () => issuePurchaseDraft(actor,id,value(form,"confirmation")));
 }
-export async function receivePurchaseAction(form: FormData) {
+export async function receivePurchaseAction(_state:PurchaseDetailFormState,form: FormData):Promise<PurchaseDetailFormState> {
   const actor = await requireActor(); const id = value(form,"request_id");
-  await run(purchasePath(id), () => receivePurchase(actor,id,{
+  return runPurchaseDetail("receive",form, () => receivePurchase(actor,id,{
     submission_key: value(form,"submission_key"), line_id: value(form,"line_id"), warehouse_id: value(form,"warehouse_id"),
     quantity: value(form,"quantity"), guide_number: value(form,"guide_number"), invoice_number: value(form,"invoice_number"), payment_status: value(form,"payment_status"),
     without_order:value(form,"without_order")==="true",supplier:value(form,"supplier"),issuer:value(form,"issuer")||undefined,
