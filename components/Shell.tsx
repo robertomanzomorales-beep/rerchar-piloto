@@ -83,7 +83,7 @@ export default function Shell({ actor, children }: { actor: Actor; children: Rea
       <Link href="/empresa/e_y_j" aria-current={activeCompany==="e_y_j"?"page":undefined} onClick={()=>{setCompanyOpen(false);setMobileOpen(false);}} className={`company-switch company-switch--eyj ${activeCompany==="e_y_j"?"selected":""}`}><span className="switch-mark" aria-hidden="true"/><span><strong>E y J</strong><small>Servicios industriales</small></span><span className="switch-indicator" aria-hidden="true"/></Link>
     </div></div>
   </div>;
-  const companyHref=(href:string)=>activeCompany&&["/cotizaciones","/clientes","/solicitudes","/agenda","/seguimiento-guias","/facturas-recibidas","/transferencias","/transacciones","/finanzas","/cobros-extraordinarios","/cobranzas","/documentos-sii"].includes(href)?`${href}?empresa=${activeCompany}`:activeCompany&&href==="/reportes"?`${href}?company=${activeCompany}`:href;
+  const companyHref=(href:string)=>activeCompany&&["/cotizaciones","/clientes","/solicitudes","/agenda","/seguimiento-guias","/facturas-recibidas","/transferencias","/transacciones","/finanzas","/cobros-extraordinarios","/cobranzas","/documentos-sii","/cumplimiento","/mantenimiento","/personal","/destinos","/flota","/maestros","/contenedores","/combustible"].includes(href)?`${href}?empresa=${activeCompany}`:activeCompany&&href==="/reportes"?`${href}?company=${activeCompany}`:href;
   const links = [
     { group:"Comercial", href: "/cotizaciones", text: "Cotizaciones", icon: FileText, visible: actor.role !== "conductor" },
     { group:"Comercial", href: "/clientes", text: actor.role==="cliente"?"Mi carpeta documental":"Clientes y documentos", icon: Building2, visible: actor.role !== "conductor" },
