@@ -1,3 +1,4 @@
+import {encodeDownloadFilename} from "@/lib/download-filename";
 import {getActor} from "@/lib/auth";
 import {getOperationFile} from "@/lib/operation-files";
 
@@ -9,6 +10,6 @@ export async function GET(_request:Request,{params}:{params:Promise<{id:string}>
   if(!file)return new Response("No encontrado",{status:404});
   const filename=file.filename.replace(/[\r\n"\\]/g,"_");
   return new Response(new Uint8Array(file.data),{headers:{"Content-Type":file.mime,
-    "Content-Disposition":`attachment; filename="archivo"; filename*=UTF-8''${encodeURIComponent(filename)}`,
+    "Content-Disposition":`attachment; filename="archivo"; filename*=UTF-8''${encodeDownloadFilename(filename)}`,
     "Cache-Control":"private, no-store","X-Content-Type-Options":"nosniff"}});
 }

@@ -1,3 +1,4 @@
+import {encodeDownloadFilename} from "@/lib/download-filename";
 import {getActor} from "@/lib/auth";
 import {getCounterpartyDocument} from "@/lib/counterparties";
 
@@ -10,7 +11,7 @@ export async function GET(_request:Request,{params}:{params:Promise<{id:string}>
     if(!file)return new Response("No encontrado",{status:404});
     const filename=file.filename.replace(/[\r\n"\\]/g,"_");
     return new Response(new Uint8Array(file.content),{headers:{"Content-Type":file.mime,
-      "Content-Disposition":`attachment; filename="documento"; filename*=UTF-8''${encodeURIComponent(filename)}`,
+      "Content-Disposition":`attachment; filename="documento"; filename*=UTF-8''${encodeDownloadFilename(filename)}`,
       "Cache-Control":"private, no-store","X-Content-Type-Options":"nosniff"}});
   }catch{return new Response("No encontrado",{status:404});}
 }

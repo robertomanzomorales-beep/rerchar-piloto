@@ -1,3 +1,4 @@
+import {encodeDownloadFilename} from "@/lib/download-filename";
 import {getActor} from "@/lib/auth";
 import {ContainerError,getContainerMovementPhoto} from "@/lib/containers";
 
@@ -11,7 +12,7 @@ export async function GET(_request:Request,{params}:{params:Promise<{id:string}>
   const filename=photo.filename.replace(/[\r\n"\\]/g,"_");
   return new Response(new Uint8Array(photo.content),{headers:{
     "Content-Type":photo.mime,
-    "Content-Disposition":`attachment; filename="foto-instalacion"; filename*=UTF-8''${encodeURIComponent(filename)}`,
+    "Content-Disposition":`attachment; filename="foto-instalacion"; filename*=UTF-8''${encodeDownloadFilename(filename)}`,
     "Cache-Control":"private, no-store",
     "X-Content-Type-Options":"nosniff",
   }});
