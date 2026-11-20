@@ -10,6 +10,7 @@ import {lastRecordPage,recordPage,recordsPerPage} from "@/lib/record-pagination"
 import {Notice,chileCalendarDate} from "@/components/UI";
 import {FinanceTariffs,FinanceTariffNotices} from "@/components/FinanceTariffs";
 import {FinanceCatalogForm} from "@/components/FinanceCatalogForms";
+import CompanyScope from "@/components/CompanyScope";
 
 const money=(value:number|string)=>Number(value).toLocaleString("es-CL",{maximumFractionDigits:2});
 const signature=(value:unknown)=>createHash("sha256").update(JSON.stringify(value)).digest("hex").slice(0,16);
@@ -39,7 +40,7 @@ export default async function Finance({searchParams}:{searchParams:Promise<Finan
   const balance=invoiced.filter(s=>s.invoice_total_verified).reduce((sum,s)=>sum+Number(s.invoice_total)-Number(s.paid_clp),0);
   const today=new Intl.DateTimeFormat("sv-SE",{timeZone:"America/Santiago",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
   const contractChoices=contracts.map(c=>({...c,starts_on:day(c.starts_on),ends_on:c.ends_on?day(c.ends_on):null}));
-  return <div className="finance-page">
+  return <div className="finance-page"><CompanyScope company={company==="rerchar"||company==="e_y_j"?company:undefined}/>
     <div className="page-title-row"><div><div className="eyebrow">CONTROL ADMINISTRATIVO</div><h1>Contratos y finanzas</h1><p className="page-intro">Condiciones comerciales, tarifas y seguimiento administrativo de los servicios.</p></div><span className="title-icon"><Banknote size={23}/></span></div>
     <Notice error={query.error} ok={query.ok}/>
     <form key={`${company}:${pendingOnly}:${clientOcOnly}`} action="/finanzas" method="GET" className="filters"><label>Empresa<select name="empresa" defaultValue={company}><option value="rerchar">RERCHAR</option><option value="e_y_j">E y J</option><option value="pendiente">Registros por clasificar</option></select></label><label>Factura individual<select name="facturacion" defaultValue={pendingOnly?"pendiente":""}><option value="">Todos</option><option value="pendiente">Valorizados sin factura</option></select></label><label>OC del cliente<select name="oc" defaultValue={clientOcOnly?"pendiente":""}><option value="">Todos</option><option value="pendiente">Requerida y pendiente</option></select></label><button className="button button-outline" type="submit">Aplicar filtros</button></form>
