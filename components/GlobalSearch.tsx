@@ -11,7 +11,13 @@ const searchable=(value:string)=>value.normalize("NFD").replace(/[\u0300-\u036f]
 export default function GlobalSearch({open,onClose,items,returnFocusRef}:{open:boolean;onClose:()=>void;items:SearchDestination[];returnFocusRef?:RefObject<HTMLElement|null>}){
   const [term,setTerm]=useState(""),[active,setActive]=useState(0);
   const input=useRef<HTMLInputElement>(null),dialog=useRef<HTMLDivElement>(null),resultList=useRef<HTMLDivElement>(null),router=useRouter();
-  const results=useMemo(()=>items.filter(i=>searchable(`${i.text} ${i.group}`).includes(searchable(term.trim()))).slice(0,12),[items,term]);
+  const results=useMemo(()=>{
+    const words=searchable(term).trim().split(/\s+/).filter(Boolean);
+    return items.filter(item=>{
+      const content=searchable(`${item.text} ${item.group}`);
+      return words.every(word=>content.includes(word));
+    }).slice(0,12);
+  },[items,term]);
   useEffect(()=>{
     if(!open)return;
     const previousFocus=returnFocusRef?.current??(document.activeElement instanceof HTMLElement?document.activeElement:null);
