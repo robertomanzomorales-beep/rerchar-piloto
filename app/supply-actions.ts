@@ -2,10 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import {headers} from "next/headers";
 import { ZodError,z } from "zod";
 import { requireActor } from "@/lib/auth";
 import {recordPage} from "@/lib/record-pagination";
 import {purchaseDraft,type PurchaseFormState} from "@/lib/purchase-form-state";
+import {inventoryDraft,inventoryFormAnchor,type InventoryFormKind,type InventoryFormState} from "@/lib/inventory-form-state";
 import {
   SupplyError, addPurchaseLine, adjustStock, approvePurchase, cancelPurchase, closeReservation,
   createPurchase, createStockItem, createStockSkuRule, createWarehouse, issuePurchaseDraft, receivePurchase, reserveStock, savePurchaseDraft, transferStock,
@@ -41,22 +43,36 @@ function inventoryReturn(form:FormData){
   }catch{return "/inventario";}
 }
 
-export async function createWarehouseAction(form: FormData) {
-  const actor = await requireActor();
-  await run("/inventario", () => createWarehouse(actor,{ code: value(form,"code"), name: value(form,"name") }));
+async function runInventory(kind:InventoryFormKind,form:FormData,operation:()=>Promise<unknown>):Promise<InventoryFormState>{
+  try{await operation();}catch(error){return {error:message(error),values:inventoryDraft(kind,form)};}
+  revalidatePath("/","layout");
+  if(!(await headers()).has("next-action")){
+    const target=new URL(inventoryReturn(form),"https://internal.invalid");
+    const id=kind==="valuation"&&z.uuid().safeParse(value(form,"item_id")).success?value(form,"item_id"):"";
+    target.searchParams.set("inventario_form",kind);target.searchParams.set("inventario_ok",kind);
+    if(id)target.searchParams.set("editar_articulo",id);
+    target.hash=inventoryFormAnchor(kind,id);
+    redirect(target.pathname+target.search+target.hash);
+  }
+  return {error:"",ok:true,values:kind==="valuation"?inventoryDraft(kind,form):{}};
 }
-export async function createItemAction(form: FormData) {
+
+export async function createWarehouseAction(_state:InventoryFormState,form:FormData):Promise<InventoryFormState> {
   const actor = await requireActor();
-  await run("/inventario", () => createStockItem(actor,{ code: value(form,"code"), name: value(form,"name"), unit: value(form,"unit"),
+  return runInventory("warehouse",form,() => createWarehouse(actor,{ code: value(form,"code"), name: value(form,"name") }));
+}
+export async function createItemAction(_state:InventoryFormState,form:FormData):Promise<InventoryFormState> {
+  const actor = await requireActor();
+  return runInventory("item",form,() => createStockItem(actor,{ code: value(form,"code"), name: value(form,"name"), unit: value(form,"unit"),
     category:value(form,"category"),minimum_qty: value(form,"minimum_qty"),maximum_qty:value(form,"maximum_qty"),unit_cost_clp:value(form,"unit_cost_clp") }));
 }
-export async function createStockSkuRuleAction(form:FormData){
+export async function createStockSkuRuleAction(_state:InventoryFormState,form:FormData):Promise<InventoryFormState>{
   const actor=await requireActor();
-  await run("/inventario",()=>createStockSkuRule(actor,{category:value(form,"category"),prefix:value(form,"prefix")}));
+  return runInventory("sku_rule",form,()=>createStockSkuRule(actor,{category:value(form,"category"),prefix:value(form,"prefix")}));
 }
-export async function updateItemValuationAction(form: FormData) {
+export async function updateItemValuationAction(_state:InventoryFormState,form:FormData):Promise<InventoryFormState> {
   const actor = await requireActor();
-  await run("/inventario", () => updateStockItemValuation(actor,value(form,"item_id"),{
+  return runInventory("valuation",form,() => updateStockItemValuation(actor,value(form,"item_id"),{
     category:value(form,"category"),unit_cost_clp:value(form,"unit_cost_clp"),
   }));
 }
@@ -105,20 +121,20 @@ export async function receivePurchaseAction(form: FormData) {
     without_order:value(form,"without_order")==="true",supplier:value(form,"supplier"),issuer:value(form,"issuer")||undefined,
   }));
 }
-export async function adjustStockAction(form: FormData) {
+export async function adjustStockAction(_state:InventoryFormState,form:FormData):Promise<InventoryFormState> {
   const actor = await requireActor();
-  await run("/inventario", () => adjustStock(actor,{ item_id: value(form,"item_id"), warehouse_id: value(form,"warehouse_id"),
+  return runInventory("adjust",form,() => adjustStock(actor,{ item_id: value(form,"item_id"), warehouse_id: value(form,"warehouse_id"),
     direction: value(form,"direction"), quantity: value(form,"quantity"), reason: value(form,"reason"),
     document_reference:value(form,"document_reference"),cost_center:value(form,"cost_center") }));
 }
-export async function transferStockAction(form: FormData) {
+export async function transferStockAction(_state:InventoryFormState,form:FormData):Promise<InventoryFormState> {
   const actor = await requireActor();
-  await run("/inventario", () => transferStock(actor,{ item_id: value(form,"item_id"), from_id: value(form,"from_id"),
+  return runInventory("transfer",form,() => transferStock(actor,{ item_id: value(form,"item_id"), from_id: value(form,"from_id"),
     to_id: value(form,"to_id"), quantity: value(form,"quantity"), reason: value(form,"reason") }));
 }
-export async function reserveStockAction(form: FormData) {
+export async function reserveStockAction(_state:InventoryFormState,form:FormData):Promise<InventoryFormState> {
   const actor = await requireActor();
-  await run("/inventario", () => reserveStock(actor,{ item_id: value(form,"item_id"), warehouse_id: value(form,"warehouse_id"),
+  return runInventory("reserve",form,() => reserveStock(actor,{ item_id: value(form,"item_id"), warehouse_id: value(form,"warehouse_id"),
     quantity: value(form,"quantity"), reason: value(form,"reason") }));
 }
 export async function closeReservationAction(form: FormData) {
