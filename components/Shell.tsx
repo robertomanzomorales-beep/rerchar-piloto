@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { LayoutDashboard, ClipboardList, CalendarDays, Boxes, LogOut, Menu, ShieldCheck, Wrench, FileBarChart2, ShoppingCart, Warehouse, Fuel, Container, Users, Banknote, FileCheck2, ScrollText, FileBadge2, Building2, FileText, ReceiptText, Search, ChevronDown, MapPin, Settings2, X } from "lucide-react";
 import type { Actor } from "@/lib/auth";
@@ -29,10 +29,16 @@ export default function Shell({ actor, children }: { actor: Actor; children: Rea
   const mobileToggle=useRef<HTMLButtonElement>(null);
   const mobileClose=useRef<HTMLButtonElement>(null);
   const mobileDrawer=useRef<HTMLElement>(null);
+  const searchReturnFocus=useRef<HTMLElement>(null);
   const [expanded,setExpanded]=useState<{path:string;groups:Record<string,boolean>}>({path:"",groups:{}});
+  const openSearch=useCallback((opener:HTMLElement|null)=>{
+    if(searchOpen)return;
+    searchReturnFocus.current=opener&&mobileDrawer.current?.contains(opener)?mobileToggle.current:opener;
+    setMobileOpen(false);setCompanyOpen(false);setSearchOpen(true);
+  },[searchOpen]);
   useEffect(()=>{const onKey=(event:KeyboardEvent)=>{if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==="k"){
-    event.preventDefault();setSearchOpen(true);
-  }};window.addEventListener("keydown",onKey);return()=>window.removeEventListener("keydown",onKey);},[]);
+    event.preventDefault();openSearch(document.activeElement instanceof HTMLElement?document.activeElement:null);
+  }};window.addEventListener("keydown",onKey);return()=>window.removeEventListener("keydown",onKey);},[openSearch]);
   useEffect(()=>{
     if(routeCompany){localStorage.setItem("rerchar-selected-company",routeCompany);setSelectedCompany(routeCompany);}
     else if(pathname==="/"){localStorage.removeItem("rerchar-selected-company");setSelectedCompany(null);}
@@ -136,7 +142,7 @@ export default function Shell({ actor, children }: { actor: Actor; children: Rea
     <a href="#workspace-content" className="workspace-skip">Ir al contenido</a>
     <aside className="sidebar">
       <Link href="/" className="brand brand-sidebar" aria-label="Seleccionar empresa">{activeCompany==="e_y_j"?<span className="eyj-brand"><strong>E y J</strong><small>Servicios Integrales</small></span>:activeCompany==="rerchar"?<Image src="/rerchar-logo-transparente.png" alt="RERCHAR Economía Circular" width={892} height={311} loading="eager" className="brand-art"/>:<span className="platform-brand"><Image src="/rerchar-logo-transparente.png" alt="RERCHAR" width={892} height={311} loading="eager"/><i aria-hidden="true"/><strong>E y J</strong></span>}<span className="system-name"><strong>{selectedName??"OPERACIÓN INDUSTRIAL"}</strong><span>Plataforma operativa</span></span></Link>
-      <button type="button" className="sidebar-search-trigger" onClick={()=>setSearchOpen(true)}><Search size={18}/><span>Buscar módulo</span><kbd>⌘ K</kbd></button>
+      <button type="button" className="sidebar-search-trigger" onClick={event=>openSearch(event.currentTarget)}><Search size={18}/><span>Buscar módulo</span><kbd>⌘ K</kbd></button>
       <div className="sidebar-section-label">ESPACIO DE TRABAJO</div>
       {companyOptions}
       <div className="sidebar-section-label">NAVEGACIÓN</div>
@@ -147,12 +153,12 @@ export default function Shell({ actor, children }: { actor: Actor; children: Rea
       </div>
     </aside>
     <div className="main-area">
-      <header className="topbar"><Link href={activeCompany?`/empresa/${activeCompany}`:"/"} className="mobile-brand" aria-label={selectedName?`Panel de ${selectedName}`:"Seleccionar empresa"}>{activeCompany==="rerchar"?<Image src="/rerchar-logo-transparente.png" alt="" width={892} height={311} loading="eager" className="mobile-brand-logo"/>:activeCompany==="e_y_j"?<span className="mobile-brand-eyj" aria-hidden="true">E y J</span>:<span className="mobile-brand-combined"><Image src="/rerchar-logo-transparente.png" alt="" width={892} height={311} loading="eager"/><i aria-hidden="true"/><strong>E y J</strong></span>}<span className="mobile-brand-copy"><strong>{activeCompany==="rerchar"?"RERCHAR":activeCompany==="e_y_j"?"Servicios Integrales":"Plataforma operativa"}</strong><small>{activeCompany==="rerchar"?"GESTIÓN DE MATERIALES":activeCompany==="e_y_j"?"SERVICIOS INDUSTRIALES":"RERCHAR · E Y J"}</small></span></Link><nav className="workspace-breadcrumb" aria-label="Ubicación actual"><Link href={activeCompany?`/empresa/${activeCompany}`:"/"}><span className="workspace-company-dot" aria-hidden="true"/>{selectedName??"Empresas"}</Link><span aria-hidden="true">/</span><span>{activeGroup??"Vista general"}</span>{activeLink&&<><span aria-hidden="true">/</span><strong aria-current="page">{activeLink.text}</strong></>}</nav><div className="topbar-actions"><button type="button" className="topbar-search-trigger" onClick={()=>setSearchOpen(true)} aria-label="Buscar"><Search size={16}/><span>Buscar módulos</span><kbd>⌘ K</kbd></button><span className="topbar-user"><span className="topbar-avatar" aria-hidden="true">{actor.name.trim().slice(0,1).toUpperCase()}</span>{actor.name}</span></div>
+      <header className="topbar"><Link href={activeCompany?`/empresa/${activeCompany}`:"/"} className="mobile-brand" aria-label={selectedName?`Panel de ${selectedName}`:"Seleccionar empresa"}>{activeCompany==="rerchar"?<Image src="/rerchar-logo-transparente.png" alt="" width={892} height={311} loading="eager" className="mobile-brand-logo"/>:activeCompany==="e_y_j"?<span className="mobile-brand-eyj" aria-hidden="true">E y J</span>:<span className="mobile-brand-combined"><Image src="/rerchar-logo-transparente.png" alt="" width={892} height={311} loading="eager"/><i aria-hidden="true"/><strong>E y J</strong></span>}<span className="mobile-brand-copy"><strong>{activeCompany==="rerchar"?"RERCHAR":activeCompany==="e_y_j"?"Servicios Integrales":"Plataforma operativa"}</strong><small>{activeCompany==="rerchar"?"GESTIÓN DE MATERIALES":activeCompany==="e_y_j"?"SERVICIOS INDUSTRIALES":"RERCHAR · E Y J"}</small></span></Link><nav className="workspace-breadcrumb" aria-label="Ubicación actual"><Link href={activeCompany?`/empresa/${activeCompany}`:"/"}><span className="workspace-company-dot" aria-hidden="true"/>{selectedName??"Empresas"}</Link><span aria-hidden="true">/</span><span>{activeGroup??"Vista general"}</span>{activeLink&&<><span aria-hidden="true">/</span><strong aria-current="page">{activeLink.text}</strong></>}</nav><div className="topbar-actions"><button type="button" className="topbar-search-trigger" onClick={event=>openSearch(event.currentTarget)} aria-label="Buscar"><Search size={16}/><span>Buscar módulos</span><kbd>⌘ K</kbd></button><span className="topbar-user"><span className="topbar-avatar" aria-hidden="true">{actor.name.trim().slice(0,1).toUpperCase()}</span>{actor.name}</span></div>
         <button type="button" ref={mobileToggle} className="mobile-nav-trigger" aria-label="Abrir menú" aria-expanded={mobileOpen} aria-controls="mobile-navigation" onClick={()=>{setCompanyOpen(!activeCompany);setMobileOpen(true);}}><Menu size={22}/></button>
       </header>
       <main id="workspace-content" tabIndex={-1} className="page-content">{children}</main>
     </div>
-    {mobileOpen&&<div className="mobile-nav-layer"><button type="button" className="mobile-nav-backdrop" aria-label="Cerrar menú" onClick={()=>setMobileOpen(false)}/><aside ref={mobileDrawer} id="mobile-navigation" role="dialog" aria-modal="true" aria-label="Menú de navegación" className="mobile-nav-drawer"><div className="mobile-nav-heading"><div><small>PLATAFORMA OPERATIVA</small><strong>{selectedName??"Elija una empresa"}</strong></div><button type="button" ref={mobileClose} aria-label="Cerrar menú" onClick={()=>{setMobileOpen(false);mobileToggle.current?.focus();}}><X size={21}/></button></div><div className="mobile-nav-scroll"><div className="mobile-nav-caption">Cambiar empresa</div>{companyOptions}<button type="button" className="mobile-search-trigger" onClick={()=>{setMobileOpen(false);setSearchOpen(true);}}><Search size={18}/> Buscar un módulo</button><div className="mobile-nav-caption">Navegación</div>{nav(true)}<div className="mobile-nav-footer"><span>{actor.name} · {actor.role==="admin"?"Administración":actor.role==="operaciones"?"Operaciones":actor.role==="conductor"?"Conductor":"Cliente"}</span><form action={logoutAction}><SubmitButton className="logout"><LogOut size={17}/> Cerrar sesión</SubmitButton></form></div></div></aside></div>}
-    <GlobalSearch open={searchOpen} onClose={()=>setSearchOpen(false)} items={searchItems}/>
+    {mobileOpen&&<div className="mobile-nav-layer"><button type="button" className="mobile-nav-backdrop" aria-label="Cerrar menú" onClick={()=>{setMobileOpen(false);mobileToggle.current?.focus();}}/><aside ref={mobileDrawer} id="mobile-navigation" role="dialog" aria-modal="true" aria-label="Menú de navegación" className="mobile-nav-drawer"><div className="mobile-nav-heading"><div><small>PLATAFORMA OPERATIVA</small><strong>{selectedName??"Elija una empresa"}</strong></div><button type="button" ref={mobileClose} aria-label="Cerrar menú" onClick={()=>{setMobileOpen(false);mobileToggle.current?.focus();}}><X size={21}/></button></div><div className="mobile-nav-scroll"><div className="mobile-nav-caption">Cambiar empresa</div>{companyOptions}<button type="button" className="mobile-search-trigger" onClick={event=>openSearch(event.currentTarget)}><Search size={18}/> Buscar un módulo</button><div className="mobile-nav-caption">Navegación</div>{nav(true)}<div className="mobile-nav-footer"><span>{actor.name} · {actor.role==="admin"?"Administración":actor.role==="operaciones"?"Operaciones":actor.role==="conductor"?"Conductor":"Cliente"}</span><form action={logoutAction}><SubmitButton className="logout"><LogOut size={17}/> Cerrar sesión</SubmitButton></form></div></div></aside></div>}
+    <GlobalSearch open={searchOpen} onClose={()=>setSearchOpen(false)} items={searchItems} returnFocusRef={searchReturnFocus}/>
   </div>;
 }
