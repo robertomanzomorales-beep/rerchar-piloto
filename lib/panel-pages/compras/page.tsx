@@ -5,9 +5,8 @@ import { ClipboardList, ArrowUpRight, PackagePlus } from "lucide-react";
 import { canManage, requireActor } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { listPurchases, purchaseOverview, purchaseStatus, type StockItem } from "@/lib/supply";
-import { createPurchaseAction } from "@/app/supply-actions";
 import { Notice, chileDate } from "@/components/UI";
-import { SubmitButton } from "@/components/Transition";
+import PurchaseCreationForm from "@/components/PurchaseCreationForm";
 import RecordsPagination from "@/components/RecordsPagination";
 import {recordPage,recordsPerPage,lastRecordPage} from "@/lib/record-pagination";
 
@@ -30,18 +29,9 @@ export default async function Purchases({ searchParams }: { searchParams: Promis
     <Notice error={query.error} ok={query.ok}/>
     <div className="supply-summary"><div><strong>{overview.pending}</strong><span>Por aprobar en este filtro</span></div><div><strong>{overview.delivery}</strong><span>En espera de recepción en este filtro</span></div><Link href="/inventario" className="button button-outline">Ver bodegas y Kardex <ArrowUpRight size={16}/></Link></div>
     <div className="supply-columns">
-      <section className="section-card"><div className="section-heading"><div><div className="eyebrow">NUEVA SOLICITUD</div><h2><PackagePlus size={19}/> Requerimiento</h2></div></div>
+      <section className="section-card" id="nueva-compra"><div className="section-heading"><div><div className="eyebrow">NUEVA SOLICITUD</div><h2><PackagePlus size={19}/> Requerimiento</h2></div></div>
         <p className="helper-text">Registre el primer artículo. Podrá agregar más artículos antes de su aprobación.</p>
-        <form action={createPurchaseAction} className="form-stack"><input type="hidden" name="submission_key" value={randomUUID()}/>
-          <label>Qué se necesita<input name="title" required minLength={3} maxLength={180} placeholder="Ej. Repuestos para flota"/></label>
-          <div className="two-fields"><label>Categoría<select name="category" defaultValue="repuestos"><option value="repuestos">Repuestos</option><option value="insumos">Insumos</option><option value="seguridad">Seguridad</option><option value="servicios">Servicios</option><option value="operacion">Operación</option><option value="otros">Otros</option></select></label>
-            <label>Criticidad<select name="priority" defaultValue="normal"><option value="normal">Normal</option><option value="alta">Alta</option><option value="critica">Crítica</option></select></label></div>
-          <label>Artículo<select name="item_id" defaultValue="" required><option value="">Seleccione un artículo</option>{items.map((item) => <option value={item.id} key={item.id}>{item.code} · {item.name} ({item.unit})</option>)}</select></label>
-          <label>Cantidad<input name="quantity" type="number" min="0.001" step="0.001" required/></label>
-          <label>Justificación y observaciones<textarea name="notes" rows={3} maxLength={2000} placeholder="Uso previsto y antecedentes"/></label>
-          {!items.length && <p className="helper-text">Primero registre un artículo en <Link href="/inventario">Inventario</Link>.</p>}
-          <SubmitButton className="button button-primary" disabled={!items.length}>Crear solicitud</SubmitButton>
-        </form>
+        <PurchaseCreationForm items={items.map(({id,code,name,unit})=>({id,code,name,unit}))} submissionKey={randomUUID()} permalink={`/compras?${new URLSearchParams({estado:status,pagina:String(page)})}#nueva-compra`}/>
       </section>
       <section className="section-card" id="solicitudes-compras"><div className="section-heading"><div><div className="eyebrow">SEGUIMIENTO</div><h2>Solicitudes registradas</h2></div><span className="count-pill">{total}</span></div>
         <form method="get" className="supply-filter"><label>Estado<select name="estado" defaultValue={Object.hasOwn(purchaseStatus,query.estado ?? "") ? query.estado : ""}><option value="">Todos</option>{Object.entries(purchaseStatus).map(([key, text]) => <option key={key} value={key}>{text}</option>)}</select></label><button className="button button-outline" type="submit">Filtrar</button></form>

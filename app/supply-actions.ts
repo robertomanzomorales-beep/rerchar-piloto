@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { ZodError,z } from "zod";
 import { requireActor } from "@/lib/auth";
 import {recordPage} from "@/lib/record-pagination";
+import {purchaseDraft,type PurchaseFormState} from "@/lib/purchase-form-state";
 import {
   SupplyError, addPurchaseLine, adjustStock, approvePurchase, cancelPurchase, closeReservation,
   createPurchase, createStockItem, createStockSkuRule, createWarehouse, issuePurchaseDraft, receivePurchase, reserveStock, savePurchaseDraft, transferStock,
@@ -59,7 +60,7 @@ export async function updateItemValuationAction(form: FormData) {
     category:value(form,"category"),unit_cost_clp:value(form,"unit_cost_clp"),
   }));
 }
-export async function createPurchaseAction(form: FormData) {
+export async function createPurchaseAction(_state:PurchaseFormState,form:FormData):Promise<PurchaseFormState> {
   const actor = await requireActor();
   let id: string;
   try {
@@ -67,7 +68,7 @@ export async function createPurchaseAction(form: FormData) {
       submission_key: value(form,"submission_key"), title: value(form,"title"), category: value(form,"category"),
       priority: value(form,"priority"), item_id: value(form,"item_id"), quantity: value(form,"quantity"), notes: value(form,"notes"),
     });
-  } catch (error) { redirect(`/compras?error=${encodeURIComponent(message(error))}`); }
+  } catch (error) { return {error:message(error),values:purchaseDraft(form)}; }
   revalidatePath("/", "layout");
   redirect(`${purchasePath(id)}?ok=1`);
 }

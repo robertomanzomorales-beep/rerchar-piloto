@@ -51,7 +51,8 @@
     "test:release-review-http": "node --import tsx scripts/verify-release-review.ts",
     "test:counterparty-review-http": "node --import tsx scripts/verify-counterparty-review.ts",
     "test:commercial-navigation-http": "node --import tsx scripts/verify-commercial-navigation.ts",
-    "test:private-downloads-http": "node --import tsx scripts/verify-private-downloads.ts"
+    "test:private-downloads-http": "node --import tsx scripts/verify-private-downloads.ts",
+    "test:purchase-form-http": "node --import tsx scripts/verify-purchase-form.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.3.13",
