@@ -10,6 +10,7 @@ import { logoutAction } from "@/app/actions";
 import { NavPendingHint, SubmitButton } from "@/components/Transition";
 import GlobalSearch from "@/components/GlobalSearch";
 import {companyForPath} from "@/lib/companies";
+import {CompanyScopeContext,type DocumentCompany} from "@/components/CompanyScope";
 
 const navigationAppearance:Record<string,{tone:string;icon:typeof FileText}>={
   Comercial:{tone:"blue",icon:FileText},Operación:{tone:"cyan",icon:ClipboardList},
@@ -22,6 +23,8 @@ export default function Shell({ actor, children }: { actor: Actor; children: Rea
   const searchParams=useSearchParams();
   const companyQuery=searchParams.get("empresa")??searchParams.get("company");
   const routeCompany=companyForPath(pathname,companyQuery);
+  const [documentCompany,setDocumentCompany]=useState<DocumentCompany|null>(null);
+  const resolvedCompany=documentCompany?.pathname===pathname?documentCompany.company:routeCompany;
   const [selectedCompany,setSelectedCompany]=useState<"rerchar"|"e_y_j"|null>(null);
   const [searchOpen,setSearchOpen]=useState(false);
   const [mobileOpen,setMobileOpen]=useState(false);
@@ -40,10 +43,10 @@ export default function Shell({ actor, children }: { actor: Actor; children: Rea
     event.preventDefault();openSearch(document.activeElement instanceof HTMLElement?document.activeElement:null);
   }};window.addEventListener("keydown",onKey);return()=>window.removeEventListener("keydown",onKey);},[openSearch]);
   useEffect(()=>{
-    if(routeCompany){localStorage.setItem("rerchar-selected-company",routeCompany);setSelectedCompany(routeCompany);}
+    if(resolvedCompany){localStorage.setItem("rerchar-selected-company",resolvedCompany);setSelectedCompany(resolvedCompany);}
     else if(pathname==="/"){localStorage.removeItem("rerchar-selected-company");setSelectedCompany(null);}
     else {const saved=localStorage.getItem("rerchar-selected-company");setSelectedCompany(saved==="rerchar"||saved==="e_y_j"?saved:null);}
-  },[pathname,routeCompany]);
+  },[pathname,resolvedCompany]);
   useEffect(()=>{setMobileOpen(false);setCompanyOpen(false);},[pathname]);
   useEffect(()=>{
     if(!companyOpen)return;
@@ -73,7 +76,7 @@ export default function Shell({ actor, children }: { actor: Actor; children: Rea
     window.addEventListener("resize",onResize);
     return()=>{document.body.style.overflow=previous;window.removeEventListener("keydown",onKey);window.removeEventListener("resize",onResize);};
   },[mobileOpen]);
-  const activeCompany=pathname==="/"?null:routeCompany??selectedCompany;
+  const activeCompany=pathname==="/"?null:resolvedCompany??selectedCompany;
   const selectedName=activeCompany==="e_y_j"?"E y J":activeCompany==="rerchar"?"RERCHAR":null;
   const companyExpanded=companyOpen;
   const companyOptions=<div className={`company-picker ${companyExpanded?"expanded":""}`}>
@@ -138,7 +141,7 @@ export default function Shell({ actor, children }: { actor: Actor; children: Rea
       return {path:navKey,groups:{...groups,[group]:!(groups[group]??active)}};
     })}><span className="nav-group-label"><GroupIcon size={14} strokeWidth={1.8} aria-hidden="true"/>{group}</span><ChevronDown size={16}/></button><div id={panelId} className="nav-group-panel" inert={!isOpen}><div className="nav-group-inner">{groupLinks.map(link=><Link key={link.href} href={companyHref(link.href)} aria-current={activeHref===link.href?"page":undefined} onClick={()=>mobile&&setMobileOpen(false)} className={`nav-link ${activeHref===link.href?"active":""}`}><link.icon size={18} strokeWidth={1.9}/>{link.text}<NavPendingHint/></Link>)}</div></div></div>:null;
   })}</nav>;
-  return <div className="app-shell" data-company={activeCompany??"selector"} data-section-tone={activeGroup?navigationAppearance[activeGroup].tone:"green"}>
+  return <CompanyScopeContext.Provider value={setDocumentCompany}><div className="app-shell" data-company={activeCompany??"selector"} data-section-tone={activeGroup?navigationAppearance[activeGroup].tone:"green"}>
     <a href="#workspace-content" className="workspace-skip">Ir al contenido</a>
     <aside className="sidebar">
       <Link href="/" className="brand brand-sidebar" aria-label="Seleccionar empresa">{activeCompany==="e_y_j"?<span className="eyj-brand"><strong>E y J</strong><small>Servicios Integrales</small></span>:activeCompany==="rerchar"?<Image src="/rerchar-logo-transparente.png" alt="RERCHAR Economía Circular" width={892} height={311} loading="eager" className="brand-art"/>:<span className="platform-brand"><Image src="/rerchar-logo-transparente.png" alt="RERCHAR" width={892} height={311} loading="eager"/><i aria-hidden="true"/><strong>E y J</strong></span>}<span className="system-name"><strong>{selectedName??"OPERACIÓN INDUSTRIAL"}</strong><span>Plataforma operativa</span></span></Link>
@@ -160,5 +163,5 @@ export default function Shell({ actor, children }: { actor: Actor; children: Rea
     </div>
     {mobileOpen&&<div className="mobile-nav-layer"><button type="button" className="mobile-nav-backdrop" aria-label="Cerrar menú" onClick={()=>{setMobileOpen(false);mobileToggle.current?.focus();}}/><aside ref={mobileDrawer} id="mobile-navigation" role="dialog" aria-modal="true" aria-label="Menú de navegación" className="mobile-nav-drawer"><div className="mobile-nav-heading"><div><small>PLATAFORMA OPERATIVA</small><strong>{selectedName??"Elija una empresa"}</strong></div><button type="button" ref={mobileClose} aria-label="Cerrar menú" onClick={()=>{setMobileOpen(false);mobileToggle.current?.focus();}}><X size={21}/></button></div><div className="mobile-nav-scroll"><div className="mobile-nav-caption">Cambiar empresa</div>{companyOptions}<button type="button" className="mobile-search-trigger" onClick={event=>openSearch(event.currentTarget)}><Search size={18}/> Buscar un módulo</button><div className="mobile-nav-caption">Navegación</div>{nav(true)}<div className="mobile-nav-footer"><span>{actor.name} · {actor.role==="admin"?"Administración":actor.role==="operaciones"?"Operaciones":actor.role==="conductor"?"Conductor":"Cliente"}</span><form action={logoutAction}><SubmitButton className="logout"><LogOut size={17}/> Cerrar sesión</SubmitButton></form></div></div></aside></div>}
     <GlobalSearch open={searchOpen} onClose={()=>setSearchOpen(false)} items={searchItems} returnFocusRef={searchReturnFocus}/>
-  </div>;
+  </div></CompanyScopeContext.Provider>;
 }

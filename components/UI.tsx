@@ -36,6 +36,6 @@ export function ServiceTable({ services }: { services: ServiceRow[] }) {
       <td><Link href={`/solicitudes/${service.id}`} className="table-arrow" aria-label={`Abrir folio ${serviceFolio(service)}`}><ArrowUpRight size={18}/></Link></td></tr>
   )}</tbody></table></div>;
 }
-export function Breadcrumb({ label }: { label: string }) {
-  return <nav className="breadcrumb" aria-label="Ruta"><Link href="/solicitudes">Solicitudes</Link><ChevronRight size={14}/><span>{label}</span></nav>;
+export function Breadcrumb({ label,href="/solicitudes" }: { label: string;href?:string }) {
+  return <nav className="breadcrumb" aria-label="Ruta"><Link href={href}>Solicitudes</Link><ChevronRight size={14}/><span>{label}</span></nav>;
 }

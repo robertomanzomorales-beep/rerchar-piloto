@@ -25,6 +25,8 @@ import ServiceExtraCharges from "@/components/ServiceExtraCharges";
 import type {ExtraChargeQuery} from "@/lib/extra-charge-state";
 import {listServiceContainerPhotos} from "@/lib/containers";
 import {uploadServiceContainerPhotoAction} from "@/app/container-actions";
+import CompanyScope from "@/components/CompanyScope";
+import {currentOrderDocumentSql} from "@/lib/quote-order";
 
 function localInput(value: Date | string | null) {
   if (!value) return "";
@@ -59,7 +61,9 @@ export default async function ServiceDetail({ params, searchParams }: { params: 
     canPlan(actor) ? db.query<{id:string;status:string}>("SELECT id,status FROM waste_records WHERE service_id=$1",[id]) : Promise.resolve([]),
     actor.role!=="conductor"?db.query<{id:string}>("SELECT id FROM service_certificates WHERE service_id=$1 AND status='vigente'",[id]):Promise.resolve([]),
     service.quote_id?db.query<{id:string;folio:string;display_folio:string|null;issuer:Company;title:string;notes:string|null;client_order_reference:string|null;client_order_exception:string|null;has_order_document:boolean}>(
-      "SELECT id,folio,display_folio,issuer,title,notes,client_order_reference,client_order_exception,EXISTS(SELECT 1 FROM client_quote_documents WHERE quote_id=client_quotes.id AND kind='orden_compra') AS has_order_document FROM client_quotes WHERE id=$1 AND status='aceptada'",[service.quote_id]):Promise.resolve([]),
+      `SELECT q.id,q.folio,q.display_folio,q.issuer,q.title,q.notes,q.client_order_reference,q.client_order_exception,
+        EXISTS(SELECT 1 FROM client_quote_documents d WHERE d.quote_id=q.id AND d.kind='orden_compra' AND ${currentOrderDocumentSql}) AS has_order_document
+        FROM client_quotes q WHERE q.id=$1 AND q.status='aceptada'`,[service.quote_id]):Promise.resolve([]),
     service.quote_id?db.query<{description:string;quantity:string;unit:string}>(
       "SELECT description,quantity,unit FROM client_quote_lines WHERE quote_id=$1 ORDER BY position",[service.quote_id]):Promise.resolve([]),
     service.request_category==="compra"?db.query<{position:number;material_id:string;material_name:string;quantity_kg:string|null;unit_price_clp:string|null;line_note:string|null}>(
@@ -104,9 +108,12 @@ export default async function ServiceDetail({ params, searchParams }: { params: 
   const programmedDay=service.scheduled_for?localInput(service.scheduled_for).slice(0,10):"";
   const canReport=canPlan(actor)&&!rental&&programmedDay&&programmedDay<=todayChile&&
     ["programada","en_ruta","pendiente_revision","completada"].includes(service.status);
+  const companyQuery=service.operating_company?`?empresa=${service.operating_company}`:"";
+  const requestsHref=`/solicitudes${companyQuery}`;
   return <>
-    <Breadcrumb label={serviceFolio(service)}/>
-    <div className="page-title-row detail-heading"><div><div className="eyebrow">SOLICITUD · {rental?"servicios / arriendo":service.service_type==="retiro"?"retiro de material":service.request_category} · {companyName(service.operating_company)}</div><h1>{serviceFolio(service)}</h1><p className="page-intro"><Link href={`/clientes/${service.client_id}`}>{service.client_name}</Link> · {service.site_name}</p></div><Badge status={service.status}/></div>
+    <CompanyScope company={service.operating_company}/>
+    <Breadcrumb label={serviceFolio(service)} href={requestsHref}/>
+    <div className="page-title-row detail-heading"><div><div className="eyebrow">SOLICITUD · {rental?"servicios / arriendo":service.service_type==="retiro"?"retiro de material":service.request_category} · {companyName(service.operating_company)}</div><h1>{serviceFolio(service)}</h1><p className="page-intro">{actor.role==="conductor"?service.client_name:<Link href={`/clientes/${service.client_id}${companyQuery}`}>{service.client_name}</Link>} · {service.site_name}</p></div><Badge status={service.status}/></div>
     <Notice error={paramsQuery.error} ok={paramsQuery.documento_form||paramsQuery.formulario_cargo||paramsQuery.formulario==="day"?undefined:paramsQuery.ok}/>
     {serviceStages[service.status]&&<div className="service-guidance" role="status"><span className="service-guidance-label">ETAPA ACTUAL · {rental?"ARRIENDO":"SERVICIO"}</span><strong>{serviceStages[service.status].label}</strong><span>{serviceStages[service.status].instruction}</span>{(service.status!=="en_ruta"||canWork||canManage(actor))&&<a href={`#${serviceStages[service.status].target}`}>Ir a esta etapa ↓</a>}</div>}
     {!service.operating_company&&<section className="section-card"><p role="alert">Este registro anterior necesita confirmar la empresa operadora antes de emitir documentos o vincular facturas.</p>{actor.role==="admin"&&<form action={classifyServiceCompanyAction} className="form-grid"><input type="hidden" name="id" value={id}/><label>Empresa según respaldo de la operación<select name="operating_company" required defaultValue=""><option value="">Seleccione después de revisar</option><option value="rerchar">RERCHAR Chile SpA</option><option value="e_y_j">E y J Limitada</option></select></label><div className="form-footer"><SubmitButton className="button button-outline">Confirmar empresa</SubmitButton></div></form>}</section>}
@@ -186,7 +193,7 @@ export default async function ServiceDetail({ params, searchParams }: { params: 
         <ServiceEvidenceHistory id={id} evidence={evidence} query={paramsQuery}/>
         {containerMoves.length>0&&<section className="section-card side-card"><div className="eyebrow">CONTENEDORES</div><h2>Movimientos asociados</h2><ol className="timeline">{containerMoves.map((move)=><li key={move.id}><span className="timeline-marker"/><strong>{move.code} · {move.kind.replaceAll("_"," ")}</strong><small>{move.previous_location?`${move.previous_location} → `:""}{move.next_location} · {chileDate(move.created_at)}</small></li>)}</ol></section>}
         <ServiceHistory id={id} history={timeline} query={paramsQuery}/>
-        <Link className="back-link" href="/solicitudes"><ArrowLeft size={16}/> Volver a solicitudes</Link>
+        <Link className="back-link" href={requestsHref}><ArrowLeft size={16}/> Volver a solicitudes</Link>
       </aside>
     </div>
   </>;
