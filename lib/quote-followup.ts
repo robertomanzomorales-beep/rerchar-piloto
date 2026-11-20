@@ -1,5 +1,6 @@
 import {z} from "zod";
 import type {Actor} from "./auth";
+import type {Company} from "./companies";
 import {canManage} from "./auth";
 import {db,transaction} from "./db";
 import {moduleReady} from "./schema-readiness";
@@ -82,7 +83,7 @@ export async function getQuoteFollowup(actor:Actor,quoteId:string){
         (d.kind<>'orden_compra' OR ${currentOrderDocumentSql}) AS is_current
        FROM client_quote_documents d JOIN client_quotes q ON q.id=d.quote_id
        WHERE d.quote_id=$1 ORDER BY d.uploaded_at DESC`,[quoteId]),
-    db.query<{id:string;folio:string;service_type:string;status:string;guide_number:string|null;scheduled_for:Date|string|null;invoice_number:string|null;invoice_id:string|null;paid_clp:string;invoice_total_clp:string|null;certificate_id:string|null}>(`SELECT s.id,s.folio,s.service_type,s.status,s.guide_number,s.scheduled_for,
+    db.query<{id:string;folio:string;operating_company:Company|null;service_type:string;status:string;guide_number:string|null;scheduled_for:Date|string|null;invoice_number:string|null;invoice_id:string|null;paid_clp:string;invoice_total_clp:string|null;certificate_id:string|null}>(`SELECT s.id,s.folio,s.operating_company,s.service_type,s.status,s.guide_number,s.scheduled_for,
       i.invoice_number,i.id AS invoice_id,COALESCE((SELECT sum(p.amount_clp) FROM invoice_payments p WHERE p.invoice_id=i.id),0)::text AS paid_clp,
       i.total_clp AS invoice_total_clp,
       (SELECT c.id FROM service_certificates c WHERE c.service_id=s.id AND c.status='vigente' ORDER BY c.version DESC LIMIT 1) AS certificate_id

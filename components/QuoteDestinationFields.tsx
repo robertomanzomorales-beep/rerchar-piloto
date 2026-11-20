@@ -8,7 +8,7 @@ export function QuoteDestinationFields({destinations,category="",destinationId="
   const [selected,setSelected]=useState(destinationId??"");
   const destination=destinations.find(item=>item.id===selected);
   return <>
-    <label>Tipo de residuo o material<select name="waste_category" defaultValue={category??""}>
+    <label>Tipo de residuo o material<select name="waste_category" defaultValue={category??""} required={Boolean(selected)}>
       <option value="">No aplica / por definir</option>{wasteCategories.map(c=><option key={c.value} value={c.value}>{c.label}</option>)}
     </select></label>
     <label>Destino final / planta receptora<select name="destination_id" value={selected} onChange={event=>setSelected(event.target.value)}>

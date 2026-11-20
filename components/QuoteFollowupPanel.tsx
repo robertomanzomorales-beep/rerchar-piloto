@@ -1,6 +1,8 @@
 import Link from "next/link";
 import {quoteClientOrderAction,quoteDocumentAction,quoteOrderExceptionAction} from "@/app/quote-actions";
 import {SubmitButton} from "./Transition";
+import {Badge} from "./UI";
+import {serviceFolio} from "@/lib/companies";
 import type {getQuoteFollowup} from "@/lib/quote-followup";
 
 type Followup=Awaited<ReturnType<typeof getQuoteFollowup>>;
@@ -36,7 +38,7 @@ export function QuoteFollowupPanel({id,data,editable,canAuthorizeException=false
       const docs=evidence.filter(item=>item.service_id===service.id);
       const relatedStatements=statementByService.get(service.id)??[];
       const balance=Number(service.invoice_total_clp??0)-Number(service.paid_clp);
-      return <div key={service.id} className="dossier-group"><h3><Link href={`/solicitudes/${service.id}`}>Servicio {service.folio}</Link> · {service.status}</h3>
+      return <div key={service.id} className="dossier-group"><h3><Link href={`/solicitudes/${service.id}`}>Servicio {serviceFolio(service)}</Link> · <Badge status={service.status}/></h3>
         <div className="order-actions"><Link className="button button-outline" href={`/solicitudes/${service.id}`}>Programación y operación</Link>{service.service_type!=="arriendo"&&<Link className="button button-outline" href={`/solicitudes/${service.id}/guias`}>Guías y pesos</Link>}{editable&&<Link className="button button-outline" href={`/solicitudes/${service.id}`}>Adjuntar respaldo</Link>}{service.certificate_id&&<Link className="button button-outline" href={`/api/certificados/${service.certificate_id}/pdf`}>Certificado</Link>}</div>
         <p className="helper-text">{service.service_type==="arriendo"?"Arriendo sin pesaje":`Guía: ${service.guide_number??"pendiente"}`} · Fecha programada: {day(service.scheduled_for)} · Factura individual: {service.invoice_number??(relatedStatements.length?"gestionada en EDP":"pendiente")}{service.invoice_number?` · Cobrado ${money(service.paid_clp)} · Saldo ${money(Math.max(0,balance))}`:""}</p>
         {relatedStatements.length>0&&<ul className="record-list">{relatedStatements.map(statement=><li key={statement.id}><div><strong>Estado de pago {editable?<Link href={`/estados-pago/${statement.id}`}>N° {statement.number}</Link>:`N° ${statement.number}`}</strong><small>{statement.status} · Factura {statement.invoice_number??"pendiente"}</small></div></li>)}</ul>}

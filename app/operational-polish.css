@@ -156,7 +156,7 @@
   .quote-steps .current { color: var(--company-strong); background: var(--company-soft); box-shadow: inset 0 -2px var(--company-accent); font-weight: 650; }
   .quote-steps b { flex: none; color: #9aa8ac; font-size: 10px; font-weight: 600; font-variant-numeric: tabular-nums; }
   .quote-steps .current b { color: var(--company-accent); }
-  #presentacion, #conceptos, #entrega { scroll-margin-top: 20px; }
+  #presentacion, #conceptos, #edicion-conceptos, #referencia-uf, #entrega { scroll-margin-top: 76px; }
   .app-shell .quote-line-editor summary { color: #395059; }
   .app-shell .quote-line-editor summary strong { color: var(--company-accent); font-weight: 610; }
   .app-shell .quote-line-editor[open] summary { color: #263a42; }

@@ -6,6 +6,7 @@ import {revalidatePath} from "next/cache";
 import {ZodError} from "zod";
 import {requireActor} from "@/lib/auth";
 import {quoteDraft,type QuoteFormState} from "@/lib/quote-form-state";
+import {quoteContentDraft,type QuoteContentState} from "@/lib/quote-content-state";
 import {QuoteError,createQuote,updateQuotePresentation,addQuoteLine,updateQuoteLine,removeQuoteLine,recordManualQuoteDelivery,recordQuoteDecision,resolveQuoteSending,sendQuote,confirmPurchaseTax,setQuoteUfRate,reopenQuoteRevision} from "@/lib/quotes";
 import {QuoteFollowupError,recordQuoteClientOrder,recordQuoteOrderException,uploadQuoteDocument} from "@/lib/quote-followup";
 
@@ -20,29 +21,29 @@ export async function createQuoteAction(_previous:QuoteFormState,form:FormData):
   catch(error){return {error:message(error),values:{...quoteDraft(form),submission_key:submissionKey}};}
   revalidatePath("/","layout");redirect(`/cotizaciones/${id}?ok=1`);
 }
-export async function updateQuotePresentationAction(form:FormData){
+export async function updateQuotePresentationAction(_previous:QuoteContentState,form:FormData):Promise<QuoteContentState>{
   const actor=await requireActor(),id=v(form,"quote_id"),path=`/cotizaciones/${encodeURIComponent(id)}`;
   try{await updateQuotePresentation(actor,id,{company_intro:v(form,"company_intro"),proposal_objective:v(form,"proposal_objective"),notes:v(form,"notes")});}
-  catch(error){redirect(`${path}?error=${encodeURIComponent(message(error))}`);}
-  revalidatePath("/","layout");redirect(`${path}?ok=1`);
+  catch(error){return {error:message(error),values:quoteContentDraft("presentation",form)};}
+  revalidatePath("/","layout");redirect(`${path}?ok=1#presentacion`);
 }
-export async function addQuoteLineAction(form:FormData){
+export async function addQuoteLineAction(_previous:QuoteContentState,form:FormData):Promise<QuoteContentState>{
   const actor=await requireActor();const id=v(form,"quote_id"),path=`/cotizaciones/${encodeURIComponent(id)}`;
   try{await addQuoteLine(actor,id,{description:v(form,"description"),principal:v(form,"principal"),segment:v(form,"segment"),waste_category:v(form,"waste_category"),destination_id:v(form,"destination_id"),material_id:v(form,"material_id"),line_note:v(form,"line_note"),quantity:v(form,"quantity"),unit:v(form,"unit"),unit_price_clp:v(form,"unit_price_clp"),currency:v(form,"currency")||"CLP",taxable:form.get("taxable")==="on"});}
-  catch(error){redirect(`${path}?error=${encodeURIComponent(message(error))}`);}
-  revalidatePath("/","layout");redirect(`${path}?ok=1`);
+  catch(error){return {error:message(error),values:quoteContentDraft("add",form)};}
+  revalidatePath("/","layout");redirect(`${path}?ok=1&formulario=add#conceptos`);
 }
-export async function updateQuoteLineAction(form:FormData){
+export async function updateQuoteLineAction(_previous:QuoteContentState,form:FormData):Promise<QuoteContentState>{
   const actor=await requireActor();const id=v(form,"quote_id"),path=`/cotizaciones/${encodeURIComponent(id)}`;
   try{await updateQuoteLine(actor,id,v(form,"line_id"),{description:v(form,"description"),principal:v(form,"principal"),segment:v(form,"segment"),waste_category:v(form,"waste_category"),destination_id:v(form,"destination_id"),material_id:v(form,"material_id"),line_note:v(form,"line_note"),quantity:v(form,"quantity"),unit:v(form,"unit"),unit_price_clp:v(form,"unit_price_clp"),currency:v(form,"currency")||"CLP",taxable:form.get("taxable")==="on"});}
-  catch(error){redirect(`${path}?error=${encodeURIComponent(message(error))}`);}
-  revalidatePath("/","layout");redirect(`${path}?ok=1`);
+  catch(error){return {error:message(error),values:quoteContentDraft("edit",form)};}
+  revalidatePath("/","layout");redirect(`${path}?ok=1&formulario=edit&concepto=${encodeURIComponent(v(form,"line_id"))}#edicion-conceptos`);
 }
-export async function quoteUfRateAction(form:FormData){
+export async function quoteUfRateAction(_previous:QuoteContentState,form:FormData):Promise<QuoteContentState>{
   const actor=await requireActor(),id=v(form,"quote_id"),path=`/cotizaciones/${encodeURIComponent(id)}`;
   try{await setQuoteUfRate(actor,id,{rate:v(form,"rate"),on:v(form,"on")});}
-  catch(error){redirect(`${path}?error=${encodeURIComponent(message(error))}`);}
-  revalidatePath("/","layout");redirect(`${path}?ok=1`);
+  catch(error){return {error:message(error),values:quoteContentDraft("uf",form)};}
+  revalidatePath("/","layout");redirect(`${path}?ok=1#referencia-uf`);
 }
 export async function removeQuoteLineAction(form:FormData){
   const actor=await requireActor();const id=v(form,"quote_id"),path=`/cotizaciones/${encodeURIComponent(id)}`;
