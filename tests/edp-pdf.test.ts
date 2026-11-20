@@ -31,6 +31,16 @@ test("PDF EDP conserva formatos de residuos y arriendo, importes pendientes y va
   assert.equal(document.getPageCount(),1);
   assert.ok(document.getPage(0).getSize().width>document.getPage(0).getSize().height);
 
+  const shortNotesPdf=await PDFDocument.load(await renderPaymentStatementPdf(
+    {...statement,notes:"Revisar guías y tickets antes de la entrega."},residues,totals));
+  assert.equal(shortNotesPdf.getPageCount(),1,"una observación breve debe aprovechar el espacio disponible sin crear otra página");
+  const notesAfterReferences=await PDFDocument.load(await renderPaymentStatementPdf(
+    {...statement,client_name:"CLIENTE DE PRUEBA DE IMPRESIÓN INDUSTRIAL SPA",client_address:"Dirección de prueba, Antofagasta",
+      client_contact:"revision@example.invalid",issuer_contact:"operaciones@example.invalid",contract_manager:"Responsable de prueba",
+      contract_reference:"CONTRATO-PRUEBA-2026",notes:"Observación de prueba. FIN-EDP-NORMAL"},residues,
+    statementTotals(residues,[charges[0],{...charges[1],description:"Disposición final por tonelada"}])));
+  assert.equal(notesAfterReferences.getPageCount(),1,"la nota cabe sobre el pie incluso con los datos de contacto y contrato completos");
+
   const rental:Statement={...statement,statement_type:"arriendo",period_on:"2026-08-01",status:"aprobado",
     client_name:"SOCIEDAD DE INVERSIONES JRC SPA",notes:"Arriendo según contrato."};
   const rentalOperations:Operation[]=[{...operation(1),description:"Arriendo excavadora Komatsu PC 210 LC10 MO",

@@ -63,12 +63,19 @@ export async function renderQuotePdf(quote:Quote,lines:QuoteLine[],warning="",ro
   let y=0;
   function nextPage(){page=doc.addPage([595.28,841.89]);pages.push(page);header(true);y=684;}
   header();
-  write("CLIENTE",left,685,7.3,bold,muted);write(fit(quote.client_name,bold,11.4,310),left,665,11.4,bold);
-  if(quote.client_tax_id)write(`RUT ${quote.client_tax_id}`,left,649,8.1);
-  if(quote.client_address)write(fit(quote.client_address,regular,8,310),left,634,8,regular,muted);
+  write("CLIENTE",left,685,7.3,bold,muted);
+  const clientName=wrap(quote.client_name,bold,11.4,310);
+  clientName.forEach((part,index)=>write(part,left,665-index*15,11.4,bold));
+  let clientY=665-(clientName.length-1)*15-16;
+  if(quote.client_tax_id){write(`RUT ${quote.client_tax_id}`,left,clientY,8.1);clientY-=15;}
+  if(quote.client_address){
+    const address=wrap(quote.client_address,regular,8,310);
+    address.forEach((part,index)=>write(part,left,clientY-index*11,8));
+    clientY-=address.length*11;
+  }
   write("EMISIÓN",398,685,7.3,bold,muted);write(fmt(quote.issued_on),398,668,8.4);
   write("VÁLIDA HASTA",398,650,7.3,bold,muted);write(fmt(quote.valid_until),398,633,8.4);
-  y=609;
+  y=Math.min(609,clientY-14);
   if(warning){
     page.drawRectangle({x:left,y:y-13,width,height:20,color:rgb(0.995,0.963,0.90)});
     write(fit(warning,bold,7.3,width-16),left+8,y-6,7.3,bold,rgb(0.50,0.35,0.13));y-=35;
@@ -158,7 +165,7 @@ export async function renderQuotePdf(quote:Quote,lines:QuoteLine[],warning="",ro
     let noteY=footerY;
     function nextNotesPage(){nextPage();noteY=y;}
     function notesHeading(continuation=false){
-      if(noteY<bottom+35)nextNotesPage();
+      if(noteY<bottom+29)nextNotesPage();
       write(continuation?"CONDICIONES Y OBSERVACIONES (CONTINUACIÓN)":"CONDICIONES Y OBSERVACIONES",left,noteY,7.6,bold,blue);noteY-=17;
     }
     notesHeading();

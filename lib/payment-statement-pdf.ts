@@ -101,8 +101,8 @@ export async function renderPaymentStatementPdf(statement:Statement,operations:O
   text(statusText,margin+9,y-14,8,bold,incomplete?rgb(.57,.29,.12):blue);
   y-=rental?38:30;
 
-  function section(title:string){
-    ensure(68);
+  function section(title:string,required=68){
+    ensure(required);
     text(title.toUpperCase(),margin,y,10,bold,blue);
     page.drawLine({start:{x:margin,y:y-8},end:{x:width-margin,y:y-8},thickness:.6,color:line});
     y-=rental?22:19;
@@ -178,9 +178,10 @@ export async function renderPaymentStatementPdf(statement:Statement,operations:O
   y-=rental?78:74;
 
   if(statement.notes){
-    section("Observaciones");
-    for(const part of wrap(statement.notes,regular,8,tableWidth)){
-      ensure(18);text(part,margin,y,8);y-=12;
+    const notes=wrap(statement.notes,regular,8,tableWidth);
+    section("Observaciones",(rental?22:19)+Math.min(notes.length,2)*12+4);
+    for(const part of notes){
+      ensure(12);text(part,margin,y,8);y-=12;
     }
     y-=10;
   }
