@@ -4,20 +4,14 @@ import {useEffect,useMemo,useRef,useState,type RefObject} from "react";
 import Link from "next/link";
 import {useRouter} from "next/navigation";
 import {CornerDownLeft,Search,X,FileText,ClipboardList,ReceiptText,ShoppingCart,Wrench,Settings2,LayoutDashboard} from "lucide-react";
+import {filterModuleDestinations} from "@/lib/module-search";
 
 export type SearchDestination={href:string;text:string;group:string};
 const groupIcons:Record<string,typeof Search>={Comercial:FileText,Operación:ClipboardList,"Cierre y control":ReceiptText,Abastecimiento:ShoppingCart,"Recursos compartidos":Wrench,Configuración:Settings2,Inicio:LayoutDashboard};
-const searchable=(value:string)=>value.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLocaleLowerCase("es-CL");
 export default function GlobalSearch({open,onClose,items,returnFocusRef}:{open:boolean;onClose:()=>void;items:SearchDestination[];returnFocusRef?:RefObject<HTMLElement|null>}){
   const [term,setTerm]=useState(""),[active,setActive]=useState(0);
   const input=useRef<HTMLInputElement>(null),dialog=useRef<HTMLDivElement>(null),resultList=useRef<HTMLDivElement>(null),router=useRouter();
-  const results=useMemo(()=>{
-    const words=searchable(term).trim().split(/\s+/).filter(Boolean);
-    return items.filter(item=>{
-      const content=searchable(`${item.text} ${item.group}`);
-      return words.every(word=>content.includes(word));
-    }).slice(0,12);
-  },[items,term]);
+  const results=useMemo(()=>filterModuleDestinations(items,term),[items,term]);
   useEffect(()=>{
     if(!open)return;
     const previousFocus=returnFocusRef?.current??(document.activeElement instanceof HTMLElement?document.activeElement:null);
