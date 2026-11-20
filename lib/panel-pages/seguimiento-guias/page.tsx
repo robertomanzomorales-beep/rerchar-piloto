@@ -6,6 +6,7 @@ import {guideFilters,parseGuideFilter,guideFollowupHref} from "@/lib/guide-follo
 import {recordPage,recordsPerPage} from "@/lib/record-pagination";
 import PrintButton from "@/components/PrintButton";
 import {companyName,serviceFolio} from "@/lib/companies";
+import {ledgerHref} from "@/lib/service-ledger-state";
 
 const iso=(v:Date|string|null)=>!v?"":v instanceof Date?v.toISOString().slice(0,10):String(v).slice(0,10);
 const show=(v:Date|string|null)=>iso(v)||"—";
@@ -33,7 +34,7 @@ export default async function GuideFollowups({searchParams}:{searchParams:Promis
         const stage=r.documents_sent_on?"Documentación enviada":r.received_on?"Por cerrar":r.requested_on?
           !due?"Definir plazo":due<now?"Atrasada":due<=new Date(Date.parse(`${now}T00:00:00Z`)+7*86400000).toISOString().slice(0,10)?"Próxima a vencer":"Por recibir":iso(r.service_day)>now?"Programado":"Por solicitar";
         const afterService=days(r.service_day,r.requested_on,now),afterRequest=days(r.requested_on,r.received_on,now),afterReceipt=days(r.received_on,r.documents_sent_on,now);
-        return <tr key={r.id} data-guide-followup={r.id}><td><Link href={`/solicitudes/${r.id}/seguimiento`}><strong>{serviceFolio(r)}</strong></Link><small className="table-sub">{show(r.service_day)}</small></td>
+        return <tr key={r.id} data-guide-followup={r.id}><td><Link href={ledgerHref(r.id,{seguimiento_estado:filter,seguimiento_pagina:String(board.page)})}><strong>{serviceFolio(r)}</strong></Link><small className="table-sub">{show(r.service_day)}</small></td>
           <td>{r.client_name}<span className="table-sub">{companyName(r.operating_company)} · {r.site_name}</span></td>
           <td>{r.dispatch_guide_status==="enviada"?"Enviada":r.dispatch_guide_status==="pendiente"?"Pendiente":r.dispatch_guide_status==="no_aplica"?"No aplica":"Sin registrar"}</td>
           <td>{show(r.requested_on)}</td><td>{show(r.due_on)}<span className="table-sub">{r.responsible_name||"Sin asignar"}</span></td><td>{show(r.received_on)}</td><td>{show(r.documents_sent_on)}</td>

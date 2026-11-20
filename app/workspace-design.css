@@ -1,5 +1,12 @@
 /* Workspace entrance and navigation. Restrained marks, clear destinations, readable controls. */
 @media screen {
+  .app-shell .service-ledger-form { scroll-margin-top:90px; }
+  .app-shell .service-ledger-fields { margin:0; padding:0; border:0; min-width:0; }
+  .app-shell .ledger-forms { align-items:start; }
+  .app-shell .ledger-forms .section-heading { margin-bottom:18px; }
+  .app-shell .service-ledger-form :is(input,select,textarea) { min-width:0; max-width:100%; }
+  .app-shell .service-ledger-form .helper-text { margin:0; font-size:12px; line-height:1.6; }
+  .app-shell .service-ledger-note { white-space:pre-wrap; overflow-wrap:anywhere; }
   .app-shell .guide-followup-stats > :is(div,a) { display:grid; gap:5px; padding:14px 16px; border:1px solid var(--line); border-radius:8px; background:#fff; color:inherit; text-decoration:none; }
   .app-shell .guide-followup-stats > a { transition:border-color .2s,box-shadow .2s; }
   .app-shell .guide-followup-stats > a:hover { border-color:#8bb29f; box-shadow:0 3px 10px #233d3108; }
@@ -489,6 +496,8 @@
 }
 
 @media print {
+  .service-ledger-sheet .order-grid > div { break-inside:avoid; }
+  .service-ledger-sheet .service-ledger-note { white-space:pre-wrap; overflow-wrap:anywhere; }
   .service-order-sheet .order-logo { width:155px; }
   .service-order-sheet .order-grid,.service-order-sheet .order-check-grid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px 20px; }
   .service-order-sheet .order-section { padding:15px 0 4px; }

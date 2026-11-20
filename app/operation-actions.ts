@@ -3,6 +3,7 @@
 import {redirect} from "next/navigation";
 import {revalidatePath} from "next/cache";
 import {ZodError} from "zod";
+import {randomUUID} from "node:crypto";
 import {requireActor} from "@/lib/auth";
 import {MaterialError,createMaterialReceipt,updateMaterialGuideFollowup,updateMaterialPayment,updateMaterialReferences,recordMaterialClosureNotification} from "@/lib/materials";
 import {MaterialStockError} from "@/lib/material-stock";
@@ -12,6 +13,7 @@ import {OperationFileError,addOperationFile} from "@/lib/operation-files";
 import {supplierInvoiceDraft,type SupplierInvoiceFormState} from "@/lib/supplier-invoice-form-state";
 import {materialReceiptDraft,materialReceiptFields,type MaterialReceiptFormState} from "@/lib/material-receipt-form-state";
 import {materialFollowupAnchors,materialFollowupDraft,materialFollowupFields,type MaterialFollowupFormState,type MaterialFollowupKind} from "@/lib/material-followup-form-state";
+import {ledgerContextFromForm,ledgerDraft,ledgerFields,ledgerHref,type LedgerFormState,type LedgerKind} from "@/lib/service-ledger-state";
 
 const val=(form:FormData,key:string)=>String(form.get(key)??"");
 function message(error:unknown){
@@ -79,18 +81,15 @@ export async function addOperationFileAction(form:FormData){
   const path=target==="invoice"?`/facturas-recibidas/${encodeURIComponent(id)}`:`/ingresos/${encodeURIComponent(id)}`;
   await run(path,()=>addOperationFile(actor,target,id,val(form,"kind"),form.get("file") as File));
 }
-export async function saveGuideFollowupAction(form:FormData){
-  const actor=await requireActor(),id=val(form,"service_id");
-  await run(`/solicitudes/${encodeURIComponent(id)}/seguimiento`,()=>saveGuideFollowup(actor,id,{
-    requested_on:val(form,"requested_on"),due_on:val(form,"due_on"),
-    responsible_user_id:val(form,"responsible_user_id"),received_on:val(form,"received_on"),
-    documents_sent_on:val(form,"documents_sent_on"),notes:val(form,"notes"),
-    dispatch_guide_status:val(form,"dispatch_guide_status")}));
+async function saveLedger(kind:LedgerKind,form:FormData):Promise<LedgerFormState>{
+  const actor=await requireActor(),id=val(form,"service_id"),operation=kind==="guide"?saveGuideFollowup:saveCommercialDetails;
+  try{await operation(actor,id,Object.fromEntries(ledgerFields[kind].map(field=>[field,val(form,field)])));}
+  catch(error){return {error:message(error),values:ledgerDraft(kind,form)};}
+  revalidatePath("/","layout");redirect(ledgerHref(id,ledgerContextFromForm(form),kind,randomUUID()));
 }
-export async function saveCommercialAction(form:FormData){
-  const actor=await requireActor(),id=val(form,"service_id");
-  const fields=["quote_reference","quote_on","order_reference","order_on","service_sheet","eyj_guide","client_guide",
-    "sidrep","rental_days","quantity","service_value_clp","notes"];
-  await run(`/solicitudes/${encodeURIComponent(id)}/seguimiento`,()=>saveCommercialDetails(actor,id,
-    Object.fromEntries(fields.map(field=>[field,val(form,field)]))));
+export async function saveGuideFollowupAction(_previous:LedgerFormState,form:FormData){
+  return saveLedger("guide",form);
+}
+export async function saveCommercialAction(_previous:LedgerFormState,form:FormData){
+  return saveLedger("commercial",form);
 }

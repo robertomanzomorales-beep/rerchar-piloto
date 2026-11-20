@@ -6,6 +6,7 @@ import type {Company} from "./companies";
 import {chileCsvDay} from "./chile-csv";
 import {lastRecordPage,recordPage,recordsPerPage,recordWindow} from "./record-pagination";
 import {parseGuideFilter,type GuideFilter} from "./guide-followup-filters";
+import {ledgerNumberLimits} from "./service-ledger-state";
 export {parseGuideFilter,type GuideFilter} from "./guide-followup-filters";
 
 const uuid=z.uuid();
@@ -14,7 +15,7 @@ const label=(max:number)=>z.string().trim().max(max).optional().default("");
 export class LedgerError extends Error {}
 function reject(message:string):never{throw new LedgerError(message);}
 export type Followup={service_id:string;dispatch_guide_status:string|null;requested_on:Date|string|null;due_on:Date|string|null;
-  responsible_user_id:string|null;received_on:Date|string|null;documents_sent_on:Date|string|null;notes:string|null};
+  responsible_user_id:string|null;responsible_name:string|null;received_on:Date|string|null;documents_sent_on:Date|string|null;notes:string|null};
 export type Commercial={service_id:string;quote_reference:string|null;quote_on:Date|string|null;order_reference:string|null;
   order_on:Date|string|null;service_sheet:string|null;eyj_guide:string|null;client_guide:string|null;sidrep:string|null;
   rental_days:string|null;quantity:string|null;service_value_clp:string|null;notes:string|null};
@@ -23,7 +24,8 @@ export async function getServiceLedger(actor:Actor,serviceId:string){
   const [service]=await db.query<{client_id:string;driver_id:string|null}>("SELECT client_id,driver_id FROM service_requests WHERE id=$1 AND deleted_at IS NULL",[serviceId]);
   if(!service||actor.role==="conductor"||!canReadService(actor,service))reject("Servicio no disponible.");
   const [followup,commercial]=await Promise.all([
-    db.query<Followup>("SELECT * FROM valued_guide_followups WHERE service_id=$1",[serviceId]),
+    db.query<Followup>(`SELECT f.*,u.name AS responsible_name FROM valued_guide_followups f
+      LEFT JOIN users u ON u.id=f.responsible_user_id WHERE f.service_id=$1`,[serviceId]),
     db.query<Commercial>("SELECT * FROM service_commercial_details WHERE service_id=$1",[serviceId])]);
   return {followup:followup[0]??null,commercial:commercial[0]??null};
 }
@@ -126,10 +128,11 @@ export async function saveGuideFollowup(actor:Actor,serviceId:string,input:unkno
 export async function saveCommercialDetails(actor:Actor,serviceId:string,input:unknown){
   if(!canManage(actor))reject("Acceso de operaciones requerido.");
   uuid.parse(serviceId);
-  const number=z.union([z.literal(""),z.coerce.number().finite().min(0).max(1_000_000_000)]).default("");
+  const number=(max:number)=>z.union([z.literal(""),z.coerce.number().finite().min(0).max(max)]).default("");
   const data=z.object({quote_reference:label(100),quote_on:date,order_reference:label(100),order_on:date,
     service_sheet:label(100),eyj_guide:label(100),client_guide:label(100),sidrep:label(100),
-    rental_days:number,quantity:number,service_value_clp:number,notes:label(700)}).parse(input);
+    rental_days:number(ledgerNumberLimits.rental_days),quantity:number(ledgerNumberLimits.quantity),
+    service_value_clp:number(ledgerNumberLimits.service_value_clp),notes:label(700)}).parse(input);
   return transaction(async tx=>{
     const [service]=await tx.query("SELECT id FROM service_requests WHERE id=$1 AND deleted_at IS NULL",[serviceId]);
     if(!service)reject("Servicio no encontrado.");
