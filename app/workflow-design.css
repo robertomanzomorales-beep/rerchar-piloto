@@ -107,3 +107,27 @@
   .app-shell .quote-step > :is(a,span) { min-height: 43px; gap: 10px; padding: 8px 13px; }
   .app-shell .quote-step-copy { display: flex; align-items: baseline; gap: 8px; }
 }
+@media screen {
+  .app-shell .workflow-navigation { display:grid; gap:14px; padding:17px 20px; margin:0 0 20px; border:1px solid #dce6e8; border-radius:9px; background:#fff; }
+  .app-shell .workflow-navigation-heading { display:flex; flex-wrap:wrap; align-items:baseline; gap:8px 14px; }
+  .app-shell .workflow-navigation-heading strong { font-size:13px; font-weight:650; color:#2e454e; }
+  .app-shell .workflow-navigation-links { display:flex; flex-wrap:wrap; gap:7px; }
+  .app-shell .workflow-navigation-links a { flex:1 1 120px; min-width:0; display:grid; gap:4px; padding:10px 12px; border:1px solid #e1e9eb; border-radius:6px; background:#f8fafb; text-decoration:none; color:var(--company-ink,#2c5468); transition:background .18s ease,border-color .18s ease; }
+  .app-shell .workflow-navigation-links a:hover { background:#edf4f4; border-color:#a8c3c5; }
+  .app-shell .workflow-navigation-links a:focus-visible { outline:2px solid #2b7280; outline-offset:3px; }
+  .app-shell .workflow-navigation-links span { font-size:12px; font-weight:650; line-height:1.4; }
+  .app-shell .workflow-navigation-links small { font-size:11px; line-height:1.4; color:#627681; overflow-wrap:anywhere; }
+  .app-shell .material-payment { display:inline-flex; padding:5px 8px; border-radius:5px; background:#f0f3f5; font-size:11px; font-weight:650; line-height:1.35; white-space:nowrap; }
+  .app-shell .material-payment-pendiente,.app-shell .material-payment-parcial { background:#fbf3e2; color:#86601e; }
+  .app-shell .material-payment-pagado { background:#e6f3eb; color:#226847; }
+  .app-shell .workflow-review-note { margin-top:14px; padding:12px 14px; border:1px solid #e5dcc7; border-radius:7px; background:#fffdf7; font-size:12px; color:#6f603f; }
+  .app-shell .workflow-review-note p { margin:0; line-height:1.6; }
+  .app-shell .workflow-review-note ul { display:grid; gap:8px; margin:10px 0 0; padding:0; list-style:none; }
+  .app-shell .workflow-review-note li { display:flex; flex-wrap:wrap; gap:6px 14px; justify-content:space-between; }
+  .app-shell :is(#guia-valorizada,#existencia-material,#factura-documentos,#pago-material,#aviso-documental,#respaldos-ingreso,#resumen-edp,#control-edp,#oc-edp,#factura-edp,#servicios-edp,#operaciones-edp,#cobros-edp) { scroll-margin-top:76px; }
+}
+@media screen and (max-width:620px) {
+  .app-shell .workflow-navigation { padding:14px; gap:12px; }
+  .app-shell .workflow-navigation-links { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .app-shell .workflow-navigation-links a { padding:10px; }
+}

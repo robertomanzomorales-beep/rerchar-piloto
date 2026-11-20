@@ -4,7 +4,8 @@ import {PackageCheck} from "lucide-react";
 import {requireActor,canManage} from "@/lib/auth";
 import {db} from "@/lib/db";
 import {listMaterialReceipts,materialAmounts,type ReceiptView} from "@/lib/materials";
-import {Notice} from "@/components/UI";
+import {Notice,chileCalendarDate} from "@/components/UI";
+import {materialPaymentLabel,materialReceiptLabel} from "@/lib/material-labels";
 import {serviceFolio} from "@/lib/companies";
 import {listMaterialCatalog} from "@/lib/material-stock";
 import {moduleReady} from "@/lib/schema-readiness";
@@ -13,7 +14,6 @@ import MaterialReceiptForm from "@/components/MaterialReceiptForm";
 import {listReceiptSourceServices} from "@/lib/material-receipt-sources";
 import {entryHeaders} from "@/lib/material-export";
 
-const date=(v:Date|string)=>v instanceof Date?v.toISOString().slice(0,10):String(v).slice(0,10);
 const views:Record<ReceiptView,string>={"":"Todos los ingresos",guia:"Esperan guía valorizada",factura:"Factura por completar",pago:"Pago pendiente o parcial",aviso:"Aviso documental pendiente"};
 
 export default async function MaterialReceipts({searchParams}:{searchParams:Promise<{error?:string;ok?:string;servicio?:string;vista?:string;pagina?:string}>}){
@@ -45,7 +45,7 @@ export default async function MaterialReceipts({searchParams}:{searchParams:Prom
         materials={catalog.map(({id,name})=>({id,name}))} linked={linked} initialServiceId={initialServiceId}/></section>}
     <section className="section-card"><div className="section-heading"><div><div className="eyebrow">CONTROL</div><h2>{view?views[view]:"Movimientos registrados"}</h2></div><span className="count-pill">{rows.length} en esta página</span></div>
       <form action="/ingresos" className="filters"><label>Vista<select name="vista" defaultValue={view}>{Object.entries(views).filter(([key])=>key===""||key==="guia"&&guideReady||key!=="guia"&&closureReady).map(([key,label])=><option key={key} value={key}>{label}</option>)}</select></label><button type="submit" className="button button-outline">Aplicar</button></form>
-      <div className="table-wrap"><table className="data-table"><thead><tr><th>Fecha / referencia</th><th>Cliente / faena</th><th>Material</th><th>Neto calculado</th><th>Guía valorizada</th><th>Pago</th></tr></thead><tbody>{rows.map(r=>{const amount=materialAmounts(r);return <tr key={r.id}><td><Link href={`/ingresos/${r.id}`}><strong>{r.weighing_ticket||r.transfer_guide||r.origin_guide||r.entry_sheet||"Ingreso"}</strong></Link><span className="table-sub">{date(r.movement_on)} · {r.receipt_mode||r.kind}</span></td><td>{r.client_name}<span className="table-sub">{r.site_name}</span></td><td>{r.material_name}</td><td>{amount.net_kg?.toLocaleString("es-CL")??"—"} kg</td><td>{r.valued_guide?<span className="inventory-good">{r.valued_guide}</span>:r.valued_guide_requested_on?<span className="inventory-low">Pendiente desde {date(r.valued_guide_requested_on)}</span>:"Por solicitar"}</td><td>{r.payment_status}</td></tr>;})}</tbody></table>{rows.length===0&&<p className="muted">{view?"Sin ingresos en esta vista.":"Aún no hay ingresos de material registrados."}</p>}</div>
+      <div className="table-wrap"><table className="data-table"><thead><tr><th>Fecha / referencia</th><th>Cliente / faena</th><th>Material</th><th>Neto calculado</th><th>Guía valorizada</th><th>Pago</th></tr></thead><tbody>{rows.map(r=>{const amount=materialAmounts(r);return <tr key={r.id}><td><Link href={`/ingresos/${r.id}`}><strong>{r.weighing_ticket||r.transfer_guide||r.origin_guide||r.entry_sheet||"Ingreso"}</strong></Link><span className="table-sub">{chileCalendarDate(r.movement_on)} · {materialReceiptLabel(r.receipt_mode,r.kind)}</span></td><td>{r.client_name}<span className="table-sub">{r.site_name}</span></td><td>{r.material_name}</td><td>{amount.net_kg?.toLocaleString("es-CL")??"—"} kg</td><td>{r.valued_guide?<span className="inventory-good">{r.valued_guide}</span>:r.valued_guide_requested_on?<span className="inventory-low">Pendiente desde {chileCalendarDate(r.valued_guide_requested_on)}</span>:"Por solicitar"}</td><td><span className={`material-payment material-payment-${r.payment_status}`}>{materialPaymentLabel(r.payment_status)}</span></td></tr>;})}</tbody></table>{rows.length===0&&<p className="muted">{view?"Sin ingresos en esta vista.":"Aún no hay ingresos de material registrados."}</p>}</div>
       {(pageNumber>1||hasMore)&&<nav className="records-pagination" aria-label="Páginas de ingresos"><span>{pageNumber>1&&<Link className="button button-outline" href={href(view,pageNumber-1)}>Anterior</Link>}</span><span>Página {pageNumber} · hasta 100 ingresos</span><span>{hasMore&&<Link className="button button-outline" href={href(view,pageNumber+1)}>Siguiente</Link>}</span></nav>}
     </section></>;
 }

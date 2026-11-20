@@ -1,4 +1,5 @@
 import type {MaterialReceipt} from "@/lib/materials";
+import {materialInvoiceLabel,materialPaymentLabel} from "@/lib/material-labels";
 import type {OperationFile} from "@/lib/operation-files";
 import MaterialFollowupForm from "./MaterialFollowupForm";
 
@@ -12,7 +13,7 @@ export default function MaterialAdministrativeFollowup({receipt:r,files,email,co
   const noticeReady=Boolean(guide&&invoice&&r.valued_guide&&r.valued_guide_received_on&&r.invoice_number&&
     r.invoice_direction&&r.invoice_issued_on&&(!r.certificate_number||certificate));
   const validEmail=email&&/^[^\s@?&#]+@[^\s@?&#]+\.[^\s@?&#]+$/.test(email);
-  const draft=`Estimados ${contactName||r.client_name}:\n\nCompartimos los documentos de la recepción de material del ${date(r.movement_on)} en ${r.site_name}:\n\nGuía valorizada: ${r.valued_guide||"pendiente"}\nFactura: ${r.invoice_number||"pendiente"}\n${r.certificate_number?`Certificado: ${r.certificate_number}\n`:""}Material: ${r.material_name}\nEstado de pago registrado: ${r.payment_status}.\n\nAdjuntaremos manualmente la guía, la factura${r.certificate_number?" y el certificado":""} antes de enviar este correo. Agradecemos confirmar la recepción de los documentos.\n\nSaludos cordiales,\nRERCHAR Chile SpA`;
+  const draft=`Estimados ${contactName||r.client_name}:\n\nCompartimos los documentos de la recepción de material del ${date(r.movement_on)} en ${r.site_name}:\n\nGuía valorizada: ${r.valued_guide||"pendiente"}\nFactura: ${r.invoice_number||"pendiente"}\n${r.certificate_number?`Certificado: ${r.certificate_number}\n`:""}Material: ${r.material_name}\nEstado de pago registrado: ${materialPaymentLabel(r.payment_status)}.\n\nAdjuntaremos manualmente la guía, la factura${r.certificate_number?" y el certificado":""} antes de enviar este correo. Agradecemos confirmar la recepción de los documentos.\n\nSaludos cordiales,\nRERCHAR Chile SpA`;
   const mailto=noticeReady&&validEmail?`mailto:${email}?subject=${encodeURIComponent(`Documentos del ingreso de material · ${r.client_name}`)}&body=${encodeURIComponent(draft)}`:null;
   const referenceValues={entry_sheet:r.entry_sheet??"",invoice_number:r.invoice_number??"",invoice_direction:r.invoice_direction??"",
     invoice_issued_on:date(r.invoice_issued_on),certificate_number:r.certificate_number??""};
@@ -23,7 +24,7 @@ export default function MaterialAdministrativeFollowup({receipt:r,files,email,co
     <section id="factura-documentos" className="section-card print-hide material-followup-section">
       <div className="eyebrow">DESPUÉS DE LA GUÍA VALORIZADA</div><h2>1. Factura y documentos</h2>
       <p className="helper-text">La planilla registra N° de factura. Confirme con Carol y Johana quién la emite y quién paga antes de seleccionar la dirección. Adjunte la factura para confirmarla; este registro no emite documentos tributarios.</p>
-      <p>Guía valorizada: <strong>{r.valued_guide||"Pendiente"}</strong> · Factura: <strong>{r.invoice_number||"Pendiente"}</strong> · Dirección: <strong>{r.invoice_direction||"Por confirmar"}</strong>.</p>
+      <p>Guía valorizada: <strong>{r.valued_guide||"Pendiente"}</strong> · Factura: <strong>{r.invoice_number||"Pendiente"}</strong> · Dirección: <strong>{materialInvoiceLabel(r.invoice_direction)}</strong>.</p>
       <MaterialFollowupForm key={JSON.stringify(referenceValues)} kind="references" id={r.id} values={referenceValues}/>
       <p className="helper-text">Factura adjunta: {invoice?<a href={`/api/archivos-operacion/${invoice.id}`}>{invoice.filename}</a>:"pendiente"}. Si cambia la guía, factura o certificado, o adjunta una versión corregida después de registrar el aviso, el aviso vuelve a pendiente.</p>
     </section>
