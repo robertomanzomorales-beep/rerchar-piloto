@@ -1,5 +1,10 @@
 /* Workspace entrance and navigation. Restrained marks, clear destinations, readable controls. */
 @media screen {
+  .app-shell .compliance-form { scroll-margin-top:90px; }
+  .app-shell .compliance-fields { margin:0; padding:0; min-width:0; border:0; }
+  .app-shell .compliance-form :is(input,select,textarea) { min-width:0; max-width:100%; }
+  .app-shell .compliance-create > summary { cursor:pointer; font-size:15px; font-weight:600; color:#24644f; }
+  .app-shell .compliance-create[open] > summary { margin-bottom:16px; }
   .app-shell .service-ledger-form { scroll-margin-top:90px; }
   .app-shell .service-ledger-fields { margin:0; padding:0; border:0; min-width:0; }
   .app-shell .ledger-forms { align-items:start; }

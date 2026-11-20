@@ -1,49 +1,37 @@
 import Link from "next/link";
-import {FileCheck2,Download,Plus} from "lucide-react";
+import {redirect} from "next/navigation";
+import {FileCheck2,Download} from "lucide-react";
 import {canManage,requireActor} from "@/lib/auth";
-import {listWasteRecords} from "@/lib/compliance";
+import {wasteRecordPage} from "@/lib/compliance";
 import {db} from "@/lib/db";
 import {chileDate} from "@/components/UI";
-import {SubmitButton} from "@/components/Transition";
-import {saveWasteAction} from "@/app/compliance-actions";
+import ComplianceForm from "@/components/ComplianceForm";
+import {complianceContext,complianceHref,complianceId,wasteStatusNames,type ComplianceContext} from "@/lib/compliance-state";
 import {companyName,serviceFolio,type Company} from "@/lib/companies";
-
-export default async function Compliance({searchParams}:{searchParams:Promise<{error?:string;ok?:string;client_id?:string;service_id?:string}>}){
-  const actor=await requireActor();
-  if(!canManage(actor))return <p>Este módulo requiere acceso de operaciones.</p>;
-  const params=await searchParams;
-  const clientId=params.client_id??"";
-  const [records,clients,services]=await Promise.all([
-    listWasteRecords(actor,clientId),
-    db.query<{id:string;name:string}>("SELECT id,name FROM clients WHERE deleted_at IS NULL ORDER BY name"),
-    db.query<{id:string;folio:string;operating_company:Company|null;client_name:string;site_name:string;waste_type:string;guide_number:string|null}>(`
-      SELECT s.id,s.folio,s.operating_company,c.name AS client_name,cs.name AS site_name,s.waste_type,s.guide_number FROM service_requests s
-      JOIN clients c ON c.id=s.client_id JOIN client_sites cs ON cs.id=s.site_id
-      LEFT JOIN waste_records w ON w.service_id=s.id
-      WHERE s.status='completada' AND s.deleted_at IS NULL AND w.id IS NULL ORDER BY s.closed_at DESC LIMIT 100`),
+import {recordPage,recordsPerPage} from "@/lib/record-pagination";
+type Query=ComplianceContext&{service_id?:string;formulario?:string;ok?:string};
+export default async function Compliance({searchParams}:{searchParams:Promise<Query>}){
+  const actor=await requireActor();if(!canManage(actor))redirect("/");
+  const query=await searchParams,context=complianceContext(query),clientId=context.client_id??"",company=context.empresa??"";
+  const[board,clients,services]=await Promise.all([
+    wasteRecordPage(actor,clientId,company,context.pagina),db.query<{id:string;name:string}>("SELECT id,name FROM clients WHERE deleted_at IS NULL ORDER BY name,id"),
+    db.query<{id:string;folio:string;operating_company:Company|null;client_name:string;site_name:string;waste_type:string}>(`SELECT s.id,s.folio,s.operating_company,c.name AS client_name,cs.name AS site_name,s.waste_type FROM service_requests s
+      JOIN clients c ON c.id=s.client_id JOIN client_sites cs ON cs.id=s.site_id LEFT JOIN waste_records w ON w.service_id=s.id
+      WHERE s.status='completada' AND s.deleted_at IS NULL AND w.id IS NULL
+        AND ($1::text='' OR s.client_id=NULLIF($1,'')::uuid) AND ($2::text='' OR ($2='pendiente' AND s.operating_company IS NULL) OR s.operating_company=$2)
+      ORDER BY s.closed_at DESC NULLS LAST,s.id DESC`,[clientId,company]),
   ]);
-  const selectedService=services.some(service=>service.id===params.service_id)?params.service_id:"";
+  if(recordPage(context.pagina)!==board.page&&!query.formulario)redirect(complianceHref({...context,pagina:String(board.page)}));
+  const current={...context,...(board.page>1?{pagina:String(board.page)}:{})};
+  const selected=complianceId(query.service_id),exportQuery=new URLSearchParams({client_id:clientId,empresa:company});
+  const pages=()=>board.pages>1?<nav className="records-pagination" aria-label="Páginas del registro ambiental"><span>{board.page>1&&<Link className="button button-outline" href={complianceHref({...current,pagina:String(board.page-1)})}>Anterior</Link>}</span><span>Página {board.page} de {board.pages}</span><span>{board.page<board.pages&&<Link className="button button-outline" href={complianceHref({...current,pagina:String(board.page+1)})}>Siguiente</Link>}</span></nav>:null;
   return <>
-    <div className="page-title-row"><div><div className="eyebrow">TRAZABILIDAD AMBIENTAL INTERNA</div><h1>Registros ambientales</h1><p className="page-intro">Prepare y revise información del residuo asociada al folio. La declaración externa se registra después de efectuarla en el portal correspondiente.</p></div><span className="title-icon"><FileCheck2 size={23}/></span></div>
-    {params.error&&<p className="form-error" role="alert">{params.error}</p>}{params.ok&&<p className="form-success">Registro actualizado.</p>}
-    <section className="section-card"><div className="section-heading"><div><div className="eyebrow">NUEVO REGISTRO</div><h2><Plus size={18}/> Preparar ficha</h2></div></div>
-      <p className="helper-text">Primero cierre el servicio y adjunte al menos una evidencia. El peso neto se toma del pesaje del folio.</p>
-      <form action={saveWasteAction} className="form-grid detail-form">
-        <label className="field-full">Servicio cerrado<select name="service_id" required defaultValue={selectedService}><option value="">Seleccione un folio</option>{services.map(s=><option key={s.id} value={s.id}>{serviceFolio(s)} · {companyName(s.operating_company)} · {s.client_name} · {s.site_name} · {s.waste_type}</option>)}</select></label>
-        <label>Categoría informada<select name="category" required><option value="no_peligroso">No peligroso</option><option value="peligroso">Peligroso</option></select></label>
-        <label>Clasificación / descripción<input name="classification" maxLength={120} minLength={2} required placeholder="Descripción usada por la operación"/></label>
-        <label>Generador<input name="generator_name" maxLength={160} required placeholder="Razón social o establecimiento"/></label>
-        <label>Transportista real<input name="transporter_name" maxLength={160} required placeholder="Empresa que realizó el transporte"/></label>
-        <label>Receptor<input name="receiver_name" maxLength={160} required placeholder="Destino receptor"/></label>
-        <label>Tratamiento o destino<input name="treatment" maxLength={160} required placeholder="Descripción del destino final"/></label>
-        <label>Guía / documento de respaldo<input name="guide_number" maxLength={80} required placeholder="Folio del documento"/></label>
-        <div className="field-full form-footer"><SubmitButton className="button button-primary" disabled={!services.length}>Guardar borrador</SubmitButton></div>
-      </form>
-      {!services.length&&<p className="helper-text">No hay servicios cerrados pendientes de ficha.</p>}
-    </section>
-    <section className="section-card"><div className="section-heading"><div><div className="eyebrow">REVISIÓN Y SEGUIMIENTO</div><h2>Registros vinculados</h2></div><Link className="button button-outline" href={`/api/reportes/ambiental?client_id=${encodeURIComponent(clientId)}`}><Download size={16}/> CSV interno</Link></div>
-      <form method="GET" action="/cumplimiento" className="report-filters"><label>Cliente<select name="client_id" defaultValue={clientId}><option value="">Todos</option>{clients.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label><button type="submit" className="button button-outline">Aplicar</button></form>
-      <div className="table-wrap"><table className="data-table"><thead><tr><th>Folio / empresa</th><th>Cliente / faena</th><th>Residuo</th><th>Categoría</th><th>Peso neto</th><th>Estado</th><th>Actualizado</th></tr></thead><tbody>{records.map(r=><tr key={r.id}><td><Link className="table-main" href={`/cumplimiento/${r.id}`}>{serviceFolio(r)}</Link><small className="table-sub">{companyName(r.operating_company)}</small></td><td>{r.client_name}<small className="table-sub">{r.site_name}</small></td><td>{r.waste_type}</td><td>{r.category.replaceAll("_"," ")}</td><td>{Number(r.quantity_kg).toLocaleString("es-CL")} kg</td><td>{r.status}</td><td>{chileDate(r.updated_at)}</td></tr>)}</tbody></table>{!records.length&&<p className="report-empty">Sin registros con este filtro.</p>}</div>
+    <div className="page-title-row"><div><div className="eyebrow">TRAZABILIDAD AMBIENTAL INTERNA</div><h1>Registros ambientales</h1><p className="page-intro">Prepare y revise información del residuo asociada al servicio. Registre la constancia de declaración después de efectuarla en el portal correspondiente.</p></div><span className="title-icon"><FileCheck2 size={23}/></span></div>
+    <section className="section-card"><details className="compliance-create" open={query.formulario==="save"||!!selected}><summary>Preparar ficha ambiental</summary><p className="helper-text">El servicio debe estar cerrado y tener bruto y tara registrados. Adjunte evidencia antes de marcar la ficha como revisada.</p><ComplianceForm kind="save" context={current} defaults={{service_id:selected,category:"no_peligroso"}} services={services.map(service=>({id:service.id,label:`${serviceFolio(service)} · ${companyName(service.operating_company)} · ${service.client_name} · ${service.site_name} · ${service.waste_type}`}))}/>{!services.length&&<p className="helper-text">No hay servicios cerrados pendientes de ficha con estos filtros.</p>}</details></section>
+    <section className="section-card"><div className="section-heading"><div><div className="eyebrow">REVISIÓN Y SEGUIMIENTO</div><h2>Registros vinculados</h2></div><Link className="button button-outline" href={`/api/reportes/ambiental?${exportQuery}`}><Download size={16}/> CSV interno</Link></div>
+      <form key={`${company}:${clientId}`} method="get" action="/cumplimiento" className="filters"><label>Empresa<select name="empresa" defaultValue={company}><option value="">Ambas empresas y registros por clasificar</option><option value="rerchar">RERCHAR</option><option value="e_y_j">E y J</option><option value="pendiente">Por clasificar</option></select></label><label>Cliente<select name="client_id" defaultValue={clientId}><option value="">Todos</option>{clients.map(client=><option value={client.id} key={client.id}>{client.name}</option>)}</select></label><button type="submit" className="button button-outline">Aplicar</button>{(company||clientId)&&<Link className="text-link" href="/cumplimiento">Ver todos</Link>}</form>
+      <p className="helper-text" data-waste-count>{board.total?`Mostrando ${(board.page-1)*recordsPerPage+1}–${Math.min(board.page*recordsPerPage,board.total)} de ${board.total} fichas.`:"Sin registros con estos filtros."} El CSV incluye todos los registros del filtro.</p>{pages()}
+      <div className="table-wrap" role="region" aria-label="Fichas ambientales" tabIndex={0}><table className="data-table"><thead><tr><th>Folio / empresa</th><th>Cliente / faena</th><th>Residuo</th><th>Categoría</th><th>Peso neto</th><th>Estado</th><th>Actualizado</th></tr></thead><tbody>{board.rows.map(record=><tr key={record.id} data-waste-row={record.id}><td><Link className="table-main" href={complianceHref(current,record.id)}>{serviceFolio(record)}</Link><small className="table-sub">{companyName(record.operating_company)}</small></td><td>{record.client_name}<small className="table-sub">{record.site_name}</small></td><td>{record.waste_type}</td><td>{record.category==="peligroso"?"Peligroso":"No peligroso"}</td><td>{Number(record.quantity_kg).toLocaleString("es-CL")} kg</td><td>{wasteStatusNames[record.status]??record.status}</td><td>{chileDate(record.updated_at)}</td></tr>)}</tbody></table></div>{pages()}
     </section>
   </>;
 }

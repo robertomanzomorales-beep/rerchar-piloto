@@ -3,10 +3,11 @@ import {canManage,type Actor} from "./auth";
 import {db,transaction,type Db} from "./db";
 import {revokeActiveCertificate} from "./certificates";
 import type {Company} from "./companies";
+import {recordPage,lastRecordPage,recordsPerPage,recordWindow} from "./record-pagination";
 
 const uuid=z.uuid();
 const text=(max:number)=>z.string().trim().min(2).max(max);
-const form=z.object({service_id:uuid,category:z.enum(["no_peligroso","peligroso"]),classification:text(120),
+const form=z.object({service_id:uuid,record_id:z.union([uuid,z.literal("")]).optional(),category:z.enum(["no_peligroso","peligroso"]),classification:text(120),
   generator_name:text(160),transporter_name:text(160),receiver_name:text(160),treatment:text(160),guide_number:text(80)});
 export class ComplianceError extends Error {}
 function reject(message:string):never{throw new ComplianceError(message);}
@@ -28,16 +29,28 @@ const select=`SELECT w.*,s.folio,s.client_id,s.operating_company,c.name AS clien
   FROM waste_records w JOIN service_requests s ON s.id=w.service_id
   JOIN clients c ON c.id=s.client_id JOIN client_sites cs ON cs.id=s.site_id`;
 
-export async function listWasteRecords(actor:Actor,clientId=""){
-  manager(actor);
-  if(clientId&&!uuid.safeParse(clientId).success)reject("Cliente inválido.");
-  return db.query<WasteRecord>(`${select} WHERE s.deleted_at IS NULL AND ($1::text='' OR s.client_id=NULLIF($1,'')::uuid)
-    ORDER BY w.updated_at DESC LIMIT 300`,[clientId]);
+function recordFilter(actor:Actor,clientId:string,company:string){
+  manager(actor);if(clientId&&!uuid.safeParse(clientId).success)reject("Cliente inválido.");
+  if(!["","rerchar","e_y_j","pendiente"].includes(company))reject("Empresa inválida.");
+  return [clientId,company];
+}
+const recordWhere=`s.deleted_at IS NULL AND ($1::text='' OR s.client_id=NULLIF($1,'')::uuid)
+  AND ($2::text='' OR ($2='pendiente' AND s.operating_company IS NULL) OR s.operating_company=$2)`;
+export async function listWasteRecords(actor:Actor,clientId="",company="",options?:{limit:number;offset:number}){
+  const params=recordFilter(actor,clientId,company),range=options?recordWindow(options.limit,options.offset):null;
+  return db.query<WasteRecord>(`${select} WHERE ${recordWhere} ORDER BY w.updated_at DESC,w.id DESC
+    ${range?"LIMIT $3 OFFSET $4":""}`,[...params,...(range?[range.limit,range.offset]:[])]);
+}
+export async function wasteRecordPage(actor:Actor,clientId="",company="",requested:unknown=1){
+  const params=recordFilter(actor,clientId,company),[count]=await db.query<{total:string}>(`SELECT count(*)::text AS total
+    FROM waste_records w JOIN service_requests s ON s.id=w.service_id WHERE ${recordWhere}`,params);
+  const total=Number(count.total),pages=lastRecordPage(total),page=Math.min(recordPage(requested),pages);
+  const rows=await listWasteRecords(actor,clientId,company,{limit:recordsPerPage,offset:(page-1)*recordsPerPage});return{rows,total,pages,page};
 }
 export async function getWasteRecord(actor:Actor,recordId:string){
   manager(actor);
   if(!uuid.safeParse(recordId).success)reject("Registro inválido.");
-  const [record]=await db.query<WasteRecord>(`${select} WHERE w.id=$1`,[recordId]);
+  const [record]=await db.query<WasteRecord>(`${select} WHERE w.id=$1 AND s.deleted_at IS NULL`,[recordId]);
   if(!record)reject("Registro inexistente.");
   const events=await db.query<{id:string;action:string;reason:string|null;actor_name:string;created_at:Date}>(`
     SELECT e.id,e.action,e.reason,u.name AS actor_name,e.created_at FROM waste_record_events e
@@ -56,6 +69,8 @@ export async function saveWasteRecord(actor:Actor,input:unknown){
       transporter_name:string;receiver_name:string;treatment:string;guide_number:string;quantity_kg:string}>(`
       SELECT id,status,category,classification,generator_name,transporter_name,receiver_name,treatment,guide_number,quantity_kg
       FROM waste_records WHERE service_id=$1 FOR UPDATE`,[data.service_id]);
+    if(data.record_id!==undefined&&(previous?.id??"")!==data.record_id)
+      reject("El servicio ya tiene otra ficha o cambió mientras la completaba. Abra su registro vigente.");
     if(previous&&previous.status!=="borrador"&&previous.status!=="observado")reject("La ficha revisada está bloqueada. Registre una observación motivada para corregirla.");
     const quantity=Number(service.gross_kg)-Number(service.tare_kg);
     if(service.gross_kg===null||service.tare_kg===null||!Number.isFinite(quantity)||quantity<0)
