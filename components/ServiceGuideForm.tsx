@@ -4,6 +4,7 @@ import {useActionState,useEffect,useRef,useState,type ChangeEvent} from "react";
 import {saveGuideControlAction} from "@/app/guide-actions";
 import {guideControlFieldLimits,type GuideControlValues,type GuideControlState} from "@/lib/service-guide-state";
 import {SubmitButton} from "./Transition";
+import type {Company} from "@/lib/companies";
 
 type Field=Exclude<keyof GuideControlValues,"control_id">;
 const labels:Record<Field,string>={
@@ -27,7 +28,7 @@ const groups:{id:string;label:string;fields:Field[]}[]=[
 const dates=new Set<Field>(["movement_date","invoice_issued_on","payment_on"]);
 const numbers=new Set<Field>(["line_number","origin_kg","complementary_kg","arrival_kg","returned_impurities_kg","return_weight_kg","destination_impurities_kg","invoice_kg","agreed_price_clp","invoice_price_clp"]);
 
-export default function ServiceGuideForm({id,defaults}:{id:string;defaults:GuideControlValues}){
+export default function ServiceGuideForm({id,defaults,company}:{id:string;defaults:GuideControlValues;company:Company|null}){
   const editing=Boolean(defaults.control_id);
   const permalink="/solicitudes/"+id+"/guias"+(editing?"?editar="+defaults.control_id:"")+"#editar";
   const [state,action]=useActionState<GuideControlState,FormData>(saveGuideControlAction,{error:"",values:{}},permalink);
@@ -46,7 +47,7 @@ export default function ServiceGuideForm({id,defaults}:{id:string;defaults:Guide
       min={numeric?line?1:0:undefined} max={max} step={numeric?line?"1":"0.01":undefined}/></label>;
   }
   return <form action={action} className="form-grid service-guide-form">
-    <input name="service_id" type="hidden" value={id}/><input name="control_id" type="hidden" value={fields.control_id??""}/>
+    <input name="service_id" type="hidden" value={id}/><input name="control_id" type="hidden" value={fields.control_id??""}/>{company==="e_y_j"&&<input name="valued_guide_number" type="hidden" value={fields.valued_guide_number??""}/>}
     {state.error&&<div ref={errorRef} tabIndex={-1} role="alert" className="notice notice-error request-form-error">
       <strong>No se pudo guardar el control de guía.</strong><span>{state.error}</span>
       <small>Los datos ingresados se conservan. Corrija la información e intente nuevamente.</small>
@@ -55,7 +56,7 @@ export default function ServiceGuideForm({id,defaults}:{id:string;defaults:Guide
       {groups.map(group=><a key={group.id} href={"#"+group.id}>{group.label}</a>)}
     </nav>
     {groups.map(group=><div className="guide-control-group field-full" key={group.id} id={group.id}>
-      <div className="form-section-title field-full">{group.label}</div>{group.fields.map(field)}
+      <div className="form-section-title field-full">{group.label}</div>{group.fields.filter(name=>name!=="valued_guide_number"||company!=="e_y_j").map(field)}
       {group.id==="guia-salida"&&<p className="helper-text field-full">Para un ítem nuevo, registre al menos un peso de origen, destino o retorno. Los campos vacíos conservan su valor anterior al editar.</p>}
     </div>)}
     <label className="field-full">Observaciones<textarea {...input("notes")} maxLength={500} rows={3}/></label>
