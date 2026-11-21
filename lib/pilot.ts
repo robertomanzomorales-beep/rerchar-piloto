@@ -104,6 +104,7 @@ export async function listAgenda(actor: Actor, firstDay: string, dayAfterLast: s
 }
 
 export type ReportFilters = { from: string; to: string; status: string; client_id: string; company: string };
+export type ReportFilterInput = Partial<Record<keyof ReportFilters, unknown>>;
 export type ReportService = {
   id: string; folio: string; client_name: string; site_name: string; service_type: string; waste_type: string;
   operating_company: Company | null;
@@ -112,17 +113,32 @@ export type ReportService = {
   created_at_cursor: string;
 };
 
-export function normalizeReportFilters(input: Partial<Record<keyof ReportFilters,string>>): ReportFilters {
-  const date = (value?: string) => {
-    if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return "";
-    const parsed = new Date(`${value}T00:00:00Z`);
-    return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0,10) === value ? value : "";
-  };
+const reportDate = (value: unknown): value is string => typeof value === "string"
+  && !value.startsWith("0000-") && z.iso.date().safeParse(value).success;
+
+export function reportFilterIssue(input: ReportFilterInput) {
+  const keys = ["from", "to", "status", "client_id", "company"] as const;
+  if (keys.some(key => input[key] !== undefined && typeof input[key] !== "string"))
+    return "Seleccione un único valor para cada filtro del reporte.";
+  if ([input.from, input.to].some(value => value !== undefined && value !== "" && !reportDate(value)))
+    return "Seleccione fechas válidas para consultar el reporte.";
+  if (typeof input.from === "string" && typeof input.to === "string" && input.from && input.to && input.from > input.to)
+    return "La fecha Desde no puede ser posterior a Hasta.";
+  if (input.status && !Object.hasOwn(statusName, input.status as string))
+    return "Seleccione un estado válido para consultar el reporte.";
+  if (input.client_id && !uuid.safeParse(input.client_id).success)
+    return "Seleccione un cliente válido para consultar el reporte.";
+  if (input.company && !["rerchar", "e_y_j", "pendiente"].includes(input.company as string))
+    return "Seleccione una empresa válida para consultar el reporte.";
+  return "";
+}
+
+export function normalizeReportFilters(input: ReportFilterInput): ReportFilters {
   return {
-    from: date(input.from), to: date(input.to),
-    status: input.status && Object.hasOwn(statusName,input.status) ? input.status : "",
-    client_id: uuid.safeParse(input.client_id).success ? input.client_id! : "",
-    company: ["rerchar", "e_y_j", "pendiente"].includes(input.company ?? "") ? input.company! : "",
+    from: reportDate(input.from) ? input.from : "", to: reportDate(input.to) ? input.to : "",
+    status: typeof input.status === "string" && Object.hasOwn(statusName,input.status) ? input.status : "",
+    client_id: typeof input.client_id === "string" && uuid.safeParse(input.client_id).success ? input.client_id : "",
+    company: typeof input.company === "string" && ["rerchar", "e_y_j", "pendiente"].includes(input.company) ? input.company : "",
   };
 }
 
@@ -138,6 +154,7 @@ const reportParams=(actor:Actor,filters:ReportFilters)=>[
   filters.from,filters.to,filters.status,actor.role,actor.client_id,actor.id,filters.client_id,filters.company,
 ];
 export async function serviceReportOverview(actor:Actor,filters:ReportFilters){
+  const issue=reportFilterIssue(filters);if(issue)reject(issue);
   const [row]=await db.query<{total:string;completed:string;net_kg:string;weighed:string}>(`SELECT count(*)::text AS total,
     count(*) FILTER (WHERE s.status='completada')::text AS completed,
     count(*) FILTER (WHERE s.status='completada' AND s.gross_kg IS NOT NULL AND s.tare_kg IS NOT NULL)::text AS weighed,
@@ -149,6 +166,7 @@ export async function serviceReportOverview(actor:Actor,filters:ReportFilters){
 export type ServiceReportCursor={createdAt:string;folio:string};
 export async function reportServices(actor: Actor, filters: ReportFilters,
   options:{limit?:number;offset?:number;before?:ServiceReportCursor}={}) {
+  const issue=reportFilterIssue(filters);if(issue)reject(issue);
   const limit=z.number().int().min(1).max(1001).parse(options.limit??1001);
   const offset=z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).parse(options.offset??0);
   const before=options.before;

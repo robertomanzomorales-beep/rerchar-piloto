@@ -13,6 +13,11 @@ test("el reporte completo conserva más de mil servicios, pesajes válidos, empr
     await transaction(async tx=>{for(const s of sql.split(/;\s*(?:\n|$)/).map(x=>x.trim()).filter(Boolean))await tx.query(s);});
   }
   const {actors,client,site}=await seedServiceReport(db),filters=normalizeReportFilters({company:"rerchar"});
+  for(const invalid of [{...filters,from:"2026-11-19",to:"2026-11-18"},{...filters,from:"2026-02-31"},{...filters,company:"otra"}]){
+    await assert.rejects(()=>serviceReportOverview(actors.admin,invalid));
+    await assert.rejects(()=>reportServices(actors.admin,invalid));
+    await assert.rejects(()=>iterateReportServices(actors.admin,invalid).next());
+  }
   assert.deepEqual(await serviceReportOverview(actors.admin,filters),{total:1205,completed:1204,netKg:60000,weighed:1201});
   assert.equal((await serviceReportOverview(actors.operaciones,filters)).total,1205);
   assert.equal((await serviceReportOverview(actors.cliente,filters)).total,1001);
@@ -41,4 +46,14 @@ test("el reporte completo conserva más de mil servicios, pesajes válidos, empr
     VALUES(gen_random_uuid(),$1,$2,'rerchar','retiro','Alta mientras exporta','Faena','Patio',$3,'2026-11-19T02:31:00Z')`,[client.id,site.id,actors.admin.id]);
   const stable=[...first.value!];for await(const batch of iterator)stable.push(...batch);
   assert.deepEqual(stable.map(r=>r.id),expected,"un alta más reciente no repite ni desplaza registros entre lotes");
+});
+
+test("los filtros del reporte distinguen una consulta válida de un período o selección inválidos",async()=>{
+  const {normalizeReportFilters,reportFilterIssue}=await import("../lib/pilot");
+  for(const input of [{from:"2026-02-31"},{from:"0000-01-01"},{to:"no-fecha"},{from:"2026-11-19",to:"2026-11-18"},{status:"inexistente"},{client_id:"no-es-id"},{company:"inexistente"},{company:["rerchar","e_y_j"]},{from:42},{status:null}])
+    assert.ok(reportFilterIssue(input),JSON.stringify(input));
+  for(const input of [{},{from:"2024-02-29",to:"2024-02-29"},{from:"2026-11-18",to:"2026-11-19",company:"e_y_j",status:"pendiente_revision"},{company:"pendiente"}])
+    assert.equal(reportFilterIssue(input),"",JSON.stringify(input));
+  assert.deepEqual(normalizeReportFilters({from:["2026-11-18"],to:"2026-02-31",company:["rerchar"],status:42,client_id:null}),{from:"",to:"",company:"",status:"",client_id:""});
+  assert.deepEqual(normalizeReportFilters({from:"2024-02-29",to:"2024-02-29",company:"rerchar",status:"completada"}),{from:"2024-02-29",to:"2024-02-29",company:"rerchar",status:"completada",client_id:""});
 });

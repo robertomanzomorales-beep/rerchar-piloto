@@ -1,11 +1,11 @@
 import { getActor } from "@/lib/auth";
 import { chileCsvDateTime, chileCsvDay } from "@/lib/chile-csv";
-import { normalizeReportFilters, iterateReportServices, type ReportService } from "@/lib/pilot";
+import { normalizeReportFilters, reportFilterIssue, iterateReportServices, type ReportService } from "@/lib/pilot";
 import {companyName,serviceFolio} from "@/lib/companies";
 
 function csvCell(value: string | number | null | undefined) {
   const raw = String(value ?? "");
-  const safe = /^[=+\-@\t\r]/.test(raw) ? `'${raw}` : raw;
+  const safe = /^\s*[=+\-@]/u.test(raw) || /^[\t\r\n]/.test(raw) ? `'${raw}` : raw;
   return `"${safe.replaceAll('"','""')}"`;
 }
 
@@ -27,7 +27,12 @@ export async function GET(request: Request) {
   const actor = await getActor();
   if (!actor) return new Response("Sesión requerida", { status: 401 });
   const params = new URL(request.url).searchParams;
-  const filters = normalizeReportFilters({ from: params.get("from") ?? "", to: params.get("to") ?? "", status: params.get("status") ?? "", client_id: params.get("client_id") ?? "", company:params.get("company")??"" });
+  const input=Object.fromEntries(["from","to","status","client_id","company"].map(key=>{
+    const values=params.getAll(key);return [key,values.length>1?values:values[0]??""];
+  }));
+  const issue=reportFilterIssue(input);
+  if(issue)return new Response(issue,{status:400,headers:{"Cache-Control":"private, no-store","X-Content-Type-Options":"nosniff"}});
+  const filters = normalizeReportFilters(input);
   const batches=iterateReportServices(actor,filters),first=await batches.next();
   const header = ["Folio","Empresa operadora","Cliente","Centro","Tipo","Residuo","Origen","Destino","Estado","Creado (Chile)","Programado (Chile)","Camión","Conductor","Estimado kg","Bruto kg","Tara kg","Neto kg"];
   const encoder=new TextEncoder();let canceled=false;
