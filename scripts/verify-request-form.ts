@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
-import {createHash,randomBytes} from 'node:crypto';
+import {createHash,randomBytes,randomUUID} from 'node:crypto';
 import {createServer} from 'node:net';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
@@ -16,7 +16,18 @@ async function main(){
   const sql=await readFile(root+'/db/'+name,'utf8');
   await transaction(async tx=>{for(const statement of sql.split(/;\s*(?:\n|$)/).map(x=>x.trim()).filter(Boolean))await tx.query(statement);});
  }
- const {actors,client,other,site}=await seedServiceReport(db);
+ const {actors,client,other,site,otherSite}=await seedServiceReport(db);
+ const {createQuote}=await import('../lib/quotes');
+ const quoteFixtures:Record<string,{legacy:string;classified:string}>={};
+ for(const company of ['rerchar','e_y_j'] as const){
+  const ids=[];
+  for(const classified of [false,true]){
+   const id=await createQuote(actors.admin,{submission_key:randomUUID(),client_id:client.id,issuer:company,title:classified?'Transporte clasificado':'Arriendo anterior y retiro',issued_on:'2026-11-01',valid_until:'2027-12-01'});
+   await db.query("INSERT INTO client_quote_lines(quote_id,position,description,quantity,unit,unit_price_clp,taxable,principal,segment) VALUES($1,1,'Operación acordada',1,'servicio',1000,true,$2,$3)",[id,classified?'transporte':null,classified?'transporte_maquinaria':null]);
+   await db.query("UPDATE client_quotes SET status='aceptada' WHERE id=$1",[id]);ids.push(id);
+  }
+  quoteFixtures[company]={legacy:ids[0],classified:ids[1]};
+ }
  const [asset]=await db.query<{id:string}>("INSERT INTO assets(code,label,kind,plate,reading_unit) VALUES('REV-REPORT','Camión recorrido','camion','ABCD12','km') RETURNING id");
  const [service]=await db.query<{id:string}>("SELECT id FROM service_requests WHERE client_id=$1 AND driver_id=$2 AND deleted_at IS NULL LIMIT 1",[client.id,actors.conductor.id]);
  const [foreign]=await db.query<{id:string}>("SELECT id FROM service_requests WHERE client_id=$1 AND deleted_at IS NULL LIMIT 1",[other.id]);
@@ -67,12 +78,35 @@ async function main(){
    const fresh=await htmlPage(path);assert.match(fresh,new RegExp(values.new_site_name));
    outcomes.push({company,errorKeepsDraft:true,errorCreatesNoRequest:true,retryCreatesOneRequest:true,repeatedSubmitSameId:true});
   }
+  const legacyOutcomes=[];
+  for(const company of ['rerchar','e_y_j']){
+   const fixtures=quoteFixtures[company],path='/solicitudes/nueva?cotizacion='+fixtures.legacy+'&empresa='+company;
+   let current=requestForm(await htmlPage(path));const baseline=await openCount(company);
+   assert.equal(selected(current.form,'client_id'),client.id);assert.equal(selected(current.form,'operating_company'),company);assert.equal(inputValue(current.form,'quote_id'),fixtures.legacy);
+   assert.match(current.form,/Propuesta anterior sin clasificación/);
+   const serviceSelect=current.form.match(/<select\b[^>]*name="service_type"[^>]*>[\s\S]*?<\/select>/)?.[0];assert.ok(serviceSelect);assert.match(serviceSelect,/required=""/);assert.match(serviceSelect,/<option value="" selected="">Seleccione el servicio<\/option>/);assert.match(serviceSelect,/<option value="arriendo">/);assert.match(current.form,/<option value="retiro">/);
+   const values={client_id:client.id,site_id:site.id,operating_company:company,quote_id:fixtures.legacy,request_category:'servicios',service_type:'',waste_type:'Excavadora según propuesta',origin:'Entrega acordada',destination:'Faena acordada',estimated_kg:'',priority:'normal',notes:'Condiciones del arriendo anterior'};
+   const fill=(data:FormData,fields:Record<string,string>)=>{for(const [key,value]of Object.entries(fields))data.set(key,value);};
+   fill(current.data,values);let response=await post(path,current.data);assert.equal(response.status,200);assert.match(await response.text(),/No se pudo registrar la solicitud/);assert.equal(await openCount(company),baseline);
+   current=requestForm(await htmlPage(path));fill(current.data,{...values,service_type:'arriendo',rental_from:'2026-11-20',rental_to:'2026-11-19'});
+   response=await post(path,current.data);assert.equal(response.status,200);const failed=requestForm((await response.text()).replace(/<!--[\s\S]*?-->/g,''));assert.equal(selected(failed.form,'service_type'),'arriendo');assert.equal(inputValue(failed.form,'rental_from'),'2026-11-20');assert.equal(inputValue(failed.form,'rental_to'),'2026-11-19');assert.equal(inputValue(failed.form,'submission_key'),String(current.data.get('submission_key')));assert.equal(await openCount(company),baseline);
+   fill(failed.data,{...values,service_type:'arriendo',rental_from:'2026-11-20',rental_to:'2026-11-22'});response=await post(path,failed.data);assert.equal(response.status,303);const target=response.headers.get('location');assert.ok(target&&/^\/solicitudes\/[0-9a-f-]+\?ok=1$/.test(target));assert.equal(await openCount(company),baseline+1);const detail=await htmlPage(target);assert.match(detail,/ETAPA ACTUAL · ARRIENDO/);assert.match(detail,/2026-11-20 al 2026-11-22/);assert.match(detail,new RegExp(fixtures.legacy));
+   const repeat=await post(path,failed.data);assert.equal(repeat.status,303);assert.equal(repeat.headers.get('location'),target);assert.equal(await openCount(company),baseline+1);
+   current=requestForm(await htmlPage(path));fill(current.data,{...values,service_type:'retiro'});response=await post(path,current.data);assert.equal(response.status,303);assert.equal(await openCount(company),baseline+2);
+   for(const invalid of [{operating_company:company==='rerchar'?'e_y_j':'rerchar'},{client_id:other.id,site_id:otherSite.id}]){
+    current=requestForm(await htmlPage(path));fill(current.data,{...values,service_type:'traslado',...invalid});response=await post(path,current.data);assert.equal(response.status,200);assert.match(await response.text(),/No se pudo registrar la solicitud/);assert.equal(await openCount(company),baseline+2);
+   }
+   const classifiedPath='/solicitudes/nueva?cotizacion='+fixtures.classified+'&empresa='+company;current=requestForm(await htmlPage(classifiedPath));assert.equal(selected(current.form,'service_type'),'traslado');assert.doesNotMatch(current.form,/Propuesta anterior sin clasificación|<option value="arriendo">|<option value="retiro">/);
+   fill(current.data,{...values,quote_id:fixtures.classified,service_type:'arriendo',rental_from:'2026-11-20',rental_to:'2026-11-22'});response=await post(classifiedPath,current.data);assert.equal(response.status,200);assert.match(await response.text(),/El tipo de solicitud no corresponde/);assert.equal(await openCount(company),baseline+2);
+   for(const role of ['operaciones','cliente']){const scoped=requestForm(await htmlPage(path,role));assert.match(scoped.form,/<option value="arriendo">/);assert.equal(inputValue(scoped.form,'client_id'),client.id);}
+   legacyOutcomes.push({company,explicitSelection:true,rentalAndPickupCreated:true,invalidDatesKeepDraft:true,repeatedSubmitSameId:true,classifiedScopePreserved:true,clientAndCompanyScope:true});
+  }
   const agenda=await htmlPage('/agenda?empresa=e_y_j&inicio=2026-11-16');assert.match(agenda,/href="\/solicitudes\?estado=solicitada&amp;empresa=e_y_j"/);assert.match(agenda,/aria-current="date"/);
   const clientPath='/solicitudes/nueva?empresa=rerchar';const clientForm=requestForm(await htmlPage(clientPath,'cliente'));assert.equal(inputValue(clientForm.form,'client_id'),client.id);
   for(const [k,v] of Object.entries({client_id:other.id,site_id:'',new_site_name:'No crear',operating_company:'rerchar',request_category:'servicios',service_type:'traslado',waste_type:'Material',origin:'Faena',destination:'Patio',priority:'normal'}))clientForm.data.set(k,v);
   const denied=await post(clientPath,clientForm.data,'cliente');assert.equal(denied.status,200);assert.match(await denied.text(),/No puede crear solicitudes para otro cliente/);
   assert.equal((await post(clientPath,clientForm.data,'')).status,303);
-  const result={ok:true,forms:outcomes,companyContext:true,weeklyContextLink:true,clientScope:true,anonymousRedirect:true,productionMutations:false};await writeFile(work+'/http-result.json',JSON.stringify(result,null,2));console.log(JSON.stringify({...result,evidenceDirectory:work}));
+  const result={ok:true,forms:outcomes,legacyQuotes:legacyOutcomes,companyContext:true,weeklyContextLink:true,clientScope:true,anonymousRedirect:true,productionMutations:false};await writeFile(work+'/http-result.json',JSON.stringify(result,null,2));console.log(JSON.stringify({...result,evidenceDirectory:work}));
  }finally{try{process.kill(-server.pid!,'SIGTERM');}catch{}await writeFile(work+'/server.log',logs);}
 }
 main().catch(e=>{console.error(e);process.exitCode=1;});

@@ -11,3 +11,14 @@ test("una cotización aceptada abre la solicitud del proceso cotizado",()=>{
   assert.deepEqual(requestTypesFromQuote("general",["arriendo","retiro"]),["arriendo","retiro"]);
   assert.deepEqual(requestKindFromQuote("general",["arriendo","retiro"]),{category:"servicios",serviceType:"arriendo"});
 });
+
+test("las propuestas anteriores sin clasificación permiten escoger el flujo sin deducirlo del título",()=>{
+  for(const principals of [[],[null],[null,null],[""]]){
+    assert.deepEqual(requestTypesFromQuote("general",principals),["traslado","arriendo","retiro"]);
+    assert.deepEqual(requestKindFromQuote("general",principals),{category:"servicios",serviceType:"traslado"});
+  }
+  assert.deepEqual(requestTypesFromQuote("compra_material",[null]),["compra"]);
+  assert.deepEqual(requestTypesFromQuote("general",[null,"transporte"]),["traslado"]);
+  assert.deepEqual(requestTypesFromQuote("general",[null,"arriendo"]),["arriendo"]);
+  assert.deepEqual(requestTypesFromQuote("general",[null,"retiro"]),["retiro"]);
+});

@@ -8,7 +8,9 @@ export function requestTypesFromQuote(kind:"general"|"compra_material",principal
     else if(principal==="retiro")types.add("retiro");
     else if(principal)types.add("traslado");
   }
-  if(!types.size)types.add("traslado");
+  // Las propuestas anteriores no clasificaban sus conceptos. El usuario elige
+  // el flujo; el título libre no determina si corresponde traslado o arriendo.
+  if(!types.size)return ["traslado","arriendo","retiro"];
   return [...types];
 }
 export function requestKindFromQuote(kind:"general"|"compra_material",principals:(string|null)[]){
