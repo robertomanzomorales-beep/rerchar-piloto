@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { ZodError } from "zod";
+import {randomUUID} from "node:crypto";
 import { requireActor, signIn, signOut,type Actor } from "@/lib/auth";
 import {
   PilotError, addEvidence, assignService, cancelService, classifyServiceCompany, completeRental, createAsset, createClient, createService, createSite, createUser,getService,
@@ -11,6 +12,7 @@ import {
 import {updateAsset,updateClient,updateSite,MastersError} from "@/lib/masters";
 import {createExternalDriver,PersonnelError} from "@/lib/personnel";
 import {setFleetDay,FleetScheduleError} from "@/lib/fleet-schedule";
+import {fleetDayContextFromForm,fleetDayDraft,fleetDayHref,type FleetDayFormState} from "@/lib/fleet-day-form-state";
 import {reportServiceDay,ServiceDayError} from "@/lib/service-day";
 import {evidenceAnchor,evidenceContextFromForm,evidenceDraft,evidenceHref,type EvidenceFormState} from "@/lib/evidence-form-state";
 import {serviceDayAnchor,serviceDayContextFromForm,serviceDayHref} from "@/lib/service-day-state";
@@ -152,18 +154,14 @@ export async function assignServiceAction(_previous:ServiceOperationState,form:F
     scheduled_for: value(form,"scheduled_for"),
   }));
 }
-export async function setFleetDayAction(form:FormData){
+export async function setFleetDayAction(_previous:FleetDayFormState,form:FormData):Promise<FleetDayFormState>{
   const actor=await requireActor();
-  const start=value(form,"inicio"),company=value(form,"empresa");
-  const qs=new URLSearchParams();
-  if(/^\d{4}-\d{2}-\d{2}$/.test(start))qs.set("inicio",start);
-  if(company==="rerchar"||company==="e_y_j")qs.set("empresa",company);
-  const target=`/agenda?${qs.toString()}`;
+  const context=fleetDayContextFromForm(form);
   try{
     await setFleetDay(actor,{asset_id:value(form,"asset_id"),day:value(form,"day"),kind:value(form,"kind"),detail:value(form,"detail")});
-  }catch(error){qs.set("error",message(error));redirect(`/agenda?${qs.toString()}`);}
+  }catch(error){return {error:message(error),values:fleetDayDraft(form)};}
   revalidatePath("/agenda");
-  qs.set("ok","1");redirect(`/agenda?${qs.toString()}`);
+  redirect(fleetDayHref(context,randomUUID()));
 }
 export async function reportServiceDayAction(_previous:ServiceOperationState,form:FormData):Promise<ServiceOperationState>{
   const actor=await requireActor(),id=value(form,"id");

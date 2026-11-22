@@ -7,8 +7,8 @@ import {canPlan,requireActor} from "@/lib/auth";
 import {listAgenda,type AgendaService} from "@/lib/pilot";
 import {weeklyFleet,type ScheduledTrip} from "@/lib/fleet-schedule";
 import {Badge,chileDate,Notice} from "@/components/UI";
-import {SubmitButton} from "@/components/Transition";
-import {setFleetDayAction} from "@/app/actions";
+import FleetDayForm from "@/components/FleetDayForm";
+import {fleetDayContext} from "@/lib/fleet-day-form-state";
 import {companyName,serviceFolio} from "@/lib/companies";
 import {listWeekResults,listOpenDayAlerts,resultLabel,type DayReportWeek} from "@/lib/service-day";
 import {agendaPeriod,agendaMonths,agendaIso as iso,agendaAddDays as addDays} from "@/lib/agenda-dates";
@@ -62,7 +62,7 @@ export default async function Agenda({searchParams}:{searchParams:Promise<{inici
   const alerts=board?.pendingPriorityTotal??0;
   return <>
     <div className="page-title-row"><div><div className="eyebrow">PLANIFICACIÓN</div><h1>Programación semanal de camiones</h1><p className="page-intro">Camiones por día, servicios y novedades de operación. Horarios de Chile.</p></div><span className="title-icon"><CalendarDays size={24}/></span></div>
-    <Notice error={query.error} ok={query.ok}/>
+    <Notice error={query.error}/>
     <form action="/agenda" method="GET" className="filters"><input type="hidden" name="inicio" value={reference}/>{pendingView&&<input type="hidden" name="partes" value="pendientes"/>}<label>Empresa<select name="empresa" defaultValue={company}><option value="">Ambas empresas</option><option value="rerchar">RERCHAR</option><option value="e_y_j">E y J</option></select></label><button className="button button-outline" type="submit">Filtrar</button></form>
     <section className="agenda-navigation" aria-label="Navegación de agenda">
       <form key={reference} action="/agenda" method="get" className="form-grid agenda-month-jump">
@@ -76,7 +76,7 @@ export default async function Agenda({searchParams}:{searchParams:Promise<{inici
     </section>
     {board?<>
       <div className="fleet-week-stats"><div><strong>{open}</strong><span>Servicios activos esta semana</span></div><div><strong>{board.pendingTotal}</strong><span>Solicitudes por programar</span></div><div><strong>{alerts}</strong><span>Prioridad alta o crítica pendiente</span></div></div>
-      <section className="section-card"><div className="section-heading"><div><div className="eyebrow">PLANILLA SEMANAL</div><h2>Asignación por camión</h2></div><Link className="text-link" href={"/solicitudes?"+new URLSearchParams({estado:"solicitada",empresa:company})}>Programar solicitud →</Link></div>
+      <section className="section-card" id="planilla-semanal"><Notice ok={query.ok}/><div className="section-heading"><div><div className="eyebrow">PLANILLA SEMANAL</div><h2>Asignación por camión</h2></div><Link className="text-link" href={"/solicitudes?"+new URLSearchParams({estado:"solicitada",empresa:company})}>Programar solicitud →</Link></div>
         <p className="helper-text">Cada celda admite varios recorridos en horarios distintos. La disponibilidad considera las dos empresas porque comparten flota; el filtro sólo oculta detalles de la otra empresa.</p>
         <div className="fleet-week-scroll" role="region" aria-label="Asignación semanal por camión" tabIndex={0}><table className="fleet-week-table"><thead><tr><th>Camión</th>{days.map((day,i)=><th key={iso(day)} aria-current={iso(day)===currentDay?"date":undefined} className={iso(day)===currentDay?"fleet-week-today":undefined}>{dayLabel(day)}<span>{iso(day)===currentDay?"Hoy · ":""}{free[i]} {free[i]===1?"libre":"libres"}</span></th>)}</tr></thead><tbody>
           {board.assets.map(asset=><tr key={asset.id}><th><Link href={`/flota/${asset.id}`}>{asset.plate||asset.code}</Link><small title={asset.label}>{asset.label}</small>{!asset.available&&<em>Detenido</em>}</th>{days.map(day=>{
@@ -107,15 +107,9 @@ export default async function Agenda({searchParams}:{searchParams:Promise<{inici
       </section>}
       <div className="fleet-week-lower"><section className="section-card"><div className="section-heading"><div><div className="eyebrow">DESPACHO</div><h2>Solicitudes sin asignación</h2></div><span className="count-pill">{board.pendingTotal}</span></div>
         {board.pending.length<board.pendingTotal&&<p className="helper-text">Se muestran {board.pending.length} de {board.pendingTotal} solicitudes, ordenadas por prioridad.</p>}{board.pending.length?<ul className="fleet-week-pending">{board.pending.map(trip=><li key={trip.id}><Link href={`/solicitudes/${trip.id}`}><strong>{serviceFolio(trip)} · {trip.client_name}</strong><span>{trip.site_name} · {trip.waste_type}</span><small>{companyName(trip.operating_company)}{trip.priority!=="normal"?` · Prioridad ${trip.priority}`:""}</small></Link></li>)}</ul>:<p className="muted">No hay solicitudes pendientes de programación.</p>}{board.pendingTotal>board.pending.length&&<Link className="text-link" href={"/solicitudes?"+new URLSearchParams({estado:"solicitada",empresa:company})}>Abrir listado de solicitudes</Link>}
-      </section><section className="section-card"><div className="section-heading"><div><div className="eyebrow">NOVEDADES</div><h2><AlertTriangle size={18}/> Bloqueo u observación</h2></div></div>
+      </section><section className="section-card" id="novedad-agenda"><div className="section-heading"><div><div className="eyebrow">NOVEDADES</div><h2><AlertTriangle size={18}/> Bloqueo u observación</h2></div></div>
         <p className="helper-text">Registre mantención, indisponibilidad o falta de conductor; estas novedades impiden asignar el camión ese día. Observación sólo informa. Para cambiar un servicio ya programado, reprográmelo desde su folio.</p>
-        <form action={setFleetDayAction} className="form-stack"><input type="hidden" name="inicio" value={reference}/><input type="hidden" name="empresa" value={company}/>
-          <label>Camión<select name="asset_id" required defaultValue=""><option value="">Seleccione camión</option>{board.assets.map(a=><option key={a.id} value={a.id}>{a.plate||a.code} · {a.label}</option>)}</select></label>
-          <label>Día<input type="date" name="day" min={iso(monday)} max={iso(days[6])} defaultValue={iso(monday)} required/></label>
-          <label>Tipo<select name="kind" defaultValue="nota"><option value="nota">Observación</option><option value="mantencion">Mantención</option><option value="indisponible">Fuera de servicio</option><option value="sin_conductor">Sin conductor</option><option value="despejado">Borrar novedad del día</option></select></label>
-          <label>Detalle<textarea name="detail" maxLength={500} rows={3} placeholder="Qué ocurrió o por qué se bloquea"/></label>
-          <SubmitButton className="button button-primary" disabled={!board.assets.length}>Guardar novedad</SubmitButton>
-        </form>
+        <FleetDayForm key={`${reference}:${company}:${query.ok??""}`} trucks={board.assets} context={fleetDayContext({inicio:reference,empresa:company,partes:query.partes,pagina:String(page)})} firstDay={iso(monday)} lastDay={iso(days[6])}/>
       </section></div>
       {board.trips.some(t=>!board.assets.find(a=>a.id===t.assigned_asset_id)?.available&&t.status!=="completada")&&<p className="agenda-warning">Hay servicios asignados a camiones detenidos. Revise su reprogramación en las fichas de solicitud.</p>}
     </>:<div className="agenda-grid">{days.map(day=><section className="agenda-day" key={iso(day)}><header><span>{dayLabel(day)}</span></header><DayList items={services.filter(s=>localDay.format(new Date(s.scheduled_for))===iso(day))}/></section>)}</div>}
