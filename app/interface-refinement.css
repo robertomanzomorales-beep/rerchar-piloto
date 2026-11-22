@@ -463,7 +463,7 @@
   .app-shell :is(.agenda-controls > a,.fleet-week-stats strong,.fleet-week-table tbody th a,.fleet-week-trip strong) { color:var(--company-accent); }
   .app-shell .fleet-week-trip { background:var(--company-soft); border-left-color:var(--company-accent); }
   .app-shell .fleet-week-trip:hover { background:color-mix(in srgb,var(--company-soft) 70%,white); }
-  .app-shell .fleet-week-scroll { max-height:min(72vh,740px); overflow:auto; overscroll-behavior-x:contain; overscroll-behavior-y:auto; }
+  .app-shell .fleet-week-scroll { max-height:none; overflow-x:auto; overscroll-behavior-x:contain; overscroll-behavior-y:auto; }
   .app-shell .fleet-week-scroll:focus-visible { outline:2px solid var(--company-accent); outline-offset:3px; }
   .app-shell .fleet-week-table thead th { position:sticky; top:0; z-index:2; background:#f2f6f7; }
   .app-shell .fleet-week-table tr > th:first-child { position:sticky; left:0; z-index:1; }
