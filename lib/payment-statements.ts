@@ -351,7 +351,7 @@ export async function listStatementServices(actor:Actor,statementId:string){
       AND NOT EXISTS(SELECT 1 FROM payment_statement_operations o WHERE o.service_id=s.id AND o.statement_id<>$3)
       AND NOT EXISTS(SELECT 1 FROM service_valuations v JOIN service_invoices f ON f.valuation_id=v.id
         WHERE v.service_id=s.id AND f.status='emitida')
-      ORDER BY s.folio DESC LIMIT 300) source ORDER BY source.folio::bigint DESC`,
+      ORDER BY s.folio DESC) source ORDER BY source.folio::bigint DESC`,
     [statement.client_id,statement.statement_type,statementId]);
   return services.filter(s=>!s.transport_used||(statement.statement_type==="residuos"&&!s.disposal_used));
 }

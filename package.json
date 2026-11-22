@@ -31,6 +31,7 @@
     "test:supply-history-http": "node --import tsx scripts/verify-supply-history.ts",
     "test:quote-form-http": "node --import tsx scripts/verify-quote-form.ts",
     "test:statement-form-http": "node --import tsx scripts/verify-statement-form.ts",
+    "test:statement-detail-http": "node --import tsx scripts/verify-statement-detail.ts",
     "test:fleet-http": "node --import tsx scripts/verify-fleet.ts",
     "test:finance-catalog-http": "node --import tsx scripts/verify-finance-catalog.ts",
     "test:financial-detail-http": "node --import tsx scripts/verify-financial-detail.ts",
