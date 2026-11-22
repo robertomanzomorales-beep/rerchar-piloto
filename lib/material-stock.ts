@@ -2,6 +2,7 @@ import {z} from "zod";
 import type {Actor} from "./auth";
 import {canManage} from "./auth";
 import {db,transaction,type Db} from "./db";
+import {lastRecordPage,recordPage,recordsPerPage,recordWindow} from "./record-pagination";
 
 const uuid=z.uuid();
 export class MaterialStockError extends Error {}
@@ -17,13 +18,24 @@ export async function listMaterialCatalog(actor:Actor){
     FROM material_catalog c LEFT JOIN material_stock_balances b ON b.material_id=c.id
     WHERE c.active ORDER BY c.name`);
 }
-export async function listMaterialStockMovements(actor:Actor,materialId=""){
+export async function listMaterialStockMovements(actor:Actor,materialId="",limit=200,offset=0){
   manage(actor);
   if(materialId&&!uuid.safeParse(materialId).success)reject("Material inválido.");
+  const window=recordWindow(limit,offset);
   return db.query<StockMovement>(`SELECT m.*,c.name AS material_name,u.name AS actor_name
     FROM material_stock_movements m JOIN material_catalog c ON c.id=m.material_id JOIN users u ON u.id=m.recorded_by
     WHERE ($1::text='' OR m.material_id=NULLIF($1,'')::uuid)
-    ORDER BY m.occurred_on DESC,m.created_at DESC LIMIT 200`,[materialId]);
+    ORDER BY m.occurred_on DESC,m.created_at DESC,m.id DESC LIMIT $2 OFFSET $3`,[materialId,window.limit,window.offset]);
+}
+export async function listMaterialStockMovementsPage(actor:Actor,materialId="",requestedPage:unknown=1){
+  manage(actor);
+  if(materialId&&!uuid.safeParse(materialId).success)reject("Material inválido.");
+  const [counts]=await db.query<{all_total:string;total:string}>(`SELECT count(*)::text AS all_total,
+    count(*) FILTER (WHERE $1::text='' OR material_id=NULLIF($1,'')::uuid)::text AS total
+    FROM material_stock_movements`,[materialId]);
+  const total=Number(counts.total),totalPages=lastRecordPage(total),page=Math.min(recordPage(requestedPage),totalPages);
+  const movements=await listMaterialStockMovements(actor,materialId,recordsPerPage,(page-1)*recordsPerPage);
+  return {movements,total,allTotal:Number(counts.all_total),page,totalPages};
 }
 export async function catalogName(tx:Db,id:string){
   if(!uuid.safeParse(id).success)reject("Seleccione un material del catálogo.");
