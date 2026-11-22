@@ -5,6 +5,7 @@ import {revalidatePath} from "next/cache";
 import {ZodError} from "zod";
 import {requireActor} from "@/lib/auth";
 import {MaterialStockError,linkReceiptMaterial,postReceiptToMaterialStock,recordMaterialStockAdjustment} from "@/lib/material-stock";
+import {materialStockDraft,materialStockFields,materialStockSavedHref,type MaterialStockFormState} from "@/lib/material-stock-form-state";
 
 const val=(form:FormData,key:string)=>String(form.get(key)??"");
 function errorText(error:unknown){
@@ -17,10 +18,13 @@ async function run(path:string,fn:()=>Promise<unknown>):Promise<never>{
   try{await fn();}catch(error){redirect(`${path}?error=${encodeURIComponent(errorText(error))}`);}
   revalidatePath("/","layout");redirect(`${path}?ok=1`);
 }
-export async function adjustMaterialStockAction(form:FormData){
+export async function adjustMaterialStockAction(_previous:MaterialStockFormState,form:FormData):Promise<MaterialStockFormState>{
   const actor=await requireActor();
-  await run("/materiales-stock",()=>recordMaterialStockAdjustment(actor,Object.fromEntries(
-    ["material_id","kind","quantity_kg","occurred_on","reference","reason"].map(key=>[key,val(form,key)]))));
+  let id:string;
+  try{id=await recordMaterialStockAdjustment(actor,Object.fromEntries(materialStockFields.map(key=>[key,val(form,key)])));}
+  catch(error){return {error:errorText(error),values:materialStockDraft(form)};}
+  revalidatePath("/","layout");
+  redirect(materialStockSavedHref(val(form,"material_id"),id));
 }
 export async function linkReceiptMaterialAction(form:FormData){
   const actor=await requireActor(),id=val(form,"receipt_id");

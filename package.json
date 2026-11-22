@@ -26,6 +26,7 @@
     "test:clients-http": "node --import tsx scripts/verify-clients.ts",
     "test:material-followup-http": "node --import tsx scripts/verify-material-followup.ts",
     "test:material-receipt-form-http": "node --import tsx scripts/verify-material-receipt-form.ts",
+    "test:material-stock-adjustment-http": "node --import tsx scripts/verify-material-stock-adjustment.ts",
     "test:supplier-invoice-form-http": "node --import tsx scripts/verify-supplier-invoice-form.ts",
     "test:supplier-invoice-detail-http": "node --import tsx scripts/verify-supplier-invoice-detail.ts",
     "test:supply-history-http": "node --import tsx scripts/verify-supply-history.ts",
