@@ -14,6 +14,7 @@ import {supplierInvoiceDraft,type SupplierInvoiceFormState} from "@/lib/supplier
 import {materialReceiptDraft,materialReceiptFields,type MaterialReceiptFormState} from "@/lib/material-receipt-form-state";
 import {materialFollowupAnchors,materialFollowupDraft,materialFollowupFields,type MaterialFollowupFormState,type MaterialFollowupKind} from "@/lib/material-followup-form-state";
 import {ledgerContextFromForm,ledgerDraft,ledgerFields,ledgerHref,type LedgerFormState,type LedgerKind} from "@/lib/service-ledger-state";
+import {supplierInvoiceDetailDraft,supplierInvoiceDetailFields,supplierInvoiceDetailHref,type SupplierInvoiceDetailKind,type SupplierInvoiceDetailState} from "@/lib/supplier-invoice-detail-state";
 
 const val=(form:FormData,key:string)=>String(form.get(key)??"");
 function message(error:unknown){
@@ -60,20 +61,27 @@ export async function createSupplierInvoiceAction(_previous:SupplierInvoiceFormS
   catch(e){return {error:message(e),values:supplierInvoiceDraft(form)};}
   revalidatePath("/","layout");redirect(`/facturas-recibidas/${id}?ok=1`);
 }
-export async function registerSupplierPaymentAction(form:FormData){
-  const actor=await requireActor(),id=val(form,"id");
-  await run(`/facturas-recibidas/${encodeURIComponent(id)}`,()=>registerSupplierPayment(actor,id,{
-    submission_key:val(form,"submission_key"),amount_clp:val(form,"amount_clp"),paid_on:val(form,"paid_on"),reference:val(form,"reference")}));
+async function saveSupplierInvoiceDetail(kind:SupplierInvoiceDetailKind,form:FormData):Promise<SupplierInvoiceDetailState>{
+  const actor=await requireActor(),id=val(form,"invoice_id"),values=Object.fromEntries(supplierInvoiceDetailFields[kind].map(key=>[key,val(form,key)]));
+  try{
+    if(kind==="payment")await registerSupplierPayment(actor,id,values);
+    else if(kind==="review")await reviewSupplierInvoice(actor,id,values);
+    else if(kind==="due")await updateSupplierInvoiceDueDate(actor,id,values);
+    else if(kind==="attachment")await addOperationFile(actor,"invoice",id,val(form,"kind"),form.get("file") as File);
+  }catch(e){return {error:message(e),values:supplierInvoiceDetailDraft(kind,form)};}
+  revalidatePath("/","layout");redirect(supplierInvoiceDetailHref(id,kind));
 }
-export async function reviewSupplierInvoiceAction(form:FormData){
-  const actor=await requireActor(),id=val(form,"id");
-  await run(`/facturas-recibidas/${encodeURIComponent(id)}`,
-    ()=>reviewSupplierInvoice(actor,id,{decision:val(form,"decision"),note:val(form,"note")}));
+export async function registerSupplierPaymentAction(_previous:SupplierInvoiceDetailState,form:FormData):Promise<SupplierInvoiceDetailState>{
+  return saveSupplierInvoiceDetail("payment",form);
 }
-export async function updateSupplierInvoiceDueDateAction(form:FormData){
-  const actor=await requireActor(),id=val(form,"id");
-  await run(`/facturas-recibidas/${encodeURIComponent(id)}`,
-    ()=>updateSupplierInvoiceDueDate(actor,id,{due_on:val(form,"due_on"),reason:val(form,"reason")}));
+export async function reviewSupplierInvoiceAction(_previous:SupplierInvoiceDetailState,form:FormData):Promise<SupplierInvoiceDetailState>{
+  return saveSupplierInvoiceDetail("review",form);
+}
+export async function updateSupplierInvoiceDueDateAction(_previous:SupplierInvoiceDetailState,form:FormData):Promise<SupplierInvoiceDetailState>{
+  return saveSupplierInvoiceDetail("due",form);
+}
+export async function addSupplierInvoiceFileAction(_previous:SupplierInvoiceDetailState,form:FormData):Promise<SupplierInvoiceDetailState>{
+  return saveSupplierInvoiceDetail("attachment",form);
 }
 export async function addOperationFileAction(form:FormData){
   const actor=await requireActor(),id=val(form,"id");
